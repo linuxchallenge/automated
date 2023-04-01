@@ -37,7 +37,8 @@ class Intraday_movement(object):
         return self.alligator.compute_trend(test_df)
 
 
-logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
+#logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
+logging.basicConfig(filename='/tmp/IntradayMovement.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 x = Intraday_movement()
