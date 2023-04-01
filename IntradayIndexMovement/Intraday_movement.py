@@ -5,9 +5,7 @@ import TelegramSend
 import usd
 import pandas as pd
 from datetime import datetime, timedelta
-from enum import Enum
 import time
-import os
 import logging
 import sys
 
@@ -33,12 +31,11 @@ class Intraday_movement(object):
 
     def compute_trend(self, my_df):
         test_df = self.alligator.compute_alligator(my_df)
-        print(test_df)
+        #print(test_df)
         return self.alligator.compute_trend(test_df)
 
 
-#logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
-logging.basicConfig(filename='/tmp/IntradayMovement.log', filemode='w',
+logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 x = Intraday_movement()
@@ -57,24 +54,6 @@ usd_trend_60 = "Down"
 dt = datetime.now()
 # get day of week as an integer
 weekday = dt.weekday()
-
-#if weekday > 4:
-#    logging.warning("Not a weekday")
-#    sys.exit("Not a week day")
-
-#if dt.hour < 9 | dt.hour > 15:
-#    logging.warning("Not market hour")
-#    sys.exit("Not market hour")
-
-#if dt.hour == 9:
-#    if dt.minute < 8:
-#        logging.warning("Not market hour")
-#        sys.exit("Not market hour")
-
-#if dt.hour == 15:
-#    if dt.minute > 30:
-#        logging.warning("Not market hour")
-#        sys.exit("Not market hour")
 
 current = datetime.now()
 seventy_days_before = current - timedelta(days=100)
@@ -122,63 +101,52 @@ while True:
     try:
         message_send = False
         dt = datetime.now()
-
+        print ("New loop")
         print(dt)
 
         str = "Trend update \n"
-
-#        if dt.hour < 9 | dt.hour > 15:
-#            logging.warning("Not market hour")
-#            sys.exit("Not market hour")
-
-#        if dt.hour == 9:
-#            if dt.minute < 8:
-#                logging.warning("Not market hour")
-#                sys.exit("Not market hour")
-
-#        if dt.hour == 15:
-#            if dt.minute > 31:
-#                logging.warning("Not market hour")
-#                sys.exit("Not market hour")
 
         minute = (15 - dt.minute % 15)
         time.sleep(minute * 60)
 
         current = datetime.now()
+        print("After sleep")
         print(current)
         seventy_days_before = current - timedelta(days=70)
 
         df = x.get_historic_data(seventy_days_before, current, "Bnf")
         bnf_trend_tmp = x.compute_trend(df)[0]
 
-        if ((dt.hour == 9 & dt.minute == 15) | (dt.hour == 10 & dt.minute == 30) | (dt.hour == 11 & dt.minute == 45)
-                | (dt.hour == 13 & dt.minute == 0) | (dt.hour == 14 & dt.minute == 15) | (
-                        dt.hour == 15 & dt.minute == 30)):
+        if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
+                current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
+                current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30) or (
+                current.hour == 16 and current.minute == 15):
+            print("Checking bnf 75 min")
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             bnf_trend_75_tmp = x.compute_trend(df)[0]
 
         df = x.get_historic_data(seventy_days_before, current, "Nifty")
         nifty_trend_tmp = x.compute_trend(df)[0]
 
-        if ((dt.hour == 9 & dt.minute == 15) | (dt.hour == 10 & dt.minute == 30) | (dt.hour == 11 & dt.minute == 45)
-                | (dt.hour == 13 & dt.minute == 0) | (dt.hour == 14 & dt.minute == 15) | (
-                        dt.hour == 15 & dt.minute == 30)):
+        if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
+                current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
+                current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30):
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             nifty_trend_75_tmp = x.compute_trend(df)[0]
 
         df = x.get_historic_data(seventy_days_before, current, "Finnifty")
         fin_nifty_tmp = x.compute_trend(df)[0]
 
-        if ((dt.hour == 9 & dt.minute == 15) | (dt.hour == 10 & dt.minute == 30) | (dt.hour == 11 & dt.minute == 45)
-                | (dt.hour == 13 & dt.minute == 0) | (dt.hour == 14 & dt.minute == 15) | (
-                        dt.hour == 15 & dt.minute == 30)):
+        if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
+                current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
+                current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30):
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             fin_nifty_75_tmp = x.compute_trend(df)[0]
 
         df = x.get_historic_data_usd(15)
         usd_trend_tmp = x.compute_trend(df)[0]
 
-        if dt.minute == 0:
+        if current.minute == 0:
             df = x.get_historic_data_usd(60)
             usd_trend_60_tmp = x.compute_trend(df)[0]
 
