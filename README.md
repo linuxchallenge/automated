@@ -1,1 +1,2 @@
 # automated
+run github-desktop
