@@ -101,8 +101,8 @@ while True:
     try:
         message_send = False
         dt = datetime.now()
-        print ("New loop")
-        print(dt)
+        logging.warning("New loop")
+        logging.warning(dt)
 
         str = "Trend update \n"
 
@@ -110,8 +110,8 @@ while True:
         time.sleep(minute * 60)
 
         current = datetime.now()
-        print("After sleep")
-        print(current)
+        logging.warning("After sleep")
+        logging.warning(current)
         seventy_days_before = current - timedelta(days=70)
 
         df = x.get_historic_data(seventy_days_before, current, "Bnf")
@@ -121,7 +121,7 @@ while True:
                 current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
                 current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30) or (
                 current.hour == 16 and current.minute == 15):
-            print("Checking bnf 75 min")
+            logging.warning("Checking bnf 75 min")
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             bnf_trend_75_tmp = x.compute_trend(df)[0]
 
