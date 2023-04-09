@@ -1,4 +1,5 @@
-import nsepy_api
+#import nsepy_api
+import yahooFin
 import alligator_api
 import macd_api
 import TelegramSend
@@ -19,7 +20,8 @@ class PortfolioAllert(object):
         self.alligator = alligator_api.alligator_api()
         self.macd_obj = macd_api.macd_api()
         self.telegram_obj = TelegramSend.telegram_send_api()
-        self.nsepy_api_obj = nsepy_api.nse_pi_api()
+        #self.nsepy_api_obj = nsepy_api.nse_pi_api()
+        self.nsepy_api_obj = yahooFin.yahooFin_api()
 
     def get_historic_data(self, fdate, todate, script_code):
         Dailydata = self.nsepy_api_obj.OHLCHistoricData(script_code, fdate, todate)
