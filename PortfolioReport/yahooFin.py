@@ -11,7 +11,7 @@ class yahooFin_api(object):
 
     def OHLCHistoricData(self, symbol, fdate, todate):
         try:
-            yestday_date = todate - timedelta(days=1)
+            yestday_date = todate - timedelta(days=0)
             symbol = symbol + ".NS"
             print(symbol)
             data_fut = yf.download(tickers=symbol, start=fdate, end=yestday_date)
