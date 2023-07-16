@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import time
 import logging
 import sys
+import csv
+import os.path
 
 
 class Intraday_movement(object):
@@ -31,25 +33,38 @@ class Intraday_movement(object):
 
     def compute_trend(self, my_df):
         test_df = self.alligator.compute_alligator(my_df)
-        #print(test_df)
+        # print(test_df)
         return self.alligator.compute_trend(test_df)
 
+    def write_to_csv(self, dictionary, filename):
+        # Write the dictionary to a CSV file
+        with open(filename, 'w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=dictionary.keys())
+            writer.writeheader()
+            writer.writerow(dictionary)
+
+    def read_from_csv(self, filename):
+        # Read the dictionary from the CSV file
+        with open(filename, 'r') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                return row
+
+
+x = Intraday_movement()
 
 logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-x = Intraday_movement()
+file_exists = os.path.isfile("data.csv")
+if file_exists:
+    trend_default = x.read_from_csv("data.csv")
+
+else:
+    trend_default = {"nifty_trend": "Down", "bnf_trend": "Down", "fin_nifty": "Down", "usd_trend": "Down",
+                     "nifty_trend_75": "Down", "bnf_trend_75": "Down", "fin_nifty_75": "Down", "usd_trend_75": "Down"}
+
 logging.warning("Index movement")
-
-nifty_trend = "Down"
-bnf_trend = "Down"
-fin_nifty = "Down"
-usd_trend = "Down"
-
-nifty_trend_75 = "Down"
-bnf_trend_75 = "Down"
-fin_nifty_75 = "Down"
-usd_trend_60 = "Down"
 
 dt = datetime.now()
 # get day of week as an integer
@@ -58,44 +73,50 @@ weekday = dt.weekday()
 current = datetime.now()
 seventy_days_before = current - timedelta(days=100)
 
-df = x.get_historic_data(seventy_days_before, current, "Bnf")
-bnf_trend = x.compute_trend(df)[0]
+try:
+    df = x.get_historic_data(seventy_days_before, current, "Bnf")
+    trend_default["bnf_trend"] = x.compute_trend(df)[0]
 
-df = x.Intraday_api_obj.convert15m_to_75m(df)
-bnf_trend_75 = x.compute_trend(df)[0]
+    df = x.Intraday_api_obj.convert15m_to_75m(df)
+    trend_default["bnf_trend_75"] = x.compute_trend(df)[0]
 
-df = x.get_historic_data(seventy_days_before, current, "Nifty")
-nifty_trend = x.compute_trend(df)[0]
+    df = x.get_historic_data(seventy_days_before, current, "Nifty")
+    trend_default["nifty_trend"] = x.compute_trend(df)[0]
 
-df = x.Intraday_api_obj.convert15m_to_75m(df)
-nifty_trend_75 = x.compute_trend(df)[0]
+    df = x.Intraday_api_obj.convert15m_to_75m(df)
+    trend_default["nifty_trend_75"] = x.compute_trend(df)[0]
 
-df = x.get_historic_data(seventy_days_before, current, "Finnifty")
-fin_nifty = x.compute_trend(df)[0]
+    df = x.get_historic_data(seventy_days_before, current, "Finnifty")
+    trend_default["fin_nifty"] = x.compute_trend(df)[0]
 
-df = x.Intraday_api_obj.convert15m_to_75m(df)
-fin_nifty_75 = x.compute_trend(df)[0]
+    df = x.Intraday_api_obj.convert15m_to_75m(df)
+    trend_default["fin_nifty_75"] = x.compute_trend(df)[0]
 
+    df = x.get_historic_data_usd(15)
+    trend_default["usd_trend"] = x.compute_trend(df)[0]
 
-df = x.get_historic_data_usd(15)
-usd_trend = x.compute_trend(df)[0]
+    df = x.get_historic_data_usd(60)
+    trend_default["usd_trend_60"] = x.compute_trend(df)[0]
 
-df = x.get_historic_data_usd(60)
-usd_trend_60 = x.compute_trend(df)[0]
+    bnf_trend_75_tmp = trend_default["bnf_trend_75"]
+    nifty_trend_75_tmp = trend_default["nifty_trend_75"]
+    fin_nifty_75_tmp = trend_default["fin_nifty_75"]
+    usd_trend_60_tmp = trend_default["usd_trend_60"]
 
-bnf_trend_75_tmp = bnf_trend_75
-nifty_trend_75_tmp = nifty_trend_75
-fin_nifty_75_tmp = fin_nifty_75
-usd_trend_60_tmp = usd_trend_60
+    str = "Bank nifty Trend: " + trend_default["bnf_trend"] + "\n Nifty Trend: " + trend_default["nifty_trend"] + \
+          "\n Fin Nifty Trend: " + trend_default["fin_nifty"] + "\n USD INR Trend: " + trend_default["usd_trend"]
 
+    str = str + "\nBank nifty 75 min Trend: " + bnf_trend_75_tmp + "\n Nifty 75 m Trend: " + nifty_trend_75_tmp + "\n Fin Nifty " \
+                                                                                                                  "75m " \
+                                                                                                                  " Trend: " + \
+          fin_nifty_75_tmp + "\n USD INR 60 min Trend: " + usd_trend_60_tmp
 
-str = "Bank nifty Trend: " + bnf_trend + "\n Nifty Trend: " + nifty_trend + "\n Fin Nifty Trend: " + fin_nifty + "\n USD INR Trend: " + usd_trend
-
-str = str + "\nBank nifty 75 min Trend: " + bnf_trend_75 + "\n Nifty 75 m Trend: " + nifty_trend_75 + "\n Fin Nifty 75m " \
-                                                                                                      " Trend: " + \
-      fin_nifty_75 + "\n USD INR 60 min Trend: " + usd_trend_60
-
-x.telegram_obj.send_message("-950275666", str)
+    # x.telegram_obj.send_message("-950275666", str)
+    print(str)
+    logging.warning(str)
+except Exception as e:
+    logging.error("Failed: {}".format(e))
+    print("Failed: {}".format(e))
 
 while True:
     try:
@@ -103,6 +124,9 @@ while True:
         dt = datetime.now()
         logging.warning("New loop")
         logging.warning(dt)
+
+        print(trend_default)
+        x.write_to_csv(trend_default, "data.csv")
 
         str = "Trend update \n"
 
@@ -150,49 +174,49 @@ while True:
             df = x.get_historic_data_usd(60)
             usd_trend_60_tmp = x.compute_trend(df)[0]
 
-        if bnf_trend_tmp != bnf_trend:
+        if bnf_trend_tmp != trend_default["bnf_trend"]:
             str = str + "BNF 15 min update " + bnf_trend + " to " + bnf_trend_tmp + "\n"
             bnf_trend = bnf_trend_tmp
             message_send = True
 
-        if bnf_trend_75_tmp != bnf_trend_75:
+        if bnf_trend_75_tmp != trend_default["bnf_trend_75"]:
             str = str + "BNF 75 min update " + bnf_trend_75 + " to " + bnf_trend_75_tmp + "\n"
             bnf_trend_75 = bnf_trend_75_tmp
             message_send = True
 
-        if nifty_trend_tmp != nifty_trend:
+        if nifty_trend_tmp != trend_default["nifty_trend"]:
             str = str + "Nifty 15 min update " + nifty_trend + " to " + nifty_trend_tmp + "\n"
             nifty_trend = nifty_trend_tmp
             message_send = True
 
-        if nifty_trend_75_tmp != nifty_trend_75:
+        if nifty_trend_75_tmp != trend_default["nifty_trend_75"]:
             str = str + "Nifty 75 min update " + nifty_trend_75 + " to " + nifty_trend_75_tmp + "\n"
             nifty_trend_75 = nifty_trend_75_tmp
             message_send = True
 
-        if fin_nifty_tmp != fin_nifty:
+        if fin_nifty_tmp != trend_default["fin_nifty"]:
             str = str + "Fin Nifty 15 min update " + fin_nifty + " to " + fin_nifty_tmp + "\n"
             fin_nifty = fin_nifty_tmp
             message_send = True
 
-        if fin_nifty_75_tmp != fin_nifty_75:
+        if fin_nifty_75_tmp != trend_default["fin_nifty_75"]:
             str = str + "Fin Nifty 75 min update " + fin_nifty_75 + " to " + fin_nifty_75_tmp + "\n"
             fin_nifty_75 = fin_nifty_75_tmp
             message_send = True
 
-        if usd_trend != usd_trend_tmp:
+        if usd_trend_tmp != trend_default["usd_trend"]:
             str = str + "USD Dollar 15 min update " + usd_trend + " to " + usd_trend_tmp + "\n"
             usd_trend = usd_trend_tmp
-            message_send = True
+            message_send = False
 
-        if usd_trend_60_tmp != usd_trend_60:
+        if usd_trend_60_tmp != trend_default["usd_trend_60"]:
             str = str + "USD Dollar 60 min update " + usd_trend_60 + " to " + usd_trend_60_tmp + "\n"
             usd_trend_60 = usd_trend_60_tmp
             message_send = True
 
         if message_send:
             x.telegram_obj.send_message("-950275666", str)
+
     except Exception as e:
         logging.error("Failed: {}".format(e))
         print("Failed: {}".format(e))
-        sys.exit("Exception !!")

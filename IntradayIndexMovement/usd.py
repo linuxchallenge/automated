@@ -40,7 +40,6 @@ class usd_api(object):
             url = 'https://query1.finance.yahoo.com/v8/finance/chart/USDINR=X?symbol=USDINR%3DX&period1=' + str(
                 start) + '&period2=' + str(
                 end) + '&useYfid=true&interval=30m&includePrePost=true&events=div%7Csplit%7Cearn&lang=en-US&region=US&crumb=LR5Y7Gosvof&corsDomain=finance.yahoo.com'
-            print(url)
 
         hdr = {'User-Agent': 'Mozilla/5.0'}
         resp = requests.get(url, headers=hdr).json()
