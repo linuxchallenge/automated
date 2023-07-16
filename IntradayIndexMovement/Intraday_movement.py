@@ -54,7 +54,7 @@ class Intraday_movement(object):
 x = Intraday_movement()
 
 logging.basicConfig(filename='/home/pitest/log/IntradayMovement.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
 file_exists = os.path.isfile("data.csv")
 if file_exists:
@@ -125,7 +125,6 @@ while True:
         logging.warning("New loop")
         logging.warning(dt)
 
-        print(trend_default)
         x.write_to_csv(trend_default, "data.csv")
 
         str = "Trend update \n"
@@ -140,6 +139,7 @@ while True:
 
         df = x.get_historic_data(seventy_days_before, current, "Bnf")
         bnf_trend_tmp = x.compute_trend(df)[0]
+        logging.warning("Trend BNF 15 min " + bnf_trend_tmp + " " + trend_default["bnf_trend"])
 
         if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
                 current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
@@ -148,31 +148,39 @@ while True:
             logging.warning("Checking bnf 75 min")
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             bnf_trend_75_tmp = x.compute_trend(df)[0]
+            logging.warning("Trend BNF 75 min " + bnf_trend_75_tmp + " " + trend_default["bnf_trend_75"])
 
         df = x.get_historic_data(seventy_days_before, current, "Nifty")
         nifty_trend_tmp = x.compute_trend(df)[0]
+
+        logging.warning("Trend NF 15 min " + nifty_trend_tmp + " " + trend_default["bnf_trend"])
 
         if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
                 current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
                 current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30):
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             nifty_trend_75_tmp = x.compute_trend(df)[0]
+            logging.warning("Trend NF 75 min " + nifty_trend_75_tmp + " " + trend_default["nifty_trend_75"])
 
         df = x.get_historic_data(seventy_days_before, current, "Finnifty")
         fin_nifty_tmp = x.compute_trend(df)[0]
+        logging.warning("Trend Fin NF 15 min " + fin_nifty_tmp + " " + trend_default["fin_nifty"])
 
         if (current.hour == 9 and current.minute == 15) or (current.hour == 10 and current.minute == 30) or (
                 current.hour == 11 and current.minute == 45) or (current.hour == 13 and current.minute == 0) or (
                 current.hour == 14 and current.minute == 15) or (current.hour == 15 and current.minute == 30):
             df = x.Intraday_api_obj.convert15m_to_75m(df)
             fin_nifty_75_tmp = x.compute_trend(df)[0]
+            logging.warning("Trend Fin NF 75 min " + fin_nifty_75_tmp + " " + trend_default["fin_nifty_75"])
 
         df = x.get_historic_data_usd(15)
         usd_trend_tmp = x.compute_trend(df)[0]
+        logging.warning("Trend USD INR 15 min " + usd_trend_tmp + " " + trend_default["usd_trend"])
 
         if current.minute == 0:
             df = x.get_historic_data_usd(60)
             usd_trend_60_tmp = x.compute_trend(df)[0]
+            logging.warning("Trend USD INR 60 min " + usd_trend_60_tmp + " " + trend_default["usd_trend_60"])
 
         if bnf_trend_tmp != trend_default["bnf_trend"]:
             str = str + "BNF 15 min update " + trend_default["bnf_trend"] + " to " + bnf_trend_tmp + "\n"
@@ -216,6 +224,8 @@ while True:
 
         if message_send:
             x.telegram_obj.send_message("-950275666", str)
+
+        x.write_to_csv(trend_default, "data.csv")
 
     except Exception as e:
         logging.error("Failed: {}".format(e))
