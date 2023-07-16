@@ -175,43 +175,43 @@ while True:
             usd_trend_60_tmp = x.compute_trend(df)[0]
 
         if bnf_trend_tmp != trend_default["bnf_trend"]:
-            str = str + "BNF 15 min update " + bnf_trend + " to " + bnf_trend_tmp + "\n"
-            bnf_trend = bnf_trend_tmp
+            str = str + "BNF 15 min update " + trend_default["bnf_trend"] + " to " + bnf_trend_tmp + "\n"
+            trend_default["bnf_trend"] = bnf_trend_tmp
             message_send = True
 
         if bnf_trend_75_tmp != trend_default["bnf_trend_75"]:
-            str = str + "BNF 75 min update " + bnf_trend_75 + " to " + bnf_trend_75_tmp + "\n"
-            bnf_trend_75 = bnf_trend_75_tmp
+            str = str + "BNF 75 min update " + trend_default["bnf_trend_75"] + " to " + bnf_trend_75_tmp + "\n"
+            trend_default["bnf_trend_75"] = bnf_trend_75_tmp
             message_send = True
 
         if nifty_trend_tmp != trend_default["nifty_trend"]:
-            str = str + "Nifty 15 min update " + nifty_trend + " to " + nifty_trend_tmp + "\n"
-            nifty_trend = nifty_trend_tmp
+            str = str + "Nifty 15 min update " + trend_default["nifty_trend"] + " to " + nifty_trend_tmp + "\n"
+            trend_default["nifty_trend"] = nifty_trend_tmp
             message_send = True
 
         if nifty_trend_75_tmp != trend_default["nifty_trend_75"]:
-            str = str + "Nifty 75 min update " + nifty_trend_75 + " to " + nifty_trend_75_tmp + "\n"
-            nifty_trend_75 = nifty_trend_75_tmp
+            str = str + "Nifty 75 min update " + trend_default["nifty_trend_75"] + " to " + nifty_trend_75_tmp + "\n"
+            trend_default["nifty_trend_75"] = nifty_trend_75_tmp
             message_send = True
 
         if fin_nifty_tmp != trend_default["fin_nifty"]:
-            str = str + "Fin Nifty 15 min update " + fin_nifty + " to " + fin_nifty_tmp + "\n"
-            fin_nifty = fin_nifty_tmp
+            str = str + "Fin Nifty 15 min update " + trend_default["fin_nifty"] + " to " + fin_nifty_tmp + "\n"
+            trend_default["fin_nifty"] = fin_nifty_tmp
             message_send = True
 
         if fin_nifty_75_tmp != trend_default["fin_nifty_75"]:
-            str = str + "Fin Nifty 75 min update " + fin_nifty_75 + " to " + fin_nifty_75_tmp + "\n"
-            fin_nifty_75 = fin_nifty_75_tmp
+            str = str + "Fin Nifty 75 min update " + trend_default["fin_nifty_75"] + " to " + fin_nifty_75_tmp + "\n"
+            trend_default["fin_nifty_75"] = fin_nifty_75_tmp
             message_send = True
 
         if usd_trend_tmp != trend_default["usd_trend"]:
-            str = str + "USD Dollar 15 min update " + usd_trend + " to " + usd_trend_tmp + "\n"
-            usd_trend = usd_trend_tmp
+            str = str + "USD Dollar 15 min update " + trend_default["usd_trend"] + " to " + usd_trend_tmp + "\n"
+            trend_default["usd_trend"] = usd_trend_tmp
             message_send = False
 
         if usd_trend_60_tmp != trend_default["usd_trend_60"]:
-            str = str + "USD Dollar 60 min update " + usd_trend_60 + " to " + usd_trend_60_tmp + "\n"
-            usd_trend_60 = usd_trend_60_tmp
+            str = str + "USD Dollar 60 min update " + trend_default["usd_trend_60"] + " to " + usd_trend_60_tmp + "\n"
+            trend_default["usd_trend_60"] = usd_trend_60_tmp
             message_send = True
 
         if message_send:
