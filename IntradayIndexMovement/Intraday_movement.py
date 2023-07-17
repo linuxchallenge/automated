@@ -73,6 +73,15 @@ weekday = dt.weekday()
 current = datetime.now()
 seventy_days_before = current - timedelta(days=100)
 
+str = "Bank nifty Trend: " + trend_default["bnf_trend"] + "\n Nifty Trend: " + trend_default["nifty_trend"] + \
+      "\n Fin Nifty Trend: " + trend_default["fin_nifty"] + "\n USD INR Trend: " + trend_default["usd_trend"]
+str = str + "\nBank nifty 75 min Trend: " + trend_default["bnf_trend_75"] + "\n Nifty 75 m Trend: " + trend_default["nifty_trend_75"] + "\n Fin Nifty " \
+                                                                                                              " Trend: " + \
+      trend_default["fin_nifty_75"] + "\n USD INR 60 min Trend: " + trend_default["usd_trend_60"]
+
+logging.warning("Default value is \n")
+logging.warning(str)
+
 bnf_trend_75_tmp = trend_default["bnf_trend_75"]
 nifty_trend_75_tmp = trend_default["nifty_trend_75"]
 fin_nifty_75_tmp = trend_default["fin_nifty_75"]
@@ -222,6 +231,7 @@ while True:
             trend_default["usd_trend_60"] = usd_trend_60_tmp
             message_send = True
 
+        logging.warning(str)
         if message_send:
             x.telegram_obj.send_message("-950275666", str)
 
