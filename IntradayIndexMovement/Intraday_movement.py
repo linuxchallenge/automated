@@ -73,6 +73,11 @@ weekday = dt.weekday()
 current = datetime.now()
 seventy_days_before = current - timedelta(days=100)
 
+bnf_trend_75_tmp = trend_default["bnf_trend_75"]
+nifty_trend_75_tmp = trend_default["nifty_trend_75"]
+fin_nifty_75_tmp = trend_default["fin_nifty_75"]
+usd_trend_60_tmp = trend_default["usd_trend_60"]
+
 try:
     df = x.get_historic_data(seventy_days_before, current, "Bnf")
     trend_default["bnf_trend"] = x.compute_trend(df)[0]
@@ -97,11 +102,6 @@ try:
 
     df = x.get_historic_data_usd(60)
     trend_default["usd_trend_60"] = x.compute_trend(df)[0]
-
-    bnf_trend_75_tmp = trend_default["bnf_trend_75"]
-    nifty_trend_75_tmp = trend_default["nifty_trend_75"]
-    fin_nifty_75_tmp = trend_default["fin_nifty_75"]
-    usd_trend_60_tmp = trend_default["usd_trend_60"]
 
     str = "Bank nifty Trend: " + trend_default["bnf_trend"] + "\n Nifty Trend: " + trend_default["nifty_trend"] + \
           "\n Fin Nifty Trend: " + trend_default["fin_nifty"] + "\n USD INR Trend: " + trend_default["usd_trend"]
