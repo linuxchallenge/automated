@@ -1,5 +1,6 @@
 import pandas_ta as ta
 import requests
+import logging
 
 apiurl = 'https://api.telegram.org/bot{token}/{method}'.format
 token = '5924214275:AAGdOZwDp72f15flvxok3NX_v3eqr0LjuT8'
@@ -33,8 +34,15 @@ class telegram_send_api(object):
         method = 'sendMessage'
 
         url = apiurl(token=token, method=method)
+        logging.warning(url)
         print(url)
-        response = requests.post(url, data=payload, files=files)
+        i = 1
+        while i < 6:
+            response = requests.post(url, data=payload, files=files)
+            logging.warning(response)
+            i += 1
+            if response.status_code == 200:
+                break
 
 #x = telegram_send_api()
 #x.send_file("-891000076", "file1.csv")
