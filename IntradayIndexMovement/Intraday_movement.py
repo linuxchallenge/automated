@@ -29,6 +29,8 @@ class Intraday_movement(object):
     def get_historic_data_usd(self, time_frame):
         Dailydata = self.usd_obj.OHLCHistoricData(time_frame)
         my_df = pd.DataFrame(Dailydata)
+        if time_frame == 60:
+            my_df = self.usd_obj.convert30m_to_60m(my_df)
         return my_df
 
     def compute_trend(self, my_df):

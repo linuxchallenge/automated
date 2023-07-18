@@ -63,8 +63,21 @@ class usd_api(object):
 
         return intraday_data
 
+    def convert30m_to_60m(self, data):
+        data = data.set_index('Date')
+        data = data.groupby(data.index.date) \
+            .apply(lambda d: d.resample(rule='60T', closed='left', label='left', origin=d.index.min())
+                   .agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna())
+        data.reset_index(inplace=True)
+        data = data.drop(['level_0'], axis=1)
+        return data
+
 
 #x = usd_api()
 
 #df = x.OHLCHistoricData(60)
 #print(df)
+#df.to_csv('file2.csv')
+#df = x.convert15m_to_75m(df)
+#print(df)
+#df.to_csv('file1.csv')
