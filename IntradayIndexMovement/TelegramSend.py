@@ -1,6 +1,7 @@
 import pandas_ta as ta
 import requests
 import logging
+import time
 
 apiurl = 'https://api.telegram.org/bot{token}/{method}'.format
 token = '5924214275:AAGdOZwDp72f15flvxok3NX_v3eqr0LjuT8'
@@ -24,6 +25,7 @@ class telegram_send_api(object):
         files['document'].close()
 
     def send_message(self, chat_id, message):
+        logging.warning("Send telegram message")
         payload = {
             'chat_id': chat_id,
             'disable_notification': False,
@@ -43,6 +45,7 @@ class telegram_send_api(object):
             i += 1
             if response.status_code == 200:
                 break
+            time.sleep(5)
 
 #x = telegram_send_api()
 #x.send_file("-891000076", "file1.csv")
