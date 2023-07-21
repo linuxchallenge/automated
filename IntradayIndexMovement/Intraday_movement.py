@@ -226,7 +226,6 @@ while True:
         if usd_trend_tmp != trend_default["usd_trend"]:
             str = str + "USD Dollar 15 min update " + trend_default["usd_trend"] + " to " + usd_trend_tmp + "\n"
             trend_default["usd_trend"] = usd_trend_tmp
-            message_send = False
 
         if usd_trend_60_tmp != trend_default["usd_trend_60"]:
             str = str + "USD Dollar 60 min update " + trend_default["usd_trend_60"] + " to " + usd_trend_60_tmp + "\n"
