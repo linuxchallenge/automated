@@ -15,9 +15,15 @@ def get_option_chain_data_with_retry(url, max_retries=1, retry_delay=5):
         "User-Agent": "Mozilla/5.0"
     }
 
+    baseurl = "https://www.nseindia.com/"
+
+    session = requests.Session()
+    request = session.get(baseurl, headers=headers, timeout=5)
+    cookies = dict(request.cookies)
+
     for retry in range(max_retries + 1):
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, cookies=cookies, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 return data
@@ -39,11 +45,9 @@ def extract_top_open_interest_values(df, top_n=3):
     return df_with_open_interest.nlargest(top_n, 'openInterest')
 
 
-def get_option_chain_info(symbol):
-    nifty_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
-
+def get_option_chain_info(url):
     try:
-        option_chain_data = get_option_chain_data_with_retry(nifty_url)
+        option_chain_data = get_option_chain_data_with_retry(url)
 
         # Extract CE and PE values as separate lists of dictionaries
         ce_values = [data['CE'] for data in option_chain_data['records']['data'] if
@@ -57,6 +61,8 @@ def get_option_chain_info(symbol):
         # Convert CE and PE lists to DataFrames
         df_ce = pd.DataFrame(ce_values)
         df_pe = pd.DataFrame(pe_values)
+
+        spot_price = df_ce['underlyingValue'].iloc[0]
 
         # Drop specified columns from df_ce and df_pe DataFrames
         columns_to_drop = ['expiryDate', 'underlying', 'underlyingValue', 'identifier', 'impliedVolatility', 'change',
@@ -92,26 +98,27 @@ def get_option_chain_info(symbol):
 
         # Save data to a dictionary along with the current time
         result_dict = {
+            'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'spot_price': spot_price,
+            'pe_to_ce_ratio': pe_to_ce_ratio,
             'ce_highest_strike': float(ce_highest_values[0]),
             'ce_highest_open_interest': float(ce_highest_values[1]),
             'ce_highest_last_price': float(ce_highest_values[2]),
-            'ce_second_highest_strike': float(ce_second_highest_values[0]),
-            'ce_second_highest_open_interest': float(ce_second_highest_values[1]),
-            'ce_second_highest_last_price': float(ce_second_highest_values[2]),
-            'ce_third_highest_strike': float(ce_third_highest_values[0]),
-            'ce_third_highest_open_interest': float(ce_third_highest_values[1]),
-            'ce_third_highest_last_price': float(ce_third_highest_values[2]),
             'pe_highest_strike': float(pe_highest_values[0]),
             'pe_highest_open_interest': float(pe_highest_values[1]),
             'pe_highest_last_price': float(pe_highest_values[2]),
+            'ce_second_highest_strike': float(ce_second_highest_values[0]),
+            'ce_second_highest_open_interest': float(ce_second_highest_values[1]),
+            'ce_second_highest_last_price': float(ce_second_highest_values[2]),
             'pe_second_highest_strike': float(pe_second_highest_values[0]),
             'pe_second_highest_open_interest': float(pe_second_highest_values[1]),
             'pe_second_highest_last_price': float(pe_second_highest_values[2]),
+            'ce_third_highest_strike': float(ce_third_highest_values[0]),
+            'ce_third_highest_open_interest': float(ce_third_highest_values[1]),
+            'ce_third_highest_last_price': float(ce_third_highest_values[2]),
             'pe_third_highest_strike': float(pe_third_highest_values[0]),
             'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
-            'pe_third_highest_last_price': float(pe_third_highest_values[2]),
-            'pe_to_ce_ratio': pe_to_ce_ratio,
-            'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            'pe_third_highest_last_price': float(pe_third_highest_values[2])
         }
 
         return result_dict
@@ -122,12 +129,12 @@ def get_option_chain_info(symbol):
 
 
 if __name__ == "__main__":
-    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "USDINR"]
 
     while True:
         current_time = datetime.now().time()
         start_time = datetime.strptime('09:18:00', '%H:%M:%S').time()
-        end_time = datetime.strptime('15:30:00', '%H:%M:%S').time()
+        end_time = datetime.strptime('17:00:00', '%H:%M:%S').time()
 
         logging.warning("Data analysis ")
         if start_time <= current_time <= end_time:
@@ -136,9 +143,9 @@ if __name__ == "__main__":
 
             for symbol in symbols:
                 if symbol == "USDINR":
-                    nifty_url = f"https://www.nseindia.com/api/option-chain-Currency?symbol={symbol}"
+                    option_url = f"https://www.nseindia.com/api/option-chain-Currency?symbol={symbol}"
                 else:
-                    nifty_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+                    option_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
 
                 # Check if the CSV file exists for the current symbol
                 csv_filename = f"{symbol}_{datetime.now().strftime('%Y-%m-%d')}.csv"
@@ -150,7 +157,7 @@ if __name__ == "__main__":
                     data_frame = pd.DataFrame()
 
                 try:
-                    option_chain_info = get_option_chain_info(symbol)
+                    option_chain_info = get_option_chain_info(option_url)
                     if option_chain_info:
                         # Append the option_chain_info to the DataFrame
                         data_frame = pd.concat([data_frame, pd.DataFrame([option_chain_info])], ignore_index=True)
@@ -163,4 +170,3 @@ if __name__ == "__main__":
 
         dt = datetime.now()
         time.sleep(60 - dt.second)
-        #time.sleep(60)  # Sleep for 60 seconds (1 minute) before repeating
