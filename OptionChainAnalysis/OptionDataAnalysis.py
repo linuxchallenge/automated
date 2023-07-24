@@ -9,6 +9,8 @@ import logging
 logging.basicConfig(filename='/home/pitest/log/option_chain.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
+save_path = '/home/pitest/data-collection/'
+
 
 def get_option_chain_data_with_retry(url, max_retries=1, retry_delay=5):
     headers = {
@@ -149,6 +151,8 @@ if __name__ == "__main__":
 
                 # Check if the CSV file exists for the current symbol
                 csv_filename = f"{symbol}_{datetime.now().strftime('%Y-%m-%d')}.csv"
+                csv_filename = os.path.join(save_path, csv_filename)
+
                 if os.path.exists(csv_filename):
                     # If the CSV file exists, read its content to initialize the data_frame
                     data_frame = pd.read_csv(csv_filename)
