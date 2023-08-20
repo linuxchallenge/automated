@@ -3,6 +3,7 @@ import pandas as pd
 import time
 from datetime import datetime
 import os
+import TelegramSend
 
 import logging
 
@@ -11,6 +12,9 @@ logging.basicConfig(filename='/home/pitest/log/option_chain.log', filemode='w',
 
 save_path = '/home/pitest/data-collection/'
 
+def maximum(a, b, c): 
+   list = [a, b, c] 
+   return max(list) 
 
 def get_option_chain_data_with_retry(url, max_retries=1, retry_delay=5):
     headers = {
@@ -132,10 +136,18 @@ def get_option_chain_info(url):
 
 if __name__ == "__main__":
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "USDINR"]
+    x = TelegramSend.telegram_send_api()
+
+    pe_ratio_sentiments = {
+    "NIFTY": -1,
+    "BANKNIFTY": -1,
+    "FINNIFTY": -1,
+    "USDINR": -1
+}
 
     while True:
         current_time = datetime.now().time()
-        start_time = datetime.strptime('09:18:00', '%H:%M:%S').time()
+        start_time = datetime.strptime('09:32:00', '%H:%M:%S').time()
         end_time = datetime.strptime('17:00:00', '%H:%M:%S').time()
 
         logging.warning("Data analysis ")
@@ -169,6 +181,33 @@ if __name__ == "__main__":
                         # Save data_frame to CSV with the current date appended to the symbol
                         data_frame.to_csv(csv_filename, index=False)
 
+                        if pe_ratio_sentiments[symbol] == -1:
+                            pe_ratio_sentiments[symbol] = data_frame.iloc[0]['pe_to_ce_ratio']
+
+                        #if pe_to_ce_ratio of data_frame changes by 0.2 in 10 minutes then print message
+                        if data_frame.shape[0] > 2:
+                            pe_to_ce_ratio = data_frame.iloc[-1]['pe_to_ce_ratio']
+                            prev_pe_to_ce_ratio = pe_ratio_sentiments[symbol]
+
+                            if abs(pe_to_ce_ratio - prev_pe_to_ce_ratio) > 0.2:
+                                str = (f"pe_to_ce_ratio of {symbol} changed by {abs(pe_to_ce_ratio - prev_pe_to_ce_ratio)} in 10 minutes")
+                                x.send_message("-958172193", str)
+                                pe_ratio_sentiments[symbol] = pe_to_ce_ratio
+
+                        #if highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike
+                        #  changes from previous minute then print message
+                        if data_frame.shape[0] > 2:
+                            ce_highest_strike = data_frame.iloc[-1]['ce_highest_strike']
+                            ce_second_highest_strike = data_frame.iloc[-1]['ce_second_highest_strike']
+                            ce_third_highest_strike = data_frame.iloc[-1]['ce_third_highest_strike']
+
+                            prev_ce_highest_strike = data_frame.iloc[-2]['ce_highest_strike']
+                            prev_ce_second_highest_strike = data_frame.iloc[-2]['ce_second_highest_strike']
+                            prev_ce_third_highest_strike = data_frame.iloc[-2]['ce_third_highest_strike']
+
+                            if maximum(ce_highest_strike, ce_second_highest_strike, ce_third_highest_strike) > maximum(prev_ce_highest_strike, prev_ce_second_highest_strike, prev_ce_third_highest_strike):
+                                str = (f"highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike of {symbol} changed from previous minute")
+                                x.send_message("-958172193", str)
                 except Exception as e:
                     print(f"Exception occurred for symbol '{symbol}': {e}")
 
