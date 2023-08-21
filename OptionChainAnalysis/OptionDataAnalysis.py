@@ -16,6 +16,10 @@ def maximum(a, b, c):
    list = [a, b, c] 
    return max(list) 
 
+def minimum(a, b, c):
+   list = [a, b, c]
+   return min(list)
+
 def get_option_chain_data_with_retry(url, max_retries=1, retry_delay=5):
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -186,28 +190,53 @@ if __name__ == "__main__":
 
                         #if pe_to_ce_ratio of data_frame changes by 0.2 in 10 minutes then print message
                         if data_frame.shape[0] > 2:
-                            pe_to_ce_ratio = data_frame.iloc[-1]['pe_to_ce_ratio']
+                            pe_to_ce_ratio = data_frame.iloc[0]['pe_to_ce_ratio']
                             prev_pe_to_ce_ratio = pe_ratio_sentiments[symbol]
 
                             if abs(pe_to_ce_ratio - prev_pe_to_ce_ratio) > 0.2:
-                                str = (f"pe_to_ce_ratio of {symbol} changed by {abs(pe_to_ce_ratio - prev_pe_to_ce_ratio)} in 10 minutes")
+                                str = (f"pe_to_ce_ratio of {symbol} changed by {pe_to_ce_ratio} to {prev_pe_to_ce_ratio} in 10 minutes")
                                 x.send_message("-958172193", str)
                                 pe_ratio_sentiments[symbol] = pe_to_ce_ratio
 
                         #if highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike
                         #  changes from previous minute then print message
                         if data_frame.shape[0] > 2:
-                            ce_highest_strike = data_frame.iloc[-1]['ce_highest_strike']
-                            ce_second_highest_strike = data_frame.iloc[-1]['ce_second_highest_strike']
-                            ce_third_highest_strike = data_frame.iloc[-1]['ce_third_highest_strike']
+                            ce_highest_strike = data_frame.iloc[0]['ce_highest_strike']
+                            ce_second_highest_strike = data_frame.iloc[0]['ce_second_highest_strike']
+                            ce_third_highest_strike = data_frame.iloc[0]['ce_third_highest_strike']
 
-                            prev_ce_highest_strike = data_frame.iloc[-2]['ce_highest_strike']
-                            prev_ce_second_highest_strike = data_frame.iloc[-2]['ce_second_highest_strike']
-                            prev_ce_third_highest_strike = data_frame.iloc[-2]['ce_third_highest_strike']
+                            prev_ce_highest_strike = data_frame.iloc[-1]['ce_highest_strike']
+                            prev_ce_second_highest_strike = data_frame.iloc[-1]['ce_second_highest_strike']
+                            prev_ce_third_highest_strike = data_frame.iloc[-1]['ce_third_highest_strike']
 
-                            if maximum(ce_highest_strike, ce_second_highest_strike, ce_third_highest_strike) > maximum(prev_ce_highest_strike, prev_ce_second_highest_strike, prev_ce_third_highest_strike):
-                                str = (f"highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike of {symbol} changed from previous minute")
+                            #pe highest strike pe second highest strike pe third highest strike
+                            pe_highest_strike = data_frame.iloc[0]['pe_highest_strike']
+                            pe_second_highest_strike = data_frame.iloc[0]['pe_second_highest_strike']
+                            pe_third_highest_strike = data_frame.iloc[0]['pe_third_highest_strike']
+
+                            prev_pe_highest_strike = data_frame.iloc[-1]['pe_highest_strike']
+                            prev_pe_second_highest_strike = data_frame.iloc[-1]['pe_second_highest_strike']
+                            prev_pe_third_highest_strike = data_frame.iloc[-1]['pe_third_highest_strike']
+
+
+                            # Max of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike is assigned to variable 'max'
+                            # Max of prev_ce_highest_strike, prev_ce_second_highest_strike and prev_ce_third_highest_strike is assigned to variable 'prev_max'
+                            # If max > prev_max then print message and send telegram message
+                            max_ce_strike = maximum(ce_highest_strike, ce_second_highest_strike, ce_third_highest_strike)
+                            max_previous_ce_strike = maximum(prev_ce_highest_strike, prev_ce_second_highest_strike, prev_ce_third_highest_strike)
+                            if max_ce_strike != max_previous_ce_strike:
+                                str = (f"Third ce {max_previous_ce_strike}, chamged to {max_previous_ce_strike} of {symbol}")
                                 x.send_message("-958172193", str)
+
+                            # Min of pe_highest_strike, pe_second_highest_strike and pe_third_highest_strike is assigned to variable 'min'
+                            # Min of prev_pe_highest_strike, prev_pe_second_highest_strike and prev_pe_third_highest_strike is assigned to variable 'prev_min'
+                            # If min < prev_min then print message and send telegram message
+                            min_pe_strike = minimum(pe_highest_strike, pe_second_highest_strike, pe_third_highest_strike)
+                            min_previous_pe_strike = minimum(prev_pe_highest_strike, prev_pe_second_highest_strike, prev_pe_third_highest_strike)
+                            if min_pe_strike != min_previous_pe_strike:
+                                str = (f"Third pe {min_previous_pe_strike}, chamged to {min_pe_strike} of {symbol}")
+                                x.send_message("-958172193", str)
+
                 except Exception as e:
                     print(f"Exception occurred for symbol '{symbol}': {e}")
 
