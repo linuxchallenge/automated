@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
                         #if pe_to_ce_ratio of data_frame changes by 0.2 in 10 minutes then print message
                         if data_frame.shape[0] > 2:
-                            pe_to_ce_ratio = data_frame.iloc[0]['pe_to_ce_ratio']
+                            pe_to_ce_ratio = data_frame.iloc[-1]['pe_to_ce_ratio']
                             prev_pe_to_ce_ratio = pe_ratio_sentiments[symbol]
 
                             if abs(pe_to_ce_ratio - prev_pe_to_ce_ratio) > 0.2:
@@ -201,22 +201,22 @@ if __name__ == "__main__":
                         #if highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike
                         #  changes from previous minute then print message
                         if data_frame.shape[0] > 2:
-                            ce_highest_strike = data_frame.iloc[0]['ce_highest_strike']
-                            ce_second_highest_strike = data_frame.iloc[0]['ce_second_highest_strike']
-                            ce_third_highest_strike = data_frame.iloc[0]['ce_third_highest_strike']
+                            ce_highest_strike = data_frame.iloc[-1]['ce_highest_strike']
+                            ce_second_highest_strike = data_frame.iloc[-1]['ce_second_highest_strike']
+                            ce_third_highest_strike = data_frame.iloc[-1]['ce_third_highest_strike']
 
-                            prev_ce_highest_strike = data_frame.iloc[-1]['ce_highest_strike']
-                            prev_ce_second_highest_strike = data_frame.iloc[-1]['ce_second_highest_strike']
-                            prev_ce_third_highest_strike = data_frame.iloc[-1]['ce_third_highest_strike']
+                            prev_ce_highest_strike = data_frame.iloc[-2]['ce_highest_strike']
+                            prev_ce_second_highest_strike = data_frame.iloc[-2]['ce_second_highest_strike']
+                            prev_ce_third_highest_strike = data_frame.iloc[-2]['ce_third_highest_strike']
 
                             #pe highest strike pe second highest strike pe third highest strike
-                            pe_highest_strike = data_frame.iloc[0]['pe_highest_strike']
-                            pe_second_highest_strike = data_frame.iloc[0]['pe_second_highest_strike']
-                            pe_third_highest_strike = data_frame.iloc[0]['pe_third_highest_strike']
+                            pe_highest_strike = data_frame.iloc[-1]['pe_highest_strike']
+                            pe_second_highest_strike = data_frame.iloc[-1]['pe_second_highest_strike']
+                            pe_third_highest_strike = data_frame.iloc[-1]['pe_third_highest_strike']
 
-                            prev_pe_highest_strike = data_frame.iloc[-1]['pe_highest_strike']
-                            prev_pe_second_highest_strike = data_frame.iloc[-1]['pe_second_highest_strike']
-                            prev_pe_third_highest_strike = data_frame.iloc[-1]['pe_third_highest_strike']
+                            prev_pe_highest_strike = data_frame.iloc[-2]['pe_highest_strike']
+                            prev_pe_second_highest_strike = data_frame.iloc[-2]['pe_second_highest_strike']
+                            prev_pe_third_highest_strike = data_frame.iloc[-2]['pe_third_highest_strike']
 
 
                             # Max of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike is assigned to variable 'max'
@@ -238,7 +238,7 @@ if __name__ == "__main__":
                                 x.send_message("-958172193", str)
 
                 except Exception as e:
-                    print(f"Exception occurred for symbol '{symbol}': {e}")
+                    logging.error(f"Exception occurred for symbol '{symbol}': {e}")
 
         dt = datetime.now()
         time.sleep(60 - dt.second)
