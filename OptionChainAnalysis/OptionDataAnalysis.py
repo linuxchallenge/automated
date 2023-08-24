@@ -225,7 +225,7 @@ if __name__ == "__main__":
                             max_ce_strike = maximum(ce_highest_strike, ce_second_highest_strike, ce_third_highest_strike)
                             max_previous_ce_strike = maximum(prev_ce_highest_strike, prev_ce_second_highest_strike, prev_ce_third_highest_strike)
                             if max_ce_strike != max_previous_ce_strike:
-                                str = (f"Third ce {max_previous_ce_strike}, chamged to {max_previous_ce_strike} of {symbol}")
+                                str = (f"Third ce {max_previous_ce_strike}, chamged to {max_ce_strike} of {symbol}")
                                 x.send_message("-958172193", str)
 
                             # Min of pe_highest_strike, pe_second_highest_strike and pe_third_highest_strike is assigned to variable 'min'
