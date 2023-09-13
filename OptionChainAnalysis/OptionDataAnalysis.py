@@ -194,7 +194,7 @@ if __name__ == "__main__":
                             prev_pe_to_ce_ratio = pe_ratio_sentiments[symbol]
 
                             if abs(pe_to_ce_ratio - prev_pe_to_ce_ratio) > 0.2:
-                                str = (f"pe_to_ce_ratio of {symbol} changed by {pe_to_ce_ratio} to {prev_pe_to_ce_ratio} in 10 minutes")
+                                str = (f"{symbol} changed from {pe_to_ce_ratio} to {prev_pe_to_ce_ratio}")
                                 x.send_message("-958172193", str)
                                 pe_ratio_sentiments[symbol] = pe_to_ce_ratio
 
