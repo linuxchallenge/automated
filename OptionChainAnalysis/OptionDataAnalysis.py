@@ -7,10 +7,13 @@ import TelegramSend
 
 import logging
 
-logging.basicConfig(filename='/home/pitest/log/option_chain.log', filemode='w',
+logging.basicConfig(filename='option_chain.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
-save_path = '/home/pitest/data-collection/'
+#save_path = '/home/pitest/data-collection/'
+
+# Initialize the variables to track the previous pe_to_ce_ratio
+previous_ratios = {}
 
 def maximum(a, b, c): 
    list = [a, b, c] 
@@ -139,20 +142,19 @@ def get_option_chain_info(url):
 
 
 if __name__ == "__main__":
-    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "USDINR"]
+    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     x = TelegramSend.telegram_send_api()
 
     pe_ratio_sentiments = {
     "NIFTY": -1,
     "BANKNIFTY": -1,
-    "FINNIFTY": -1,
-    "USDINR": -1
+    "FINNIFTY": -1
 }
 
     while True:
         current_time = datetime.now().time()
         start_time = datetime.strptime('09:32:00', '%H:%M:%S').time()
-        end_time = datetime.strptime('17:00:00', '%H:%M:%S').time()
+        end_time = datetime.strptime('23:00:00', '%H:%M:%S').time()
 
         logging.warning("Data analysis ")
         if start_time <= current_time <= end_time:
@@ -167,7 +169,7 @@ if __name__ == "__main__":
 
                 # Check if the CSV file exists for the current symbol
                 csv_filename = f"{symbol}_{datetime.now().strftime('%Y-%m-%d')}.csv"
-                csv_filename = os.path.join(save_path, csv_filename)
+                #csv_filename = os.path.join(save_path, csv_filename)
 
                 if os.path.exists(csv_filename):
                     # If the CSV file exists, read its content to initialize the data_frame
@@ -193,9 +195,18 @@ if __name__ == "__main__":
                             pe_to_ce_ratio = data_frame.iloc[-1]['pe_to_ce_ratio']
                             prev_pe_to_ce_ratio = pe_ratio_sentiments[symbol]
 
+                            # Check if pe_to_ce_ratio crossed thresholds
+                            if symbol in previous_ratios:
+                                previous_ratio = previous_ratios[symbol]
+                                if (pe_to_ce_ratio > 1.4 and previous_ratio <= 1.4) or (
+                                        pe_to_ce_ratio < 0.7 and previous_ratio >= 0.7):
+                                    str = (f"pe for '{symbol}' crossed : {pe_to_ce_ratio}")
+                                    x.send_message("-958172193", str, '{symbol}')
+                            previous_ratios[symbol] = pe_to_ce_ratio
+
                             if abs(pe_to_ce_ratio - prev_pe_to_ce_ratio) > 0.2:
                                 str = (f"{symbol} changed from {pe_to_ce_ratio} to {prev_pe_to_ce_ratio}")
-                                x.send_message("-958172193", str)
+                                x.send_message("-958172193", str, '{symbol}')
                                 pe_ratio_sentiments[symbol] = pe_to_ce_ratio
 
                         #if highest of ce_highest_strike, ce_second_highest_strike and ce_third_highest_strike
@@ -226,7 +237,7 @@ if __name__ == "__main__":
                             max_previous_ce_strike = maximum(prev_ce_highest_strike, prev_ce_second_highest_strike, prev_ce_third_highest_strike)
                             if max_ce_strike != max_previous_ce_strike:
                                 str = (f"Third ce {max_previous_ce_strike}, chamged to {max_ce_strike} of {symbol}")
-                                x.send_message("-958172193", str)
+                                x.send_message("-958172193", str, '{symbol}')
 
                             # Min of pe_highest_strike, pe_second_highest_strike and pe_third_highest_strike is assigned to variable 'min'
                             # Min of prev_pe_highest_strike, prev_pe_second_highest_strike and prev_pe_third_highest_strike is assigned to variable 'prev_min'
@@ -235,7 +246,7 @@ if __name__ == "__main__":
                             min_previous_pe_strike = minimum(prev_pe_highest_strike, prev_pe_second_highest_strike, prev_pe_third_highest_strike)
                             if min_pe_strike != min_previous_pe_strike:
                                 str = (f"Third pe {min_previous_pe_strike}, chamged to {min_pe_strike} of {symbol}")
-                                x.send_message("-958172193", str)
+                                x.send_message("-958172193", str, '{symbol}')
 
                 except Exception as e:
                     logging.error(f"Exception occurred for symbol '{symbol}': {e}")

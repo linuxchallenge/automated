@@ -1,8 +1,10 @@
 import pandas_ta as ta
 import requests
+from datetime import datetime
 
 apiurl = 'https://api.telegram.org/bot{token}/{method}'.format
 token = '5924214275:AAGdOZwDp72f15flvxok3NX_v3eqr0LjuT8'
+
 
 class telegram_send_api(object):
     def __init__(self):
@@ -22,7 +24,7 @@ class telegram_send_api(object):
         response = requests.post(url, data=payload, files=files)
         files['document'].close()
 
-    def send_message(self, chat_id, message):
+    def send_message(self, chat_id, message, type):
         payload = {
             'chat_id': chat_id,
             'disable_notification': False,
@@ -31,12 +33,18 @@ class telegram_send_api(object):
         payload['text'] = message
         files = {}
         method = 'sendMessage'
+        dt = datetime.now()
+        x = dt.weekday()
 
+        if type == "BANKNIFTY" and x != 3:
+            return
+
+        if type == "FINNIFTY" and x != 2:
+            return
         url = apiurl(token=token, method=method)
         print(url)
         response = requests.post(url, data=payload, files=files)
 
-#x = telegram_send_api()
-#x.send_file("-891000076", "file1.csv")
-#x.send_message("-891000076", "file1.csv")
-
+# x = telegram_send_api()
+# x.send_file("-891000076", "file1.csv")
+# x.send_message("-891000076", "file1.csv")
