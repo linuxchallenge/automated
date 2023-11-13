@@ -7,10 +7,10 @@ import TelegramSend
 
 import logging
 
-logging.basicConfig(filename='option_chain.log', filemode='w',
+logging.basicConfig(filename='/home/pitest/log/option_chain.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
-#save_path = '/home/pitest/data-collection/'
+save_path = '/home/pitest/data-collection/'
 
 # Initialize the variables to track the previous pe_to_ce_ratio
 previous_ratios = {}
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     while True:
         current_time = datetime.now().time()
         start_time = datetime.strptime('09:32:00', '%H:%M:%S').time()
-        end_time = datetime.strptime('23:00:00', '%H:%M:%S').time()
+        end_time = datetime.strptime('17:00:00', '%H:%M:%S').time()
 
         logging.warning("Data analysis ")
         if start_time <= current_time <= end_time:
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
                 # Check if the CSV file exists for the current symbol
                 csv_filename = f"{symbol}_{datetime.now().strftime('%Y-%m-%d')}.csv"
-                #csv_filename = os.path.join(save_path, csv_filename)
+                csv_filename = os.path.join(save_path, csv_filename)
 
                 if os.path.exists(csv_filename):
                     # If the CSV file exists, read its content to initialize the data_frame
