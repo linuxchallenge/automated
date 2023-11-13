@@ -24,7 +24,7 @@ class telegram_send_api(object):
         response = requests.post(url, data=payload, files=files)
         files['document'].close()
 
-    def send_message(self, chat_id, message, type):
+    def send_message(self, chat_id, message, type_index):
         payload = {
             'chat_id': chat_id,
             'disable_notification': False,
@@ -36,10 +36,10 @@ class telegram_send_api(object):
         dt = datetime.now()
         x = dt.weekday()
 
-        if type == "BANKNIFTY" and x != 3:
+        if type_index == "BANKNIFTY" and x != 3:
             return
 
-        if type == "FINNIFTY" and x != 2:
+        if type_index == "FINNIFTY" and x != 2:
             return
         url = apiurl(token=token, method=method)
         print(url)
