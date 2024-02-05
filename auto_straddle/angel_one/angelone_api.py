@@ -1,8 +1,8 @@
 # package import statement
 import pandas as pd
 import requests
-#from SmartApi import SmartConnect  # or 
-from smartapi.smartConnect import SmartConnect
+from SmartApi import SmartConnect  # or 
+#from smartapi.smartConnect import SmartConnect
 import time
 import logging
 import pyotp
