@@ -1,13 +1,13 @@
 import traceback
 from datetime import datetime, time, timedelta
 import os
-from PlaceOrder import PlaceOrder
+#from PlaceOrder import PlaceOrder
 import pandas as pd
 import TelegramSend
 
 # basic logging configuration
 import logging
-from OptionChainData import OptionChainData, UnderlyingSymbol
+from OptionChainData import OptionChainData
 
 logging.basicConfig(filename='/tmp/farsell.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -17,11 +17,11 @@ logging.getLogger().setLevel(logging.INFO)
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
 def get_strike_interval(symbol):
-    if symbol == UnderlyingSymbol.NIFTY:
+    if symbol == "NIFTY":
         return 50
-    elif symbol == UnderlyingSymbol.BANKNIFTY:
+    elif symbol == "BANKNIFTY":
         return 100
-    elif symbol == UnderlyingSymbol.FINNIFTY:
+    elif symbol == "FINNIFTY":
         return 50
     else:
         return 0
@@ -32,7 +32,7 @@ class FarSellStratergy:
         self.accounts = accounts
         self.symbols = symbols
 
-    def execute_strategy(self, option_chain_analyzer, symbol, account):
+    def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj):
         try:
             if account not in self.accounts:
                 raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
@@ -59,7 +59,7 @@ class FarSellStratergy:
                         self.close_trade(account, existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                                          existing_sold_options_info.iloc[-1]['strangle_ce_strike'],\
                                               existing_sold_options_info.iloc[-1]['strangle_pe_price'],
-                                         existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol)
+                                         existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj, quantity)
 
                         if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == \
                                 -1 or existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
@@ -159,7 +159,7 @@ class FarSellStratergy:
                             self.close_trade(account, existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                                              existing_sold_options_info.iloc[-1]['strangle_ce_strike'], \
                                                 existing_sold_options_info.iloc[-1]['strangle_pe_close_price'],
-                                             existing_sold_options_info.iloc[-1]['strangle_ce_close_price'], symbol)
+                                             existing_sold_options_info.iloc[-1]['strangle_ce_close_price'], symbol, place_order_obj, quantity)
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                                 'closed'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
@@ -197,15 +197,15 @@ class FarSellStratergy:
                             if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
                                 # Place only CE order
                                 sold_options_info['strangle_pe_price'] = -1
-                                PlaceOrder.place_orders(account, ce_strangle_strike, 'CE')
+                                place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
                             elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                                 # Place only PE order
                                 sold_options_info['strangle_ce_price'] = -1
-                                PlaceOrder.place_orders(account, pe_strangle_strike, 'PE')
+                                place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
                             else:
                                 # Place both CE and PE orders
-                                PlaceOrder.place_orders(account, ce_strangle_strike, 'CE')
-                                PlaceOrder.place_orders(account, pe_strangle_strike, 'PE')
+                                place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
+                                place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
 
                             print(f"Auto Straddle trade re-entered for account {account}")
                             logging.info(f"Auto Straddle trade re-entered for account {account} \
@@ -244,15 +244,15 @@ class FarSellStratergy:
                     if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
                         # Place only CE order
                         sold_options_info['strangle_pe_price'] = -1
-                        PlaceOrder.place_orders(account, pe_strangle_strike, 'CE')
+                        place_order_obj.place_orders(account, pe_strangle_strike, 'CE', symbol, quantity)
                     elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                         # Place only PE order
                         sold_options_info['strangle_ce_price'] = -1
-                        PlaceOrder.place_orders(account, ce_strangle_strike, 'PE')
+                        place_order_obj.place_orders(account, ce_strangle_strike, 'PE', symbol, quantity)
                     else:
                         # Place both CE and PE orders
-                        PlaceOrder.place_orders(account, pe_strangle_strike, 'CE')
-                        PlaceOrder.place_orders(account, ce_strangle_strike, 'PE')
+                        place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
+                        place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
 
                     # convert store_sold_options_info to dataframe
                     existing_sold_options_info = pd.concat([existing_sold_options_info,
@@ -278,9 +278,9 @@ class FarSellStratergy:
         try:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
-                'UnderlyingSymbol.NIFTY': 50,
-                'UnderlyingSymbol.BANKNIFTY': 15,
-                'UnderlyingSymbol.FINNIFTY': 40
+                'NIFTY': 50,
+                'BANKNIFTY': 15,
+                'FINNIFTY': 40
             }
             total_profit_loss = 0
 
@@ -307,7 +307,7 @@ class FarSellStratergy:
                 total_profit_loss = total_profit_loss + profit_loss_ce + profit_loss_pe
 
             # Multiply the total profit or loss by the factor based on the symbol
-            total_profit_loss *= multiplication_factor.get(str(symbol), 1)
+            total_profit_loss *= multiplication_factor.get(symbol, 1)
 
             print(f"Total profit or loss: {total_profit_loss}")
             logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
@@ -344,13 +344,13 @@ class FarSellStratergy:
         banknifty_movement = 240
 
         if (
-                symbol == UnderlyingSymbol.NIFTY
+                symbol == "NIFTY"
                 and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= nifty_movement
         ) or (
-                symbol == UnderlyingSymbol.FINNIFTY
+                symbol == "FINNIFTY"
                 and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= finnifty_movement
         ) or (
-                symbol == UnderlyingSymbol.BANKNIFTY
+                symbol == "BANKNIFTY"
                 and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
         ):
             logging.info(
@@ -358,14 +358,14 @@ class FarSellStratergy:
             return True
         return False
 
-    def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, symbol):
+    def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, symbol, place_order_obj, qty):
         # Close the trade logic goes here
         print(f"Closing the trade for account {account}" , str(symbol) , str(strangle_pe_price) , str(strangle_ce_price) , str(ce_strike) , str(pe_strike))
         logging.info(f"Closing the trade for account {account}")
         if (strangle_pe_price != -1):
-            PlaceOrder.close_orders(account, pe_strike, 'PE', symbol)
+            place_order_obj.close_orders(account, pe_strike, 'PE', symbol, qty)
         if (strangle_ce_price != -1):
-            PlaceOrder.close_orders(account, ce_strike, 'CE', symbol)
+            place_order_obj.close_orders(account, ce_strike, 'CE', symbol, qty)
         # Update the trade state
 
     def store_sold_options_info(self, info, account, symbol):

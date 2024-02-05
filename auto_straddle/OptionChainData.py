@@ -15,11 +15,11 @@ class UnderlyingSymbol(Enum):
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
 def get_strike_interval(symbol):
-    if symbol == UnderlyingSymbol.NIFTY:
+    if symbol == "NIFTY":
         return 50
-    elif symbol == UnderlyingSymbol.BANKNIFTY:
+    elif symbol == "BANKNIFTY":
         return 100
-    elif symbol == UnderlyingSymbol.FINNIFTY:
+    elif symbol == "FINNIFTY":
         return 50
     else:
         return 0
@@ -29,11 +29,9 @@ class OptionChainData:
     BASE_URL = "https://www.nseindia.com/api/option-chain-indices?symbol={}"
 
     def __init__(self, symbol):
-        if symbol not in UnderlyingSymbol:
-            print (symbol)
-            raise ValueError("Invalid symbol. Please choose from NIFTY, BANKNIFTY, or FINNIFTY.")
         self.symbol = symbol
-        self.url = self.BASE_URL.format(symbol.value)
+        #self.url = self.BASE_URL.format(symbol.value)
+        self.url = self.BASE_URL.format(symbol)
 
     def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike):
         try:
@@ -168,7 +166,6 @@ class OptionChainData:
 
         for retry in range(max_retries + 1):
             try:
-                print (url)
                 response = requests.get(url, headers=headers, cookies=cookies, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
