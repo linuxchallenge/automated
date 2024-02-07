@@ -1,3 +1,5 @@
 *.pyc
 *.log
 *.csv
+auto_straddle/auto_straddle.code-workspace
+auto_straddle/angel_one/credentials.py
