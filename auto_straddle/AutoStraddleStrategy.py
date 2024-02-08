@@ -183,15 +183,15 @@ class AutoStraddleStrategy:
                             if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
                                 # Place only CE order
                                 sold_options_info['atm_pe_price'] = -1
-                                place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', quantity)
+                                place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
                             elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                                 # Place only PE order
                                 sold_options_info['atm_ce_price'] = -1
-                                place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', quantity)
+                                place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
                             else:
                                 # Place both CE and PE orders
-                                place_order_obj.place_orders(account, atm_ce_strike, 'CE', quantity)
-                                place_order_obj.place_orders(account, atm_pe_strike, 'PE', quantity)
+                                place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
+                                place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
 
                             print(f"Auto Straddle trade re-entered for account {account}")
                             logging.info(f"Auto Straddle trade re-entered for account {account} \
