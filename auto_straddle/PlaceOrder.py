@@ -1,5 +1,6 @@
 import logging
 import angel_one.angelone_api as angel_api
+import fivepaisa.fivepaise_api as fivepaise_api
 
 logging.basicConfig(filename='/tmp/auostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -16,6 +17,8 @@ class PlaceOrder:
         self.account_id = account
         if (account == 'deepti'):
             self.obj_1 = angel_api.angelone_api()
+        if (account == 'leelu'):
+            self.obj_2 = fivepaise_api.fivepaise_api()
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
@@ -34,6 +37,9 @@ class PlaceOrder:
 
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+
+        if (account == 'leelu'):
+            order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
         return order_id
 
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):

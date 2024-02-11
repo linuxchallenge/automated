@@ -1,4 +1,5 @@
 # package import statement
+import traceback
 import pandas as pd
 import requests
 from SmartApi import SmartConnect  # or 
@@ -23,15 +24,17 @@ class angelone_api(object):
         self.obj = SmartConnect(api_key=credentials.API_KEY)
 
         # login api call
-        totp = pyotp.TOTP(credentials.TOTP)
-        totp = totp.now()
         attempts = 5
         while attempts > 0:
             attempts = attempts - 1
+
+            totp = pyotp.TOTP(credentials.TOTP)
+            totp = totp.now()
+
             data = self.obj.generateSession(self.username, self.pwd, totp)
             if data['status']:
                 break
-            time.sleep(2)
+            time.sleep(30)
 
             refreshToken = data['data']['refreshToken']
 
