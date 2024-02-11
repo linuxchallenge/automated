@@ -3,3 +3,5 @@
 *.csv
 auto_straddle/auto_straddle.code-workspace
 auto_straddle/angel_one/credentials.py
+auto_straddle/5paisa/credentials.py
+auto_straddle/fivepaisa/credentials_2.py
