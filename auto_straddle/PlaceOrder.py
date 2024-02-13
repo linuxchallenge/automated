@@ -59,6 +59,9 @@ class PlaceOrder:
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
+        if (account == 'leelu'):
+            order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+
         return order_id
 
     def order_status(self, order_id):
