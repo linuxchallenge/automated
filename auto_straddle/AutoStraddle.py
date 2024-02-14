@@ -43,6 +43,8 @@ def main():
     #path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTbpF19Et4qAM5OECrRCEMyb2s5x6R6Im9XXwxrTbLi097-QpLMc3aPcpWO7OF6QTOwUHce91zQPkU8/pub?output=csv'
     account_details = pd.read_csv(path)
 
+    logging.info("Account details from google sheet")
+    logging.info(account_details)
     print(account_details)
 
     # Append accounts with data from google sheet
@@ -52,13 +54,18 @@ def main():
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
     print(accounts)
+    logging.info("Accounts: " + str(accounts))
 
     # Create an instance of PlaceOrder
     place_order = PlaceOrder()
 
+    logging.info("After creating instance of PlaceOrder")
+
     # Initalize all accounts
     for account in accounts:
         place_order.init_account(account)
+
+    logging.info("After initializing all accounts")
 
     try:
         while True:
