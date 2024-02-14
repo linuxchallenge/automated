@@ -158,8 +158,8 @@ class FarSellStratergy:
                             # Close the trade
                             self.close_trade(account, existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                                              existing_sold_options_info.iloc[-1]['strangle_ce_strike'], \
-                                                existing_sold_options_info.iloc[-1]['strangle_pe_close_price'],
-                                             existing_sold_options_info.iloc[-1]['strangle_ce_close_price'], symbol, place_order_obj, quantity)
+                                                existing_sold_options_info.iloc[-1]['strangle_pe_price'],
+                                             existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj, quantity)
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                                 'closed'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
