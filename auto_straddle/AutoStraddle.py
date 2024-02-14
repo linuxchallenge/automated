@@ -13,7 +13,7 @@ from pathlib import Path
 
 import traceback
 
-logging.basicConfig(filename='/tmp/auostraddle.log', filemode='w',
+logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
 logging.getLogger().setLevel(logging.INFO)
