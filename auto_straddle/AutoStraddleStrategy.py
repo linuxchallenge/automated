@@ -46,7 +46,7 @@ class AutoStraddleStrategy:
             # Example: Sell ATM call and put options after 9:30 AM
             current_time = datetime.now().time()
 
-            if current_time > time(15, 20):
+            if current_time > time(15, 10):
                 sold_options_file_path = self.get_sold_options_file_path(account, symbol)
                 if os.path.exists(sold_options_file_path):
                     # If the file exists, read its contents and populate sold_options_info
