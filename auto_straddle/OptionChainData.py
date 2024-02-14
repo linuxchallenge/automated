@@ -5,7 +5,7 @@ import time
 import requests
 import logging
 
-logging.basicConfig(filename='/tmp/auostraddle.log', filemode='w',
+logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
 class UnderlyingSymbol(Enum):

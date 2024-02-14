@@ -2,7 +2,7 @@ import logging
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_api
 
-logging.basicConfig(filename='/tmp/auostraddle.log', filemode='w',
+logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
 
 logging.getLogger().setLevel(logging.INFO)
