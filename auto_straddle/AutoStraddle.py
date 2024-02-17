@@ -25,6 +25,8 @@ def main():
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
     stratergy = ['as', 'fr']
 
+    logging.info("Starting the program, welcome to AutoStraddle")
+
     # Get home directory
     dir = Path.home()
     # Add /temp/data_collection to the home directory
