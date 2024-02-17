@@ -179,8 +179,6 @@ class FarSellStratergy:
                                 'account': account,
                                 'symbol': symbol,
                                 'spot_price': spot_price,
-                                'strangle_ce_strike': ce_strangle_strike,
-                                'strangle_pe_strike': pe_strangle_strike,
                                 'strangle_ce_price': get_option_price(option_chain_analyzer, 'CE'),
                                 'strangle_pe_price': get_option_price(option_chain_analyzer, 'PE'),
                                 'trade_state': 'open',
