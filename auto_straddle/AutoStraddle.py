@@ -7,10 +7,7 @@ import logging
 import pandas as pd
 import os
 from PlaceOrder import PlaceOrder
-
 from pathlib import Path
-
-
 import traceback
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',

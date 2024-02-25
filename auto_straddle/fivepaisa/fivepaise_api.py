@@ -1,8 +1,10 @@
 from io import StringIO
 import time
 import traceback
+import logging
 import pandas as pd
 from py5paisa import FivePaisaClient
+import py5paisa
 import pyotp
 import requests
 import fivepaisa.credentials_2 as credentials_leelu
@@ -36,7 +38,7 @@ class fivepaise_api(object):
         self.intializeSymbolTokenMap()
 
     def download_csv(self, url):
-        response = requests.get(url)
+        response = requests.get(url, timeout=50)
         response.raise_for_status()  # Ensure the download was successful
         return response.text
 
@@ -67,29 +69,52 @@ class fivepaise_api(object):
         print(f"Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
         if qty % lot != 0:
-                return -1        
+                return -1
         if buy_sell == 'BUY':
             buy_sell = 'B'
         else:
             buy_sell = 'S'
-        oreder_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
-        print(f"Order id: {oreder_id}")
-        return oreder_id
+        try:
+            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+        except Exception as e1:
+            try:
+                print("Error placing order, trying again")
+                time.sleep(2)
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+            except Exception as e2:
+                print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
+                print(f"Error executing place_order: {e2}")
+                logging.error("Error executing place_order: %s", e2)
+                return -1
+        print(f"Order id: {order_id['BrokerOrderID']}")
+        return order_id['BrokerOrderID']
     
     def get_order_status(self, order_id):
         try:
             #orderbook = self.obj.orderBook()['OrderBookDetail']
-            orderbook = self.obj.order_book()
+            print(order_id)
+            try :
+                orderbook = self.obj.order_book()
+            except Exception as e:
+                try:
+                    print("Error getting orderbook, trying again")
+                    print(f"Error: {e}")
+                    time.sleep(2)
+                    orderbook = self.obj.order_book()
+                except Exception as e1:
+                    print(f"Error: {e1}")
+                    return -1, -1
+
             orderbook = pd.DataFrame(orderbook)
 
             order_status = orderbook.loc[orderbook.BrokerOrderId == order_id, 'OrderStatus'].values[0]
-            AveragePrice = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
+            average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
 
-            return order_status, AveragePrice
+            return order_status, average_price
         except Exception as e:
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
-            return -1, -1    
+            return -1, -1
 
         
 '''
