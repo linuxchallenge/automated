@@ -37,9 +37,13 @@ class PlaceOrder:
 
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
             order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
 
         logging_order.info(f"Order id for account: {order_id}")
         return order_id
@@ -60,20 +64,31 @@ class PlaceOrder:
         order_id = 0
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
             order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         logging_order.info(f"Order id for close account: {order_id}")
 
         return order_id
 
-    def order_status(self, order_id):
+    def order_status(self, account, order_id, old_price):
         print(f"Order status for order id {order_id}")
         logging_order.info(f"Order status for order id {order_id}")
         order_status = ''
         average_price = 0
-        if (self.account_id == 'deepti'):
+        if (account == 'deepti'):
             order_status, average_price = self.obj_1.get_order_status(order_id)
+
+        if (account == 'leelu'):
+            order_status, average_price = self.obj_2.get_order_status(order_id)
+
+        if (account == 'dummy'):
+            order_status = 'Complete'
+            average_price = old_price
         
         return order_status, average_price
