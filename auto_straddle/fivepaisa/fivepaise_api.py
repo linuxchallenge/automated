@@ -4,7 +4,7 @@ import traceback
 import logging
 import pandas as pd
 from py5paisa import FivePaisaClient
-import py5paisa
+#import py5paisa
 import pyotp
 import requests
 import fivepaisa.credentials_2 as credentials_leelu
@@ -107,10 +107,17 @@ class fivepaise_api(object):
 
             orderbook = pd.DataFrame(orderbook)
 
+            order_ret = "Rejected"
             order_status = orderbook.loc[orderbook.BrokerOrderId == order_id, 'OrderStatus'].values[0]
+            if order_status == 'Fully Executed':
+                order_ret = "Complete"
+            elif order_status == 'Open':
+                order_ret = "Open"
+            elif order_status == 'Rejected By 5P':
+                order_ret = "Rejected"
             average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
 
-            return order_status, average_price
+            return order_ret, average_price
         except Exception as e:
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
@@ -123,9 +130,9 @@ angel_obj = fivepaise_api()
 print("Object created")
 #orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
 #print(orderid)
-status, price = angel_obj.get_order_status(185065320)
+status, price = angel_obj.get_order_status(196169270)
+print(status, price)
 
-print("Initialized")
 '''
 
 
