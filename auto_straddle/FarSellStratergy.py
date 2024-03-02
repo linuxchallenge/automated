@@ -18,7 +18,6 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
-<<<<<<< HEAD
 def get_strike_interval(symbol_str):
     if symbol_str == "NIFTY":
         return 50
@@ -27,17 +26,6 @@ def get_strike_interval(symbol_str):
     if symbol_str == "FINNIFTY":
         return 50
     return 0
-=======
-def get_strike_interval(symbol):
-    if symbol == "NIFTY":
-        return 50
-    elif symbol == "BANKNIFTY":
-        return 100
-    elif symbol == "FINNIFTY":
-        return 50
-    else:
-        return 0
->>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
 
 
 class FarSellStratergy:
@@ -157,11 +145,8 @@ class FarSellStratergy:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
 
-<<<<<<< HEAD
+
             if current_time > time(15, 13):
-=======
-            if current_time > time(19, 10):
->>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
                 sold_options_file_path = self.get_sold_options_file_path(account, symbol)
                 if os.path.exists(sold_options_file_path):
                     # If the file exists, read its contents and populate sold_options_info
@@ -201,26 +186,8 @@ class FarSellStratergy:
                         logging.info(
                             f"Auto Straddle trade closed for account {account} {symbol} {option_chain_analyzer['spot_price']}\
                                 {option_chain_analyzer['pe_to_ce_ratio']}")
-<<<<<<< HEAD
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-=======
-
-                        compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
-
-                        x = TelegramSend.telegram_send_api()
-
-                        # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss}")
-
-                        # Store the information in a file with account and symbol in the name
-                        self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file("-4008545231", sold_options_file_path)
-
-                        # Since trade is closed rename the file to sold_options_info_closed
-                        os.rename(sold_options_file_path,
-                                  sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
->>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
 
                     else:
                         compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
