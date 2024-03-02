@@ -4,7 +4,11 @@ import traceback
 import logging
 import pandas as pd
 from py5paisa import FivePaisaClient
+<<<<<<< HEAD
 #import py5paisa
+=======
+import py5paisa
+>>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
 import pyotp
 import requests
 import fivepaisa.credentials_2 as credentials_leelu
@@ -75,14 +79,22 @@ class fivepaise_api(object):
         else:
             buy_sell = 'S'
         try:
+<<<<<<< HEAD
             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                             ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+=======
+            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+>>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
         except Exception as e1:
             try:
                 print("Error placing order, trying again")
                 time.sleep(2)
+<<<<<<< HEAD
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+=======
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+>>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
             except Exception as e2:
                 print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
@@ -109,6 +121,7 @@ class fivepaise_api(object):
 
             orderbook = pd.DataFrame(orderbook)
 
+<<<<<<< HEAD
             order_ret = "Rejected"
             order_status = orderbook.loc[orderbook.BrokerOrderId == order_id, 'OrderStatus'].values[0]
             if order_status == 'Fully Executed':
@@ -120,6 +133,12 @@ class fivepaise_api(object):
             average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
 
             return order_ret, average_price
+=======
+            order_status = orderbook.loc[orderbook.BrokerOrderId == order_id, 'OrderStatus'].values[0]
+            average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
+
+            return order_status, average_price
+>>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
         except Exception as e:
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
@@ -132,9 +151,15 @@ angel_obj = fivepaise_api()
 print("Object created")
 #orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
 #print(orderid)
+<<<<<<< HEAD
 status, price = angel_obj.get_order_status(196169270)
 print(status, price)
 
+=======
+status, price = angel_obj.get_order_status(185065320)
+
+print("Initialized")
+>>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
 '''
 
 
