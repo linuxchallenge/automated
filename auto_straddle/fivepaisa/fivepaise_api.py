@@ -75,12 +75,14 @@ class fivepaise_api(object):
         else:
             buy_sell = 'S'
         try:
-            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
+                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
         except Exception as e1:
             try:
                 print("Error placing order, trying again")
                 time.sleep(2)
-                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', ScripCode=int(token), Qty=int(qty), Price=0)
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
+                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
             except Exception as e2:
                 print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
