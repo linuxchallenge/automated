@@ -21,7 +21,15 @@ class telegram_send_api(object):
         files['document'] = open(file, "rb")
 
         url = apiurl(token=token, method=method)
-        response = requests.post(url, data=payload, files=files)
+        try:
+            response = requests.post(url, data=payload, files=files, timeout=10)
+            if response.status_code != 200:
+                print(response.text)
+                response = requests.post(url, data=payload, files=files, timeout=10)
+        except Exception as e:
+            print(f"Error sending file: {e}")
+            response = requests.post(url, data=payload, files=files, timeout=10)
+            print(response.text)
         files['document'].close()
 
     def send_message(self, chat_id, message):
@@ -35,7 +43,15 @@ class telegram_send_api(object):
         method = 'sendMessage'
         url = apiurl(token=token, method=method)
         print(url)
-        response = requests.post(url, data=payload, files=files)
+        try:
+            response = requests.post(url, data=payload, files=files, timeout=10) 
+            if response.status_code != 200:
+                print(response.text)
+                response = requests.post(url, data=payload, files=files, timeout=10)
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            response = requests.post(url, data=payload, files=files, timeout=10)  
+            print(response.text)
 
 #x = telegram_send_api()
 #x.send_file("-4008545231", "sold_options_info_2024-01-06_account1_UnderlyingSymbol.BANKNIFTY.csv")
