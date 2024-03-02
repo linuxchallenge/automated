@@ -18,15 +18,14 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
-def get_strike_interval(symbol):
-    if symbol == "NIFTY":
+def get_strike_interval(symbol_str):
+    if symbol_str == "NIFTY":
         return 50
-    elif symbol == "BANKNIFTY":
+    if symbol_str == "BANKNIFTY":
         return 100
-    elif symbol == "FINNIFTY":
+    if symbol_str == "FINNIFTY":
         return 50
-    else:
-        return 0
+    return 0
 
 
 class FarSellStratergy:
@@ -186,21 +185,8 @@ class FarSellStratergy:
                         logging.info(
                             f"Auto Straddle trade closed for account {account} {symbol} {option_chain_analyzer['spot_price']}\
                                 {option_chain_analyzer['pe_to_ce_ratio']}")
-
-                        compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
-
-                        x = TelegramSend.telegram_send_api()
-
-                        # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss}")
-
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file("-4008545231", sold_options_file_path)
-
-                        # Since trade is closed rename the file to sold_options_info_closed
-                        os.rename(sold_options_file_path,
-                                  sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
 
                     else:
                         compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
