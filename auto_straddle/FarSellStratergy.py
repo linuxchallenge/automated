@@ -174,17 +174,16 @@ class FarSellStratergy:
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
 
-                        if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == \
-                                -1 or existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['ce_strangle_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['pe_strangle_price']
-                        else:
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['ce_strangle_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['pe_strangle_price']
+                        if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+
+                        if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
+                            option_chain_analyzer['ce_strangle_price']
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
+                            option_chain_analyzer['pe_strangle_price']
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                             'closed'
@@ -264,6 +263,13 @@ class FarSellStratergy:
                                              quantity)
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
+
+                            if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
+                                existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+
+                            if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
+                                existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                                 'closed'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
@@ -313,6 +319,7 @@ class FarSellStratergy:
                                     self.send_error_message(account, symbol, error_message)
                                     return
                                 sold_options_info['pe_open_order_id'] = -1
+                                sold_options_info['pe_open_state'] = 'closed'
                             elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                                 # Place only PE order
                                 sold_options_info['strangle_ce_price'] = -1
@@ -322,6 +329,7 @@ class FarSellStratergy:
                                     self.send_error_message(account, symbol, error_message)
                                     return
                                 sold_options_info['ce_open_order_id'] = -1
+                                sold_options_info['ce_open_state'] = 'closed'
                             else:
                                 # Place both CE and PE orders
                                 sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
@@ -387,6 +395,7 @@ class FarSellStratergy:
                             self.send_error_message(account, symbol, error_message)
                             return
                         sold_options_info['pe_open_order_id'] = -1
+                        sold_options_info['pe_open_state'] = 'closed'
                     elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                         # Place only PE order
                         sold_options_info['strangle_ce_price'] = -1
@@ -396,6 +405,7 @@ class FarSellStratergy:
                             self.send_error_message(account, symbol, error_message)
                             return
                         sold_options_info['ce_open_order_id'] = -1
+                        sold_options_info['ce_open_state'] = 'closed'
                     else:
                         # Place both CE and PE orders
                         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
@@ -497,7 +507,7 @@ class FarSellStratergy:
             logging.error(f"Error reading sold options information: {e}")
             return None
 
-    def should_close_trade(self, option_chain_analyzer, sold_options_info, symbol):
+    def should_close_trade(self, option_chain_data, sold_options_info, symbol_data):
         # Implement conditions to close the trade based on spot price movement
         # Example: Close the trade if NIFTY spot_price has moved by 60, FINNIFTY by 60, and BANKNIFTY by 120
         nifty_movement = 120
@@ -505,17 +515,17 @@ class FarSellStratergy:
         banknifty_movement = 240
 
         if (
-                symbol == "NIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= nifty_movement
+                symbol_data == "NIFTY"
+                and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= nifty_movement
         ) or (
-                symbol == "FINNIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= finnifty_movement
+                symbol_data == "FINNIFTY"
+                and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= finnifty_movement
         ) or (
-                symbol == "BANKNIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
+                symbol_data == "BANKNIFTY"
+                and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
         ):
             logging.info(
-                f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['spot_price']}")
+                f"Closing the trade for account {symbol_data} {option_chain_data['spot_price']} from {sold_options_info['spot_price']}")
             return True
         return False
 
@@ -627,7 +637,7 @@ def get_option_strike(option_chain_analyzer, option_type):
 
 """
 accounts = ["dummy", "deepti", "leelu"]
-symbols = ["NIFTY"]
+symbols = ["BANKNIFTY"]
 
 place_order = PlaceOrder()
 
@@ -658,7 +668,7 @@ for symbol in symbols:
 
     if option_chain_info is not None:
         print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")
-        option_chain_info['pe_to_ce_ratio'] = 1.0
+        option_chain_info['pe_to_ce_ratio'] = 1.5
         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
