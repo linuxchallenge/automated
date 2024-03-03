@@ -1,6 +1,16 @@
-import pandas_ta as ta
+"""Module providing a function for main function """
+
+# pylint: disable=W1203
+# pylint: disable=W1201
+# pylint: disable=W1202
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+
 import requests
-from datetime import datetime
 
 apiurl = 'https://api.telegram.org/bot{token}/{method}'.format
 token = '5924214275:AAGdOZwDp72f15flvxok3NX_v3eqr0LjuT8'
@@ -44,13 +54,13 @@ class telegram_send_api(object):
         url = apiurl(token=token, method=method)
         print(url)
         try:
-            response = requests.post(url, data=payload, files=files, timeout=10) 
+            response = requests.post(url, data=payload, files=files, timeout=10)
             if response.status_code != 200:
                 print(response.text)
                 response = requests.post(url, data=payload, files=files, timeout=10)
         except Exception as e:
             print(f"Error sending message: {e}")
-            response = requests.post(url, data=payload, files=files, timeout=10)  
+            response = requests.post(url, data=payload, files=files, timeout=10)
             print(response.text)
 
 #x = telegram_send_api()

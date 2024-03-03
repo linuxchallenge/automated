@@ -1,3 +1,14 @@
+"""Module providing a function for far cell"""
+
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+
+
 import traceback
 from datetime import datetime, time, timedelta
 import os
@@ -5,11 +16,8 @@ import os
 import time as t
 # basic logging configuration
 import logging
-from pathlib import Path
 import pandas as pd
-from PlaceOrder import PlaceOrder
 import TelegramSend
-from OptionChainData import OptionChainData
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -66,7 +74,7 @@ class FarSellStratergy:
             # If the file exists, read its contents and populate sold_options_info
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
             if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open':
-                order_status, price = place_order_obj.order_status(account, 
+                order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['pe_open_order_id'],
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'])
                 if order_status == 'Complete':
@@ -79,18 +87,18 @@ class FarSellStratergy:
             if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open':
 
                 t.sleep(3) # Sleep for 3 seconds
-                order_status, price = place_order_obj.order_status(account, 
+                order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['ce_open_order_id'],
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'] = price
-                else:   
+                else:
                     error_in_order = True
                     error_message = error_message + "Error in ce open order"
 
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
-                order_status, price = place_order_obj.order_status(account, 
+                order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'])
                 if order_status == 'Complete':
@@ -102,7 +110,7 @@ class FarSellStratergy:
 
             if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'open':
                 t.sleep(3) # Sleep for 3 seconds
-                order_status, price = place_order_obj.order_status(account, 
+                order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
                 if order_status == 'Complete':
@@ -161,7 +169,7 @@ class FarSellStratergy:
                         self.close_trade(account, existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                                          existing_sold_options_info.iloc[-1]['strangle_ce_strike'],\
                                               existing_sold_options_info.iloc[-1]['strangle_pe_price'],
-                                         existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj, 
+                                         existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj,
                                          quantity)
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
@@ -234,7 +242,6 @@ class FarSellStratergy:
                                 option_chain_analyzer['ce_strangle_price']
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
                                 option_chain_analyzer['pe_strangle_price']
-                            
                         else:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
                                 option_chain_analyzer['ce_strangle_price']
@@ -253,7 +260,7 @@ class FarSellStratergy:
                                       self.close_trade(account, existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                                              existing_sold_options_info.iloc[-1]['strangle_ce_strike'], \
                                                 existing_sold_options_info.iloc[-1]['strangle_pe_price'],
-                                             existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj, 
+                                             existing_sold_options_info.iloc[-1]['strangle_ce_price'], symbol, place_order_obj,
                                              quantity)
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
@@ -281,8 +288,8 @@ class FarSellStratergy:
                                 'trade_state': 'open',
                                 'open_time': datetime.now(),
                                 'close_time': None,
-                                'strangle_ce_strike': get_option_strike(option_chain_analyzer, 'CE', symbol),
-                                'strangle_pe_strike': get_option_strike(option_chain_analyzer, 'PE', symbol),
+                                'strangle_ce_strike': get_option_strike(option_chain_analyzer, 'CE'),
+                                'strangle_pe_strike': get_option_strike(option_chain_analyzer, 'PE'),
                                 'strangle_ce_close_price': get_option_price(option_chain_analyzer, 'CE'),
                                 'strangle_pe_close_price': get_option_price(option_chain_analyzer, 'PE'),
                                 'pe_open_order_id': -1,
@@ -353,8 +360,8 @@ class FarSellStratergy:
                         'trade_state': 'open',
                         'open_time': datetime.now(),
                         'close_time': None,
-                        'strangle_ce_strike': get_option_strike(option_chain_analyzer, 'CE', symbol),
-                        'strangle_pe_strike': get_option_strike(option_chain_analyzer, 'PE', symbol),
+                        'strangle_ce_strike': get_option_strike(option_chain_analyzer, 'CE'),
+                        'strangle_pe_strike': get_option_strike(option_chain_analyzer, 'PE'),
                         'strangle_ce_close_price': get_option_price(option_chain_analyzer, 'CE'),
                         'strangle_pe_close_price': get_option_price(option_chain_analyzer, 'PE'),
                         'pe_open_order_id': 0,
@@ -398,7 +405,7 @@ class FarSellStratergy:
                             return
                         t.sleep(2) # Sleep for 2 seconds
                         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
-                        if sold_options_info['ce_open_order_id'] == -1: 
+                        if sold_options_info['ce_open_order_id'] == -1:
                             error_message = "Error in placing ce open order"
                             self.send_error_message(account, symbol, error_message)
                             return
@@ -419,14 +426,14 @@ class FarSellStratergy:
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"fr_sold_options_info_{current_date}_{account}_{symbol}.csv"
         return file_name
-    
+
     def get_error_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = f"fr_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
         return file_name
 
 
-    # Function computes profit or loss of existing_sold_options_info by subtracting each row of 
+    # Function computes profit or loss of existing_sold_options_info by subtracting each row of
     # strangle_ce_price and strangle_pe_price from strangle_ce_close_price and strangle_pe_close_price respectively
     def compute_profit_loss(self, existing_sold_options_info, symbol):
         try:
@@ -439,7 +446,7 @@ class FarSellStratergy:
             total_profit_loss = 0
 
             # Iterate over all rows and compute profit/loss for each row
-            for index, row in existing_sold_options_info.iterrows():
+            for _, row in existing_sold_options_info.iterrows():
                 # Extract relevant columns from the current row
                 strangle_ce_price = row['strangle_ce_price']
                 strangle_pe_price = row['strangle_pe_price']
@@ -518,13 +525,13 @@ class FarSellStratergy:
         logging.info(f"Closing the trade for account {account}")
         ce_order_id = -1
         pe_order_id = -1
-        if (strangle_pe_price != -1):
+        if strangle_pe_price != -1:
             pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', symbol, qty)
             if pe_order_id == -1:
                 error_message = "Error in placing pe close order"
                 self.send_error_message(account, symbol, error_message)
                 return -1, -1
-        if (strangle_ce_price != -1):
+        if strangle_ce_price != -1:
             ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', symbol, qty)
             if ce_order_id == -1:
                 error_message = "Error in placing ce close order"
@@ -550,7 +557,6 @@ class FarSellStratergy:
     def get_strangle_strike_price(self, account, symbol):
         print(f"Getting strike price for account {account} and symbol {symbol}")
         # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
-        current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = self.get_sold_options_file_path(account, symbol)
         if os.path.exists(file_name):
             existing_sold_options_info = self.read_existing_sold_options_info(file_name)
@@ -607,26 +613,19 @@ def get_option_price(option_chain_analyzer, option_type):
             return option_chain_analyzer['pe_strangle_price']
         else:
             return option_chain_analyzer['pe_strangle_price']
-        
 
-def get_option_strike(option_chain_analyzer, option_type, symbol):
+
+def get_option_strike(option_chain_analyzer, option_type):
     # Implement your logic to get the option price based on strike price and type (CE/PE)
     # You can extract this information from option_chain_analyzer
     # For example, option_chain_analyzer['CE'] and option_chain_analyzer['PE']
     # return option_price from option_chain_analyzer
     if option_type == 'CE':
-        if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
-            return option_chain_analyzer['ce_strangle_strike'] 
-        else:
-            return option_chain_analyzer['ce_strangle_strike']
+        return option_chain_analyzer['ce_strangle_strike']
     elif option_type == 'PE':
-        if option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
-            return option_chain_analyzer['pe_strangle_strike'] 
-        else:
-            return option_chain_analyzer['pe_strangle_strike']
+        return option_chain_analyzer['pe_strangle_strike']
 
-
-'''
+"""
 accounts = ["dummy", "deepti", "leelu"]
 symbols = ["NIFTY"]
 
@@ -666,4 +665,4 @@ for symbol in symbols:
     else:
         print(f"Option chain information not available for symbol {symbol}")
 
-'''
+"""

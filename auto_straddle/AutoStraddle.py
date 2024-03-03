@@ -1,14 +1,27 @@
-from OptionChainData import OptionChainData
-from AutoStraddleStrategy import AutoStraddleStrategy
-from FarSellStratergy import FarSellStratergy
+"""Module providing a function for main function """
+
+# pylint: disable=W1203
+# pylint: disable=W1201
+# pylint: disable=W1202
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+
+
 import time
 from datetime import datetime
 import logging
-import pandas as pd
 import os
-from PlaceOrder import PlaceOrder
 from pathlib import Path
 import traceback
+import pandas as pd
+from PlaceOrder import PlaceOrder
+from OptionChainData import OptionChainData
+from AutoStraddleStrategy import AutoStraddleStrategy
+from FarSellStratergy import FarSellStratergy
+
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -20,19 +33,18 @@ def main():
     # Replace these lists with your desired accounts and symbols
     accounts = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
-    stratergy = ['as', 'fr']
 
     logging.info("Starting the program, welcome to AutoStraddle")
 
     # Get home directory
-    dir = Path.home()
+    cur_dir = Path.home()
     # Add /temp/data_collection to the home directory
-    dir = dir / 'temp' / 'data_collection'
+    cur_dir = cur_dir / 'temp' / 'data_collection'
     # Create the directory if it does not exist
-    dir.mkdir(parents=True, exist_ok=True)
+    cur_dir.mkdir(parents=True, exist_ok=True)
 
     #Change the current working directory to the directory
-    os.chdir(dir)
+    os.chdir(cur_dir)
 
     # Create instances of OptionChainData and AutoStraddleStrategy
     auto_straddle_strategy = AutoStraddleStrategy(accounts, symbols)
@@ -47,13 +59,13 @@ def main():
     print(account_details)
 
     # Append accounts with data from google sheet
-    for index, row in account_details.iterrows():
+    for _, row in account_details.iterrows():
         accounts.append(row['Account'])
 
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
     print(accounts)
-    logging.info("Accounts: " + str(accounts))
+    logging.info("Accounts: %s", str(accounts))
 
     # Create an instance of PlaceOrder
     place_order = PlaceOrder()
@@ -94,7 +106,7 @@ def main():
                                 quantity = account_details.loc[
                                     (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                                     & (account_details['Stratergy'] == 'as')]['quantity'].values[0]
-                                if (quantity > 0):
+                                if quantity > 0:
                                     auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                             quantity, place_order)
 
@@ -104,7 +116,7 @@ def main():
                                 quantity = account_details.loc[
                                     (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                                     & (account_details['Stratergy'] == 'fr')]['quantity'].values[0]
-                                if (quantity > 0):
+                                if quantity > 0:
                                     farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                                quantity, place_order)
 
@@ -117,9 +129,7 @@ def main():
                 time.sleep(60 - (after_loop_time - current_time))
             except Exception as e:
                 logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-                logging.error("Failed: {}".format(e))
                 print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-                print("Failed: {}".format(e))
                 time.sleep(55)
                 continue
 

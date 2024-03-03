@@ -1,9 +1,25 @@
-import pandas as pd
+"""Module providing a function for main function """
+
+# pylint: disable=W1203
+# pylint: disable=W1201
+# pylint: disable=W1202
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+
+
+
+
 from datetime import datetime
 from enum import Enum
-import time
-import requests
 import logging
+import time
+import pandas as pd
+import requests
+
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -61,7 +77,7 @@ class OptionChainData:
                                 & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(self.symbol))]
             df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(self.symbol)) \
                                 & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(self.symbol))]
-            
+
             # merge the two dataframes on strikePrice
             df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
@@ -88,7 +104,7 @@ class OptionChainData:
 
             if prev_strangle_pe_strike == 0:
                 prev_strangle_pe_strike = pe_strangle_strike
-                
+
             # Drop specified columns from df_ce and df_pe DataFrames
             columns_to_drop = ['expiryDate', 'underlying', 'underlyingValue', 'identifier', 'impliedVolatility',
                                'change',
@@ -104,9 +120,6 @@ class OptionChainData:
             total_open_interest_pe = df_pe['openInterest'].sum()
 
             pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
-
-            if prev_atm_strike == 0:
-                prev_atm_strike = prev_atm_strike            
 
             # Find the last prices for ATM CE and ATM PE
             atm_ce_last_price = df_ce[df_ce['strikePrice'] == atm_ce_strike]['lastPrice'].values[0]
@@ -173,6 +186,7 @@ class OptionChainData:
                 else:
                     response.raise_for_status()  # Raise exception for non-200 status codes
             except requests.exceptions.RequestException as e:
+                print(f"Request failed on retry {retry + 1}. Error: {e}")
                 print(f"Request failed on retry {retry + 1}. Error: {url}")
                 logging.error(f"Request failed on retry {retry + 1}. Error: {url}")
                 if retry < max_retries:
@@ -180,7 +194,7 @@ class OptionChainData:
                     time.sleep(retry_delay)
                 else:
                     logging.error("Max retries exceeded. Unable to fetch data.")
-                    raise Exception("Max retries exceeded. Unable to fetch data.")
+                    raise requests.exceptions.RequestException("Max retries exceeded. Unable to fetch data.") from e
 
     def extract_top_open_interest_values(self, df, top_n=3):
         df_with_open_interest = df[df['openInterest'] > 0]

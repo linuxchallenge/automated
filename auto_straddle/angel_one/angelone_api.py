@@ -1,10 +1,21 @@
+"""Module providing a function for angel one """
+
+# pylint: disable=W1203
+# pylint: disable=W0105
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+
+
 # package import statement
 import traceback
 import time
 import logging
 import pandas as pd
 import requests
-from SmartApi import SmartConnect  # or 
+from SmartApi import SmartConnect  # or
 #from smartapi.smartConnect import SmartConnect
 import pyotp
 import login as l
@@ -103,7 +114,7 @@ class angelone_api(object):
                     x = TelegramSend.telegram_send_api()
 
                     # Send profit loss over telegramsend send_message
-                    x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")               
+                    x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")
                     time.sleep(2)
                     orderid = self.obj.placeOrder(orderparams)
                 except Exception as e1:
@@ -121,7 +132,6 @@ class angelone_api(object):
             #print("Order placement failed: {}".format(e.message))
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing place_order: {e}")
-            print("Failed: {}".format(e))
             return -1
 
     def get_order_status(self, order_id):
@@ -138,7 +148,7 @@ class angelone_api(object):
                 except Exception as e1:
                     print(f"Error: {e1}")
                     return -1, -1
-                
+
             order_ret = "Rejected"
             # get orderbook for the order id
             orderbook = pd.DataFrame(orderbook)

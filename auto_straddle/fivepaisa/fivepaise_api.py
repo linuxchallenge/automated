@@ -1,3 +1,14 @@
+"""Module providing a function for 5 paise"""
+
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+
+
 from io import StringIO
 import time
 import traceback
@@ -51,12 +62,12 @@ class fivepaise_api(object):
         # script_master_df has Name column like FINNIFTY 13 Feb 2024 CE 23750.00
         # Match the symbol and strike price and pe_ce and get ScriptCode collumn value
         df = self.scrip_master_df
-        
+
         df = df[(df['SymbolRoot'] == symbol) & (df['StrikeRate'] == strike_price) & (df['ScripType'] == pe_ce)]
         # Sort the df by expiry date and get the first row
         df = df.sort_values(by='Expiry')
         return df.iloc[0]
-    
+
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
 
@@ -69,7 +80,7 @@ class fivepaise_api(object):
         print(f"Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
         if qty % lot != 0:
-                return -1
+            return -1
         if buy_sell == 'BUY':
             buy_sell = 'B'
         else:
@@ -90,7 +101,7 @@ class fivepaise_api(object):
                 return -1
         print(f"Order id: {order_id['BrokerOrderID']}")
         return order_id['BrokerOrderID']
-    
+
     def get_order_status(self, order_id):
         try:
             #orderbook = self.obj.orderBook()['OrderBookDetail']
@@ -117,6 +128,7 @@ class fivepaise_api(object):
                 order_ret = "Open"
             elif order_status == 'Rejected By 5P':
                 order_ret = "Rejected"
+                #order_ret = "Complete"
             average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
 
             return order_ret, average_price
@@ -125,7 +137,7 @@ class fivepaise_api(object):
             print(f"Error executing get_order_status: {e}")
             return -1, -1
 
-        
+
 '''
 print("Starting")
 angel_obj = fivepaise_api()

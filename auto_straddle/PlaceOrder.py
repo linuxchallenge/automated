@@ -1,3 +1,16 @@
+"""Module providing a function for main function """
+
+# pylint: disable=W1203
+# pylint: disable=W1201
+# pylint: disable=W1202
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=C0325
+# pylint: disable=W0201
+
 import logging as logging_order
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_api
@@ -15,9 +28,9 @@ class PlaceOrder:
 
     def init_account(self, account):
         self.account_id = account
-        if (account == 'deepti'):
+        if account == 'deepti':
             self.obj_1 = angel_api.angelone_api()
-        if (account == 'leelu'):
+        if account == 'leelu':
             self.obj_2 = fivepaise_api.fivepaise_api()
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
@@ -35,7 +48,7 @@ class PlaceOrder:
         logging_order.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
         order_id = 0
 
-        if (account == 'deepti'):
+        if account == 'deepti':
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
@@ -90,5 +103,4 @@ class PlaceOrder:
         if (account == 'dummy'):
             order_status = 'Complete'
             average_price = old_price
-        
         return order_status, average_price
