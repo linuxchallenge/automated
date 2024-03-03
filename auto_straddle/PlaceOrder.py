@@ -31,7 +31,10 @@ class PlaceOrder:
         if account == 'deepti':
             self.obj_1 = angel_api.angelone_api()
         if account == 'leelu':
-            self.obj_2 = fivepaise_api.fivepaise_api()
+            self.obj_2 = fivepaise_api.fivepaise_api(account)
+        if account == 'avanthi':
+            self.obj_3 = fivepaise_api.fivepaise_api(account)
+
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
@@ -57,6 +60,11 @@ class PlaceOrder:
             order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+
+        if (account == 'avanthi'):
+            order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
 
         logging_order.info(f"Order id for account: {order_id}")
         return order_id
@@ -85,6 +93,11 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
+        if (account == 'avanthi'):
+            order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+
         logging_order.info(f"Order id for close account: {order_id}")
 
         return order_id
@@ -99,6 +112,9 @@ class PlaceOrder:
 
         if (account == 'leelu'):
             order_status, average_price = self.obj_2.get_order_status(order_id)
+
+        if (account == 'avanthi'):
+            order_status, average_price = self.obj_3.get_order_status(order_id)
 
         if (account == 'dummy'):
             order_status = 'Complete'

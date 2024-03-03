@@ -19,30 +19,49 @@ from py5paisa import FivePaisaClient
 import pyotp
 import requests
 import fivepaisa.credentials_2 as credentials_leelu
+import fivepaisa.credentials_3 as credentials_avanthi
 
 
 class fivepaise_api(object):
 
-    def __init__(self):
+    def __init__(self, account):
         # create object of call
-        cred={
-            "APP_NAME":credentials_leelu.APP_NAME,
-            "APP_SOURCE":credentials_leelu.APP_SOURCE,
-            "USER_ID":credentials_leelu.USER_ID,
-            "PASSWORD":credentials_leelu.PASSWORD,
-            "USER_KEY":credentials_leelu.USER_KEY,
-            "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY
-        }
+
+        if account == 'leelu':
+            cred={
+                "APP_NAME":credentials_leelu.APP_NAME,
+                "APP_SOURCE":credentials_leelu.APP_SOURCE,
+                "USER_ID":credentials_leelu.USER_ID,
+                "PASSWORD":credentials_leelu.PASSWORD,
+                "USER_KEY":credentials_leelu.USER_KEY,
+                "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY
+            }
+        if account == 'avanthi':
+            cred={
+                "APP_NAME":credentials_avanthi.APP_NAME,
+                "APP_SOURCE":credentials_avanthi.APP_SOURCE,
+                "USER_ID":credentials_avanthi.USER_ID,
+                "PASSWORD":credentials_avanthi.PASSWORD,
+                "USER_KEY":credentials_avanthi.USER_KEY,
+                "ENCRYPTION_KEY":credentials_avanthi.ENCRYPTION_KEY
+            }
 
         self.obj = FivePaisaClient(cred=cred)
 
         attempts = 5
         while attempts > 0:
-            totp_pin = pyotp.TOTP(credentials_leelu.TOTP).now()
+            if account == 'leelu':
+                totp_pin = pyotp.TOTP(credentials_leelu.TOTP).now()
 
-            self.session = self.obj.get_totp_session(credentials_leelu.EMAIL,totp_pin,credentials_leelu.PIN)
-            if self.session:
-                break
+                self.session = self.obj.get_totp_session(credentials_leelu.EMAIL,totp_pin,credentials_leelu.PIN)
+                if self.session:
+                    break
+            if account == 'avanthi':
+                totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
+
+                self.session = self.obj.get_totp_session(credentials_avanthi.EMAIL,totp_pin,credentials_avanthi.PIN)
+                if self.session:
+                    break
             attempts = attempts - 1
             time.sleep(30)
 
@@ -137,24 +156,20 @@ class fivepaise_api(object):
             print(f"Error executing get_order_status: {e}")
             return -1, -1
 
+"""
 
-'''
 print("Starting")
-angel_obj = fivepaise_api()
+angel_obj = fivepaise_api("avanthi")
 print("Object created")
-#orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
-#print(orderid)
-<<<<<<< HEAD
-status, price = angel_obj.get_order_status(196169270)
+orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
+print(orderid)
+
+status, price = angel_obj.get_order_status(orderid)
 print(status, price)
-
-=======
-status, price = angel_obj.get_order_status(185065320)
-
 print("Initialized")
->>>>>>> 0ad5154bc574f0bfbabcfe05356413cba7d9b39f
-'''
 
+
+"""
 
 
 
