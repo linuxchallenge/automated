@@ -55,7 +55,7 @@ class FarSellStratergy:
                 sold_options_file_path.replace("sold_options_info", "sold_options_info_error"))
 
 
-    def check_if_trade_is_executed(self, account, symbol, place_order_obj):
+    def check_if_trade_is_executed(self, account, symbol, place_order_obj, option_chain_analyzer):
 
         error_path = self.get_error_options_file_path(account, symbol)
         if os.path.exists(error_path):
@@ -100,7 +100,7 @@ class FarSellStratergy:
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
-                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'])
+                        option_chain_analyzer['pe_strangle_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = price
@@ -112,7 +112,7 @@ class FarSellStratergy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
-                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
+                        option_chain_analyzer['ce_strangle_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = price
@@ -148,7 +148,7 @@ class FarSellStratergy:
             # Example: Sell strangle call and put options after 9:30 AM
             current_time = datetime.now().time()
 
-            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj)
+            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj, option_chain_analyzer)
             if not check_if_trade_is_executed:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
