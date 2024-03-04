@@ -74,6 +74,8 @@ def main():
 
     # Initalize all accounts
     for account in accounts:
+        logging.info("Initializing account: %s", account)
+        print("Initializing account: ", account)
         place_order.init_account(account)
 
     logging.info("After initializing all accounts")
