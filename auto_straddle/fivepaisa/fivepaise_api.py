@@ -55,6 +55,9 @@ class fivepaise_api(object):
 
                 self.session = self.obj.get_totp_session(credentials_leelu.EMAIL,totp_pin,credentials_leelu.PIN)
                 if self.session:
+                    if None == self.obj.Login_check():
+                        print("Login failed")
+                        continue
                     break
             if account == 'avanthi':
                 totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
