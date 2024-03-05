@@ -154,7 +154,7 @@ class AutoStraddleStrategy:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
 
-            if current_time > time(23, 10):
+            if current_time > time(15, 10):
                 sold_options_file_path = self.get_sold_options_file_path(account, symbol)
                 if os.path.exists(sold_options_file_path):
                     # If the file exists, read its contents and populate sold_options_info
