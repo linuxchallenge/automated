@@ -11,6 +11,7 @@
 
 from io import StringIO
 import time
+from datetime import datetime
 import traceback
 import logging
 import pandas as pd
@@ -99,7 +100,7 @@ class fivepaise_api(object):
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
-        print(f"Symbol: {symbol}, Token: {token}, Lot: {lot}")
+        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
         if qty % lot != 0:
             return -1
@@ -110,18 +111,22 @@ class fivepaise_api(object):
         try:
             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                             ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+            print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
         except Exception as e1:
             try:
-                print("Error placing order, trying again")
                 time.sleep(2)
+                print(f" Retry order Time: {datetime.now().strftime('%H:%M:%S')})")                
+                print("Error placing order, trying again")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             except Exception as e2:
                 print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1
-        print(f"Order id: {order_id['BrokerOrderID']}")
         return order_id['BrokerOrderID']
 
     def get_order_status(self, order_id):
