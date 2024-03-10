@@ -12,6 +12,7 @@
 
 import time
 from datetime import datetime
+from datetime import time as time_dt
 import logging
 import os
 from pathlib import Path
@@ -35,6 +36,14 @@ def main():
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
     logging.info("Starting the program, welcome to AutoStraddle")
+
+    while True:
+        current_time_dt = datetime.now().time()
+
+        if current_time_dt < time_dt(9, 15):
+            time.sleep(60)
+            continue
+        break
 
     # Get home directory
     cur_dir = Path.home()
@@ -85,17 +94,18 @@ def main():
             try:
                 # Get current time
                 current_time = datetime.now().second
+
                 for symbol in symbols:
                     option_chain_analyzer = OptionChainData(symbol)
 
-                    strike_data = auto_straddle_strategy.get_strike_price(accounts[0], symbol)
-                    pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts[0], symbol)
+                    strike_data = auto_straddle_strategy.get_strike_price(accounts[0], "dummy")
+                    pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts[0], "dummy")
 
                     # Get option chain data for the specified symbol
                     option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike)
 
                     # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
-                    # dump_option_chain_data_to_csv(option_chain_info, symbol)
+                    dump_option_chain_data_to_csv(option_chain_info, symbol)
 
                     if option_chain_info is not None:
                         for account in accounts:
@@ -109,8 +119,10 @@ def main():
                                     (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                                     & (account_details['Stratergy'] == 'as')]['quantity'].values[0]
                                 if quantity > 0:
+                                    print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
                                     auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                             quantity, place_order)
+                                    print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
 
                             if account_details.loc[
                                 (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
@@ -119,8 +131,10 @@ def main():
                                     (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                                     & (account_details['Stratergy'] == 'fr')]['quantity'].values[0]
                                 if quantity > 0:
+                                    print("==== Executing far sell strategy for account: " + account + " " + symbol)
                                     farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                                quantity, place_order)
+                                    print("==== Exit far sell strategy for account: " + account + " " + symbol)
 
                     else:
                         print("Option chain data is not available for the symbol: " + symbol)
@@ -129,6 +143,12 @@ def main():
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
                 time.sleep(60 - (after_loop_time - current_time))
+
+                if current_time_dt > time_dt(15, 40):
+                    print("Exiting the program.")
+                    logging.info("Exiting the program.")
+                    exit(1)
+
             except Exception as e:
                 logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                 print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
