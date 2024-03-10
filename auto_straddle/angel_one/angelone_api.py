@@ -20,6 +20,7 @@ from SmartApi import SmartConnect  # or
 import pyotp
 import login as l
 import TelegramSend
+from datetime import datetime
 #import credentials
 import angel_one.credentials as credentials
 
@@ -104,9 +105,12 @@ class angelone_api(object):
                 "duration": "DAY",
                 "quantity": qty
             }
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")            
             try :
                 orderparams["price"] = 0
                 orderid = self.obj.placeOrder(orderparams)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
