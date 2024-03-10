@@ -1,13 +1,28 @@
+"""Module providing a function for far cell"""
+
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+
+
+
 import traceback
 from datetime import datetime, time, timedelta
 import os
+import logging
+import time as t
 #from PlaceOrder import PlaceOrder
 import pandas as pd
 import TelegramSend
 
-# basic logging configuration
-import logging
-from OptionChainData import OptionChainData
+#from OptionChainData import OptionChainData
+#from pathlib import Path
+#from PlaceOrder import PlaceOrder
+
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -19,18 +34,106 @@ logging.getLogger().setLevel(logging.INFO)
 def get_strike_interval(symbol):
     if symbol == "NIFTY":
         return 50
-    elif symbol == "BANKNIFTY":
+    if symbol == "BANKNIFTY":
         return 100
-    elif symbol == "FINNIFTY":
+    if symbol == "FINNIFTY":
         return 50
-    else:
-        return 0
+    return 0
 
 
 class AutoStraddleStrategy:
     def __init__(self, accounts, symbols):
         self.accounts = accounts
         self.symbols = symbols
+
+    def send_error_message(self, account, symbol, error_message):
+        sold_options_file_path = self.get_sold_options_file_path(account, symbol)
+
+        x = TelegramSend.telegram_send_api()
+
+        # Send profit loss over telegramsend send_message
+        x.send_message("-4008545231", f"Critical error far sell {account} {symbol} {error_message}")
+
+        # Since trade is closed rename the file to sold_options_info_error
+        os.rename(sold_options_file_path,
+                sold_options_file_path.replace("sold_options_info", "sold_options_info_error"))
+
+    def check_if_trade_is_executed(self, account, symbol, place_order_obj, option_chain_analyzer):
+
+        error_path = self.get_error_options_file_path(account, symbol)
+        if os.path.exists(error_path):
+            logging.info(f"Critical error far sell so returing {account} {symbol}")
+            return False
+
+        # Check if the trade is executed
+        # Example: Check if the order is executed by calling get_order_status
+        # order_id = place_order_obj.place_orders(account, atm_ce_strike, pe_ce, symbol, qty)
+        # status, price = place_order_obj.get_order_status(order_id)
+        # return True if the order is executed, else False
+        error_in_order = False
+        error_message = ""
+        sold_options_file_path = self.get_sold_options_file_path(account, symbol)
+        if os.path.exists(sold_options_file_path):
+            # If the file exists, read its contents and populate sold_options_info
+            existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
+            if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open':
+                order_status, price = place_order_obj.order_status(account,
+                            existing_sold_options_info.iloc[-1]['pe_open_order_id'],
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in pe open order"
+
+            if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open':
+
+                t.sleep(3) # Sleep for 3 seconds
+                order_status, price = place_order_obj.order_status(account,
+                            existing_sold_options_info.iloc[-1]['ce_open_order_id'],
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in ce open order"
+
+            if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['pe_close_order_id'],
+                        get_option_price(option_chain_analyzer, 'PE'))
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in pe close order"
+
+            if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'open':
+                t.sleep(3) # Sleep for 3 seconds
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['ce_close_order_id'],
+                        get_option_price(option_chain_analyzer, 'PE'))
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in ce close order"
+
+            if error_in_order:
+
+                self.store_sold_options_info(existing_sold_options_info, account, symbol)
+
+                self.send_error_message(account, symbol, error_message)
+                return False
+
+            self.store_sold_options_info(existing_sold_options_info, account, symbol)
+            return True
+
+        return True
 
     def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj):
         try:
@@ -46,6 +149,11 @@ class AutoStraddleStrategy:
             # Example: Sell ATM call and put options after 9:30 AM
             current_time = datetime.now().time()
 
+            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj, option_chain_analyzer)
+            if not check_if_trade_is_executed:
+                print(f"Trade is not executed for account {account} {symbol}")
+                return
+
             if current_time > time(15, 10):
                 sold_options_file_path = self.get_sold_options_file_path(account, symbol)
                 if os.path.exists(sold_options_file_path):
@@ -56,22 +164,26 @@ class AutoStraddleStrategy:
                     if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
 
                         # Close the trade
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
                         self.close_trade(account, existing_sold_options_info.iloc[-1]['atm_pe_strike'], \
                                          existing_sold_options_info.iloc[-1]['atm_ce_strike'],\
                                               existing_sold_options_info.iloc[-1]['atm_pe_price'],
                                          existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity)
 
-                        if existing_sold_options_info.iloc[-1]['atm_ce_price'] == \
-                                -1 or existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
-                                option_chain_analyzer['prev_atm_next_ce_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
-                                option_chain_analyzer['prev_atm_next_pe_price']
-                        else:
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
-                                option_chain_analyzer['prev_atm_ce_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
-                                option_chain_analyzer['prev_atm_pe_price']
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
+
+                        if existing_sold_options_info.iloc[-1]['atm_ce_price'] == -1:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+
+                        if existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
+                            option_chain_analyzer['prev_atm_next_ce_price']
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
+                            option_chain_analyzer['prev_atm_next_pe_price']
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                             'closed'
@@ -82,20 +194,8 @@ class AutoStraddleStrategy:
                             f"Auto Straddle trade closed for account {account} {symbol} {option_chain_analyzer['spot_price']}\
                                 {option_chain_analyzer['pe_to_ce_ratio']}")
 
-                        compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
-
-                        x = TelegramSend.telegram_send_api()
-
-                        # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss}")
-
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file("-4008545231", sold_options_file_path)
-
-                        # Since trade is closed rename the file to sold_options_info_closed
-                        os.rename(sold_options_file_path,
-                                  sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
 
                     else:
                         compute_profit_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
@@ -114,7 +214,7 @@ class AutoStraddleStrategy:
                                   sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
 
                 return
-            elif current_time > time(9, 30):
+            elif current_time > time(9, 35):
                 # Execute strategy only after 9:30 AM
 
                 # Example: Print a message for demonstration purposes
@@ -136,7 +236,7 @@ class AutoStraddleStrategy:
                                 option_chain_analyzer['prev_atm_next_ce_price']
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
                                 option_chain_analyzer['prev_atm_next_pe_price']
-                            
+
                         else:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
                                 option_chain_analyzer['prev_atm_ce_price']
@@ -149,10 +249,22 @@ class AutoStraddleStrategy:
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
                                 or profit_or_loss < -3000:
                             # Close the trade
-                            self.close_trade(account, existing_sold_options_info.iloc[-1]['atm_pe_strike'], \
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
+                                self.close_trade(account, existing_sold_options_info.iloc[-1]['atm_pe_strike'], \
                                              existing_sold_options_info.iloc[-1]['atm_ce_strike'], \
                                                 existing_sold_options_info.iloc[-1]['atm_pe_price'],
                                              existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity)
+
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
+
+                            if existing_sold_options_info.iloc[-1]['atm_ce_price'] == -1:
+                                existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+
+                            if existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
+                                existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                                 'closed'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
@@ -176,6 +288,14 @@ class AutoStraddleStrategy:
                                 'atm_pe_strike': get_option_strike(option_chain_analyzer, 'PE', symbol),
                                 'atm_ce_close_price': get_option_price(option_chain_analyzer, 'CE'),
                                 'atm_pe_close_price': get_option_price(option_chain_analyzer, 'PE'),
+                                'pe_open_order_id': -1,
+                                'ce_open_order_id': -1,
+                                'pe_close_order_id': -1,
+                                'ce_close_order_id': -1,
+                                'pe_open_state': 'open',
+                                'ce_open_state': 'open',
+                                'pe_close_state': 'None',
+                                'ce_close_state': 'None'
                             }
 
                             # Place orders for ATM CE and ATM PE, if pe is less than 0.7 place only CE order and\
@@ -183,15 +303,42 @@ class AutoStraddleStrategy:
                             if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
                                 # Place only CE order
                                 sold_options_info['atm_pe_price'] = -1
-                                place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+
+                                if sold_options_info['ce_open_order_id'] == -1:
+                                    error_message = "Error in placing ce open order"
+                                    self.send_error_message(account, symbol, error_message)
+                                    return
+                                sold_options_info['pe_open_order_id'] = -1
+                                sold_options_info['pe_open_state'] = 'closed'
+
                             elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                                 # Place only PE order
                                 sold_options_info['atm_ce_price'] = -1
-                                place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+
+                                if sold_options_info['pe_open_order_id'] == -1:
+                                    error_message = "Error in placing pe open order"
+                                    self.send_error_message(account, symbol, error_message)
+                                    return
+                                sold_options_info['ce_open_order_id'] = -1
+                                sold_options_info['ce_open_state'] = 'closed'
+
                             else:
                                 # Place both CE and PE orders
-                                place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
-                                place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
+                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
+
+                                if sold_options_info['ce_open_order_id'] == -1:
+                                    error_message = "Error in placing ce open order"
+                                    self.send_error_message(account, symbol, error_message)
+                                    return
+                                t.sleep(2) # Sleep for 2 seconds
+
+                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
+                                if sold_options_info['pe_open_order_id'] == -1:
+                                    error_message = "Error in placing pe open order"
+                                    self.send_error_message(account, symbol, error_message)
+                                    return
 
                             print(f"Auto Straddle trade re-entered for account {account}")
                             logging.info(f"Auto Straddle trade re-entered for account {account} \
@@ -217,6 +364,14 @@ class AutoStraddleStrategy:
                         'atm_pe_strike': get_option_strike(option_chain_analyzer, 'PE', symbol),
                         'atm_ce_close_price': get_option_price(option_chain_analyzer, 'CE'),
                         'atm_pe_close_price': get_option_price(option_chain_analyzer, 'PE'),
+                        'pe_open_order_id': 0,
+                        'ce_open_order_id': 0,
+                        'pe_close_order_id': 0,
+                        'ce_close_order_id': 0,
+                        'pe_open_state': 'open',
+                        'ce_open_state': 'open',
+                        'pe_close_state': 'None',
+                        'ce_close_state': 'None'
                     }
 
                     # Place orders for ATM CE and ATM PE, if pe is less than 0.7 place only CE order
@@ -226,15 +381,37 @@ class AutoStraddleStrategy:
                     if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
                         # Place only CE order
                         sold_options_info['atm_pe_price'] = -1
-                        place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                        if sold_options_info['ce_open_order_id'] == -1:
+                            error_message = "Error in placing ce open order"
+                            self.send_error_message(account, symbol, error_message)
+                            return
+                        sold_options_info['pe_open_order_id'] = -1
+                        sold_options_info['pe_open_state'] = 'closed'
                     elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
                         # Place only PE order
                         sold_options_info['atm_ce_price'] = -1
-                        place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+                        if sold_options_info['pe_open_order_id'] == -1:
+                            error_message = "Error in placing pe open order"
+                            self.send_error_message(account, symbol, error_message)
+                            return
+                        sold_options_info['ce_open_order_id'] = -1
+                        sold_options_info['ce_open_state'] = 'closed'
                     else:
                         # Place both CE and PE orders
-                        place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
-                        place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
+                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
+                        if sold_options_info['pe_open_order_id'] == -1:
+                            error_message = "Error in placing pe open order"
+                            self.send_error_message(account, symbol, error_message)
+                            return
+                        t.sleep(2) # Sleep for 2 seconds
+
+                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
+                        if sold_options_info['ce_open_order_id'] == -1:
+                            error_message = "Error in placing ce open order"
+                            self.send_error_message(account, symbol, error_message)
+                            return
 
                     # convert store_sold_options_info to dataframe
                     existing_sold_options_info = pd.concat([existing_sold_options_info,
@@ -254,7 +431,12 @@ class AutoStraddleStrategy:
         file_name = f"as_sold_options_info_{current_date}_{account}_{symbol}.csv"
         return file_name
 
-    # Function computes profit or loss of existing_sold_options_info by subtracting each row of 
+    def get_error_options_file_path(self, account, symbol):
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"as_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
+        return file_name
+
+    # Function computes profit or loss of existing_sold_options_info by subtracting each row of
     # atm_ce_price and atm_pe_price from atm_ce_close_price and atm_pe_close_price respectively
     def compute_profit_loss(self, existing_sold_options_info, symbol):
         try:
@@ -267,7 +449,7 @@ class AutoStraddleStrategy:
             total_profit_loss = 0
 
             # Iterate over all rows and compute profit/loss for each row
-            for index, row in existing_sold_options_info.iterrows():
+            for _, row in existing_sold_options_info.iterrows():
                 # Extract relevant columns from the current row
                 atm_ce_price = row['atm_ce_price']
                 atm_pe_price = row['atm_pe_price']
@@ -340,13 +522,27 @@ class AutoStraddleStrategy:
             return True
         return False
 
-    def close_trade(self, account, pe_strike, ce_strike, atm_pe_price, atm_ce_price, symbol, place_order_obj, qty):
+    def close_trade(self, account, pe_strike, ce_strike, pe_price, ce_price, symbol, place_order_obj, qty):
         # Close the trade logic goes here
-        if (atm_pe_price != -1):
-            place_order_obj.close_orders(account, pe_strike, 'PE', symbol, qty)
-        if (atm_ce_price != -1):
-            place_order_obj.close_orders(account, ce_strike, 'CE', symbol, qty)
+        print(f"Closing the trade for account {account}" , str(symbol) , str(pe_price) , str(ce_price) , str(ce_strike) , str(pe_strike))
+        logging.info(f"Closing the trade for account {account}")
+        ce_order_id = -1
+        pe_order_id = -1
+        if pe_price != -1:
+            pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', symbol, qty)
+            if pe_order_id == -1:
+                error_message = "Error in placing pe close order"
+                self.send_error_message(account, symbol, error_message)
+                return -1, -1
+        if ce_price != -1:
+            ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', symbol, qty)
+            if ce_order_id == -1:
+                error_message = "Error in placing ce close order"
+                self.send_error_message(account, symbol, error_message)
+                return -1, -1
         # Update the trade state
+        return ce_order_id, pe_order_id
+
 
     def store_sold_options_info(self, info, account, symbol):
         try:
@@ -362,7 +558,6 @@ class AutoStraddleStrategy:
 
     def get_strike_price(self, account, symbol):
         # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
-        current_date = datetime.now().strftime("%Y-%m-%d")
         file_name = self.get_sold_options_file_path(account, symbol)
         if os.path.exists(file_name):
             existing_sold_options_info = self.read_existing_sold_options_info(file_name)
@@ -416,7 +611,7 @@ def get_option_price(option_chain_analyzer, option_type):
             return option_chain_analyzer['atm_next_pe_price']
         else:
             return option_chain_analyzer['atm_current_pe_price']
-        
+
 
 def get_option_strike(option_chain_analyzer, option_type, symbol):
     # Implement your logic to get the option price based on strike price and type (CE/PE)
@@ -436,8 +631,25 @@ def get_option_strike(option_chain_analyzer, option_type, symbol):
 
 
 """
-accounts = ["Account1", "Account2"]
-symbols = [UnderlyingSymbol.NIFTY]
+accounts = ["dummy", "deepti", "leelu"]
+symbols = ["BANKNIFTY"]
+
+place_order = PlaceOrder()
+
+# Get home directory
+dir = Path.home()
+# Add /temp/data_collection to the home directory
+dir = dir / 'temp' / 'data_collection'
+# Create the directory if it does not exist
+dir.mkdir(parents=True, exist_ok=True)
+
+#Change the current working directory to the directory
+os.chdir(dir)
+
+
+# Initalize all accounts
+for account in accounts:
+    place_order.init_account(account)
 
 for symbol in symbols:
     option_chain_analyzer = OptionChainData(symbol)
@@ -451,8 +663,10 @@ for symbol in symbols:
 
     if option_chain_info is not None:
         print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")
-        #option_chain_info['pe_to_ce_ratio'] = 0.6
-        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "Account1")
+        option_chain_info['pe_to_ce_ratio'] = 0.4
+        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
+        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
+        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
     else:
         print(f"Option chain information not available for symbol {symbol}")
 """
