@@ -103,7 +103,7 @@ class AutoStraddleStrategy:
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
-                        option_chain_analyzer['prev_atm_pe_price'])
+                        get_option_price(option_chain_analyzer, 'PE'))
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
@@ -115,7 +115,7 @@ class AutoStraddleStrategy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
-                        option_chain_analyzer['prev_atm_ce_price'])
+                        get_option_price(option_chain_analyzer, 'PE'))
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
@@ -214,7 +214,7 @@ class AutoStraddleStrategy:
                                   sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
 
                 return
-            elif current_time > time(9, 30):
+            elif current_time > time(9, 35):
                 # Execute strategy only after 9:30 AM
 
                 # Example: Print a message for demonstration purposes
@@ -663,10 +663,10 @@ for symbol in symbols:
 
     if option_chain_info is not None:
         print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")
-        #option_chain_info['pe_to_ce_ratio'] = 1.5
+        option_chain_info['pe_to_ce_ratio'] = 0.4
         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
-        #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
+        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
     else:
         print(f"Option chain information not available for symbol {symbol}")
 """
