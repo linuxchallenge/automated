@@ -48,7 +48,7 @@ class FarSellStratergy:
         x = TelegramSend.telegram_send_api()
 
         # Send profit loss over telegramsend send_message
-        x.send_message("-4008545231", f"Critical error far sell {account} {symbol} {error_message}")
+        x.send_message("-4008545231", f"Far sell critical error far sell {account} {symbol} {error_message}")
 
         # Since trade is closed rename the file to sold_options_info_error
         os.rename(sold_options_file_path,
