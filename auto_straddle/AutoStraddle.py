@@ -101,8 +101,10 @@ def main():
                     strike_data = auto_straddle_strategy.get_strike_price(accounts[0], "dummy")
                     pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts[0], "dummy")
 
+                    print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
+
                     # Get option chain data for the specified symbol
-                    option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike)
+                    option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
 
                     # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
                     dump_option_chain_data_to_csv(option_chain_info, symbol)

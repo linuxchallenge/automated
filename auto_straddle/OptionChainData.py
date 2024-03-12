@@ -30,26 +30,25 @@ class UnderlyingSymbol(Enum):
     FINNIFTY = "FINNIFTY"
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
-def get_strike_interval(symbol):
-    if symbol == "NIFTY":
+def get_strike_interval(symbolsearch):
+    if symbolsearch == "NIFTY":
         return 50
-    elif symbol == "BANKNIFTY":
+    if symbolsearch == "BANKNIFTY":
         return 100
-    elif symbol == "FINNIFTY":
+    if symbolsearch == "FINNIFTY":
         return 50
-    else:
-        return 0
+    return 0
 
 class OptionChainData:
 
     BASE_URL = "https://www.nseindia.com/api/option-chain-indices?symbol={}"
 
-    def __init__(self, symbol):
-        self.symbol = symbol
+    def __init__(self, symbolinit):
+        self.symbol = symbolinit
         #self.url = self.BASE_URL.format(symbol.value)
-        self.url = self.BASE_URL.format(symbol)
+        self.url = self.BASE_URL.format(symbolinit)
 
-    def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike):
+    def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
         try:
             option_chain_data = self.get_option_chain_data_with_retry(self.url)
 
@@ -73,10 +72,10 @@ class OptionChainData:
             atm_pe_strike = df_pe.loc[(df_pe['strikePrice'] - spot_price).abs().idxmin()]['strikePrice']
 
             # Create short dataframes which only 10 aboe and below of atm_ce_strike and atm_pe_strike
-            df_ce_temp = df_ce[(df_ce['strikePrice'] >= atm_ce_strike - 10 * get_strike_interval(self.symbol)) \
-                                & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(self.symbol))]
-            df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(self.symbol)) \
-                                & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(self.symbol))]
+            df_ce_temp = df_ce[(df_ce['strikePrice'] >= atm_ce_strike - 10 * get_strike_interval(symbolData)) \
+                                & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(symbolData))]
+            df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(symbolData)) \
+                                & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(symbolData))]
 
             # merge the two dataframes on strikePrice
             df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
@@ -91,13 +90,19 @@ class OptionChainData:
             # get strangle strike price which has minimium difference between lastPrice_ce and lastPrice_pe
             strangle_strike = df_merge['strikePrice'].iloc[0]
 
+            print(symbolData, strangle_strike, df_merge['lastPrice_ce'].iloc[0], df_merge['lastPrice_pe'].iloc[0])
+
             # ce strangle strike price is 2 times of sum of lastPrice_ce and lastPrice_pe
             ce_strangle_strike = strangle_strike +  2 * ((df_merge['lastPrice_ce'] + df_merge['lastPrice_pe']).iloc[0])
             pe_strangle_strike = strangle_strike -  2 * ((df_merge['lastPrice_ce'] + df_merge['lastPrice_pe']).iloc[0])
 
+            print(strangle_strike, ce_strangle_strike, pe_strangle_strike)
+
             # round of ce_strangle_strike to nearest 50
-            ce_strangle_strike = round(ce_strangle_strike / get_strike_interval(self.symbol)) * get_strike_interval(self.symbol)
-            pe_strangle_strike = round(pe_strangle_strike / get_strike_interval(self.symbol)) * get_strike_interval(self.symbol)
+            ce_strangle_strike = round(ce_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
+            pe_strangle_strike = round(pe_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
+
+            print(ce_strangle_strike, pe_strangle_strike)
 
             if prev_strangle_ce_strike == 0:
                 prev_strangle_ce_strike = ce_strangle_strike
@@ -132,8 +137,8 @@ class OptionChainData:
             else:
                 prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
                 prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
-                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + get_strike_interval(self.symbol)]['lastPrice'].values[0]
-                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - get_strike_interval(self.symbol)]['lastPrice'].values[0]
+                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + get_strike_interval(symbolData)]['lastPrice'].values[0]
+                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - get_strike_interval(symbolData)]['lastPrice'].values[0]
 
             # Save data to a dictionary along with the current time
             result_dict = {
@@ -143,8 +148,8 @@ class OptionChainData:
                 'atm_strike': float(atm_ce_strike),
                 'atm_current_ce_price': float(atm_ce_last_price),
                 'atm_current_pe_price': float(atm_pe_last_price),
-                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + get_strike_interval(self.symbol)]['lastPrice'].values[0]),
-                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - get_strike_interval(self.symbol)]['lastPrice'].values[0]),
+                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + get_strike_interval(symbolData)]['lastPrice'].values[0]),
+                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - get_strike_interval(symbolData)]['lastPrice'].values[0]),
                 'prev_atm_strike': prev_atm_strike,
                 'prev_atm_ce_price': float(prev_atm_ce_price),
                 'prev_atm_pe_price': float(prev_atm_pe_price),
@@ -200,29 +205,28 @@ class OptionChainData:
         df_with_open_interest = df[df['openInterest'] > 0]
         return df_with_open_interest.nlargest(top_n, 'openInterest')
 
-"""
+
 # Example usage:
-symbol = UnderlyingSymbol.NIFTY
+symbol = "NIFTY"
 option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(21600, 0, 0)
+option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 
 # You can then access the information using option_chain_info
-print(option_chain_info)
+#print(option_chain_info)
 
-
-symbol = UnderlyingSymbol.BANKNIFTY
+'''
+symbol = "BANKNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0)
+option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 
 # You can then access the information using option_chain_info
-print(option_chain_info)
+#print(option_chain_info)
 
 
-symbol = UnderlyingSymbol.FINNIFTY
+symbol = "FINNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(0,0,0)
-
+option_chain_info = option_chain_analyzer.get_option_chain_info(0,0,0, symbol)
+'''
 # You can then access the information using option_chain_info
-print(option_chain_info)
+#print(option_chain_info)
 
-"""
