@@ -82,7 +82,7 @@ class AutoStraddleStrategy:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'closed'
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_price'] = price
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in pe open order"
@@ -95,7 +95,7 @@ class AutoStraddleStrategy:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'closed'
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_price'] = price
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in ce open order"
@@ -115,7 +115,7 @@ class AutoStraddleStrategy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
-                        get_option_price(option_chain_analyzer, 'PE'))
+                        get_option_price(option_chain_analyzer, 'CE'))
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
