@@ -56,7 +56,7 @@ class fivepaise_api(object):
 
                 self.session = self.obj.get_totp_session(credentials_leelu.EMAIL,totp_pin,credentials_leelu.PIN)
                 if self.session:
-                    if None == self.obj.Login_check():
+                    if None is self.obj.Login_check():
                         print("Login failed")
                         continue
                     break
@@ -116,7 +116,7 @@ class fivepaise_api(object):
         except Exception as e1:
             try:
                 time.sleep(2)
-                print(f" Retry order Time: {datetime.now().strftime('%H:%M:%S')})")                
+                print(f" Retry order Time: {datetime.now().strftime('%H:%M:%S')})")
                 print("Error placing order, trying again")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)

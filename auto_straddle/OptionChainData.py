@@ -205,7 +205,7 @@ class OptionChainData:
         df_with_open_interest = df[df['openInterest'] > 0]
         return df_with_open_interest.nlargest(top_n, 'openInterest')
 
-
+'''
 # Example usage:
 symbol = "NIFTY"
 option_chain_analyzer = OptionChainData(symbol)
@@ -214,7 +214,6 @@ option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 # You can then access the information using option_chain_info
 #print(option_chain_info)
 
-'''
 symbol = "BANKNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
@@ -226,7 +225,7 @@ option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 symbol = "FINNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0,0,0, symbol)
-'''
+
 # You can then access the information using option_chain_info
 #print(option_chain_info)
-
+'''
