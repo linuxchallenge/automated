@@ -80,21 +80,24 @@ class OptionChainData:
             # merge the two dataframes on strikePrice
             df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
+            df_merge_temp = df_merge.iloc[5:]
+            df_merge_temp = df_merge_temp[:-5]
+
             #Get strike price which has minimium difference between lastPrice_ce and lastPrice_pe
-            df_merge['diff'] = abs(df_merge['lastPrice_ce'] - df_merge['lastPrice_pe'])
-            df_merge['diff'] = df_merge['diff'].astype(float)
+            df_merge_temp['diff'] = abs(df_merge_temp['lastPrice_ce'] - df_merge_temp['lastPrice_pe'])
+            df_merge_temp['diff'] = df_merge_temp['diff'].astype(float)
 
             # Sort df_merge by diff
-            df_merge = df_merge.sort_values(by=['diff'])
+            df_merge_temp = df_merge_temp.sort_values(by=['diff'])
 
             # get strangle strike price which has minimium difference between lastPrice_ce and lastPrice_pe
-            strangle_strike = df_merge['strikePrice'].iloc[0]
+            strangle_strike = df_merge_temp['strikePrice'].iloc[0]
 
-            print(symbolData, strangle_strike, df_merge['lastPrice_ce'].iloc[0], df_merge['lastPrice_pe'].iloc[0])
+            print(symbolData, strangle_strike, df_merge_temp['lastPrice_ce'].iloc[0], df_merge_temp['lastPrice_pe'].iloc[0])
 
             # ce strangle strike price is 2 times of sum of lastPrice_ce and lastPrice_pe
-            ce_strangle_strike = strangle_strike +  2 * ((df_merge['lastPrice_ce'] + df_merge['lastPrice_pe']).iloc[0])
-            pe_strangle_strike = strangle_strike -  2 * ((df_merge['lastPrice_ce'] + df_merge['lastPrice_pe']).iloc[0])
+            ce_strangle_strike = strangle_strike +  2 * ((df_merge_temp['lastPrice_ce'] + df_merge_temp['lastPrice_pe']).iloc[0])
+            pe_strangle_strike = strangle_strike -  2 * ((df_merge_temp['lastPrice_ce'] + df_merge_temp['lastPrice_pe']).iloc[0])
 
             print(strangle_strike, ce_strangle_strike, pe_strangle_strike)
 
@@ -212,14 +215,14 @@ option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 
 # You can then access the information using option_chain_info
-#print(option_chain_info)
+print(option_chain_info)
 
 symbol = "BANKNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 
 # You can then access the information using option_chain_info
-#print(option_chain_info)
+print(option_chain_info)
 
 
 symbol = "FINNIFTY"
@@ -227,5 +230,5 @@ option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0,0,0, symbol)
 
 # You can then access the information using option_chain_info
-#print(option_chain_info)
+print(option_chain_info)
 '''
