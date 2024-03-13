@@ -127,10 +127,6 @@ class angelone_api(object):
                     logging.error(f"Error executing place_order: {e1}")
                     return -1
 
-                print(f"Error setting price: {e}")
-                logging.error(f"Error setting price: {e}")
-                return -1
-
             return orderid
         except Exception as e:
             #print("Order placement failed: {}".format(e.message))
