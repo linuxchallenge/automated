@@ -428,12 +428,12 @@ class AutoStraddleStrategy:
 
     def get_sold_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"as_sold_options_info_{current_date}_{account}_{symbol}.csv"
+        file_name = f"csv/as_sold_options_info_{current_date}_{account}_{symbol}.csv"
         return file_name
 
     def get_error_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"as_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
+        file_name = f"csv/as_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
         return file_name
 
     # Function computes profit or loss of existing_sold_options_info by subtracting each row of

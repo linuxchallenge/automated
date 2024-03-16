@@ -434,12 +434,12 @@ class FarSellStratergy:
 
     def get_sold_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"fr_sold_options_info_{current_date}_{account}_{symbol}.csv"
+        file_name = f"csv/fr_sold_options_info_{current_date}_{account}_{symbol}.csv"
         return file_name
 
     def get_error_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
-        file_name = f"fr_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
+        file_name = f"csv/fr_sold_options_info_error_{current_date}_{account}_{symbol}.csv"
         return file_name
 
 

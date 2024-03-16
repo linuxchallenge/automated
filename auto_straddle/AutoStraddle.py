@@ -107,7 +107,7 @@ def main():
                     option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
 
                     # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
-                    dump_option_chain_data_to_csv(option_chain_info, symbol)
+                    #dump_option_chain_data_to_csv(option_chain_info, symbol)
 
                     if option_chain_info is not None:
                         for account in accounts:
