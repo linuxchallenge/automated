@@ -230,7 +230,8 @@ class AutoStraddleStrategy:
                             'TotalPNL': compute_profit_loss * quantity,
                             'Brokarge': 60 * existing_sold_options_info.shape[0],
                             'CloseTime': existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'],
-                            'Stratergy': 'AutoStraddle'
+                            'Stratergy': 'AutoStraddle',
+                            'NetPNL': compute_profit_loss * quantity - 60 * existing_sold_options_info.shape[0]
                         }
 
                         current_month = datetime.now().strftime("%m")
