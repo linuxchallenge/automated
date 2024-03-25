@@ -280,7 +280,7 @@ class FarSellStratergy:
 
                         # Check if the conditions to close the trade are met
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
-                                or profit_or_loss < -1500:
+                                or profit_or_loss < -500:
                             print(option_chain_analyzer['prev_ce_strangle_price'], option_chain_analyzer['prev_pe_strangle_price'])
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
