@@ -50,10 +50,17 @@ class FarSellStratergy:
         # Send profit loss over telegramsend send_message
         x.send_message("-4008545231", f"Far sell critical error far sell {account} {symbol} {error_message}")
 
-        # Since trade is closed rename the file to sold_options_info_error
-        os.rename(sold_options_file_path,
-                sold_options_file_path.replace("sold_options_info", "sold_options_info_error"))
+        if os.path.exists(sold_options_file_path):
+            # Since trade is closed rename the file to sold_options_info_error
+            os.rename(sold_options_file_path,
+                    sold_options_file_path.replace("sold_options_info", "sold_options_info_error"))
+        else:
+            # In sold_options_file_path append error
+            error_options_file_path = self.get_error_options_file_path(account, symbol)
 
+            # Create empty file error_options_file_path with UTF-8 encoding
+            with open(error_options_file_path, 'w', encoding='utf-8') as _:
+                pass
 
     def check_if_trade_is_executed(self, account, symbol, place_order_obj, option_chain_analyzer):
 
@@ -153,7 +160,6 @@ class FarSellStratergy:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
 
-
             if current_time > time(15, 13):
                 sold_options_file_path = self.get_sold_options_file_path(account, symbol)
                 if os.path.exists(sold_options_file_path):
@@ -202,7 +208,7 @@ class FarSellStratergy:
                         x = TelegramSend.telegram_send_api()
 
                         # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss}")
+                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
@@ -211,6 +217,28 @@ class FarSellStratergy:
                         # Since trade is closed rename the file to sold_options_info_closed
                         os.rename(sold_options_file_path,
                                   sold_options_file_path.replace("sold_options_info", "sold_options_info_closed"))
+
+                        pl_dict = {
+                            'Date': datetime.now().strftime("%Y-%m-%d"),
+                            'Account': account,
+                            'Symbol': symbol,
+                            'Quantity': quantity,
+                            'NumberofTrade': existing_sold_options_info.shape[0],
+                            'TotalPNL': compute_profit_loss * quantity,
+                            'Brokarge': 60 * existing_sold_options_info.shape[0],
+                            'CloseTime': existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'],
+                            'Stratergy': 'FarSell'
+                        }
+
+                        current_month = datetime.now().strftime("%m")
+                        file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+                        if os.path.exists(file_name):
+                            df = pd.read_csv(file_name)
+                            df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+                            df.to_csv(file_name, index=False)
+                        else:
+                            df = pd.DataFrame([pl_dict])
+                            df.to_csv(file_name, index=False)
 
                 return
             elif current_time > time(9, 30):
