@@ -22,6 +22,7 @@ from PlaceOrder import PlaceOrder
 from OptionChainData import OptionChainData
 from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
+import configuration
 
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
@@ -37,6 +38,9 @@ def main():
 
     logging.info("Starting the program, welcome to AutoStraddle")
 
+    configuration.ConfigurationLoader.load_configuration()
+
+    logging.info("After loading configuration")
     while True:
         current_time_dt = datetime.now().time()
 

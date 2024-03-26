@@ -21,7 +21,7 @@ import pyotp
 import requests
 import fivepaisa.credentials_2 as credentials_leelu
 import fivepaisa.credentials_3 as credentials_avanthi
-
+import TelegramSend
 
 class fivepaise_api(object):
 
@@ -118,6 +118,12 @@ class fivepaise_api(object):
                 time.sleep(2)
                 print(f" Retry order Time: {datetime.now().strftime('%H:%M:%S')})")
                 print("Error placing order, trying again")
+
+                x = TelegramSend.telegram_send_api()
+
+                # Send profit loss over telegramsend send_message
+                x.send_message("-4008545231", f"Warning 5 paise {symbol} order Pls check")
+
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")

@@ -18,6 +18,7 @@ import time as t
 #from PlaceOrder import PlaceOrder
 import pandas as pd
 import TelegramSend
+import configuration
 
 #from OptionChainData import OptionChainData
 #from pathlib import Path
@@ -51,8 +52,12 @@ class AutoStraddleStrategy:
 
         x = TelegramSend.telegram_send_api()
 
+        telegram_group = account + "_telegram"
+
+        id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
         # Send profit loss over telegramsend send_message
-        x.send_message("-4008545231", f"Auto straddle critical error far sell {account} {symbol} {error_message}")
+        x.send_message(id, f"Auto straddle critical error far sell {account} {symbol} {error_message}")
 
         if os.path.exists(sold_options_file_path):
             # Since trade is closed rename the file to sold_options_info_error
@@ -210,12 +215,16 @@ class AutoStraddleStrategy:
 
                         x = TelegramSend.telegram_send_api()
 
+                        telegram_group = account + "_telegram"
+
+                        id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
                         # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
+                        x.send_message(id, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file("-4008545231", sold_options_file_path)
+                        x.send_file(id, sold_options_file_path)
 
                         # Since trade is closed rename the file to sold_options_info_closed
                         os.rename(sold_options_file_path,
@@ -688,7 +697,7 @@ for symbol in symbols:
     strike_data = auto_straddle_strategy.get_strike_price(accounts[0], symbol)
     print(f"Strike data: {strike_data}")
     # If symbol is nifty, use the following line to get the option chain data
-    option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, 0, 0)
+    option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, 0, 0, symbol)
     #print(f"Option chain info: {option_chain_info}")
 
     if option_chain_info is not None:
