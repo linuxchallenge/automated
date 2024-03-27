@@ -221,7 +221,7 @@ class FarSellStratergy:
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file("-4008545231", sold_options_file_path)
+                        x.send_file(id, sold_options_file_path)
 
                         # Since trade is closed rename the file to sold_options_info_closed
                         os.rename(sold_options_file_path,
