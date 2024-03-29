@@ -626,13 +626,13 @@ class FarSellStratergy:
     def should_reenter_trade(self, sold_options_info):
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
-        if profit_amount < -1500:
-            print(f"Profit amount: {profit_amount} is greater than 1500")
-            logging.info(f"Profit amount: {profit_amount} is greater than 1500")
+        if profit_amount < -500:
+            print(f"Profit amount: {profit_amount} is greater than 500")
+            logging.info(f"Profit amount: {profit_amount} is greater than 500")
             return False
 
         # sold_options_info has more than 1 row
-        if sold_options_info.shape[0] >= 5:
+        if sold_options_info.shape[0] >= 2:
             return False
 
         # Check if the required 5-minute interval has passed since the trade close time
