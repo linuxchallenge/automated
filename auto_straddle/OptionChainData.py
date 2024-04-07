@@ -361,8 +361,8 @@ class OptionChainData:
         return result_dict
 
     def extract_options_data_groww(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
-        max_retries=3
-        retry_delay=3
+        max_retries=2
+        retry_delay=1
         headers = {
             "User-Agent": "Mozilla/5.0"
         }
@@ -403,7 +403,7 @@ class OptionChainData:
                     time.sleep(retry_delay)
                 else:
                     logging.error("Max retries exceeded. Unable to fetch data.")
-                    raise requests.exceptions.RequestException("Max retries exceeded. Unable to fetch data.") from e
+                    return None
 
 
 
