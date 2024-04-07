@@ -60,7 +60,8 @@ class DailySchedule(object):
         return self.alligator.compute_trend(test_df)
 
 logging.basicConfig(filename='app.log', filemode='w', format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrCx2i8srLik2T4Rtpuq5c0qcYJknaDLcb9d2KTsJrIZmyucbzUE1LBob-7TVDlsyVUt4eSgVrkZv-/pub?output=csv'
+#path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQrCx2i8srLik2T4Rtpuq5c0qcYJknaDLcb9d2KTsJrIZmyucbzUE1LBob-7TVDlsyVUt4eSgVrkZv-/pub?output=csv'
+path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTMUidzjfyd-3sWfxwtAOGRneJQdCDpYBlb_EM9ylRxtFojS3OTV5XxLgfkI2CUP3K6qc8Kv_lZYiTo/pub?output=csv'
 #nifty_200_df = pd.read_csv('ind_nifty200list.csv')
 nifty_200_df = pd.read_csv(path)
 
