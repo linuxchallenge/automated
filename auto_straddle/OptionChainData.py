@@ -56,6 +56,8 @@ class OptionChainData:
             ret = self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
             if ret is None:
                 return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            else:
+                return ret
         else:
             return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
 
