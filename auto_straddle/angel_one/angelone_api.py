@@ -63,12 +63,24 @@ class angelone_api(object):
         self.obj.terminateSession(self.username)
 
     def intializeSymbolTokenMap(self):
-        url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-        d = requests.get(url, timeout=50).json()
-        self.token_df = pd.DataFrame.from_dict(d)
-        self.token_df['expiry'] = pd.to_datetime(self.token_df['expiry'])
-        self.token_df = self.token_df.astype({'strike': float})
-        self.l.token_map = self.token_df
+        try:
+            url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+            d = requests.get(url, timeout=50).json()
+            self.token_df = pd.DataFrame.from_dict(d)
+            self.token_df['expiry'] = pd.to_datetime(self.token_df['expiry'])
+            self.token_df = self.token_df.astype({'strike': float})
+            self.l.token_map = self.token_df
+            self.token_df.to_csv('token_map_angelone.csv')
+        except Exception as e:
+            print(f"Error executing intializeSymbolTokenMap: {e}")
+            logging.error(f"Error executing intializeSymbolTokenMap: {e}")
+            try:
+                self.token_df = pd.read_csv('token_map_angelone.csv')
+                self.l.token_map = self.token_df
+            except Exception as e1:
+                print(f"Error executing intializeSymbolTokenMap: {e1}")
+                logging.error(f"Error executing intializeSymbolTokenMap: {e1}")
+                raise e1
 
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce):
         df = self.l.token_map

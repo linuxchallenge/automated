@@ -77,9 +77,21 @@ class fivepaise_api(object):
         return response.text
 
     def intializeSymbolTokenMap(self):
-        url = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/ScripMaster/segment/All"
-        self.csv_data = self.download_csv(url)
-        self.scrip_master_df = pd.read_csv(StringIO(self.csv_data))
+        try:
+            url = "https://openapi.5paisa.com/VendorsAPI/Service1.svc/ScripMaster/segment/All"
+            self.csv_data = self.download_csv(url)
+            self.scrip_master_df = pd.read_csv(StringIO(self.csv_data))
+            self.scrip_master_df.to_csv("scrip_master_5paise.csv")
+        except Exception as e:
+            print(f"Error: {e}")
+            
+            # Check if the file exists
+            try:
+                self.scrip_master_df = pd.read_csv("scrip_master_5paise.csv")
+            except Exception as e1:
+                print(f"Error: {e1}")
+                print("Error getting scrip_master_5paise.csv")
+                raise e1
 
     def getTokenInfo(self, symbol, strike_price, pe_ce):
         # script_master_df has Name column like FINNIFTY 13 Feb 2024 CE 23750.00
