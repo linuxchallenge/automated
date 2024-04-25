@@ -111,7 +111,7 @@ def main():
                     option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
 
                     # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
-                    #dump_option_chain_data_to_csv(option_chain_info, symbol)
+                    dump_option_chain_data_to_csv(option_chain_info, symbol)
 
                     if option_chain_info is not None:
                         for account in accounts:
@@ -171,7 +171,7 @@ def dump_option_chain_data_to_csv(option_chain_info, symbol):
 
     # Create a file name with symbol and date
     current_date = datetime.now().strftime("%Y-%m-%d")
-    file_name = f"options_chain_{symbol}_{current_date}.csv"
+    file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
 
     # Check file exists, if read from file and append new data
     # if not create a new file and write data

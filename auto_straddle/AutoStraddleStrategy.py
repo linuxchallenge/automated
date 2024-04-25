@@ -481,7 +481,7 @@ class AutoStraddleStrategy:
         try:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
-                'NIFTY': 50,
+                'NIFTY': 25,
                 'BANKNIFTY': 15,
                 'FINNIFTY': 40
             }
