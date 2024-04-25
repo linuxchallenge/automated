@@ -286,7 +286,7 @@ class AutoStraddleStrategy:
 
                         # Check if the conditions to close the trade are met
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
-                                or profit_or_loss < -3000:
+                                or profit_or_loss < -2500:
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
@@ -515,7 +515,7 @@ class AutoStraddleStrategy:
             print(f"Total profit or loss: {total_profit_loss}")
             logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
 
-            # Check if the total loss is more than 3000
+            # Check if the total loss is more than 2500
             return total_profit_loss
 
         except Exception as e:
@@ -615,9 +615,9 @@ class AutoStraddleStrategy:
     def should_reenter_trade(self, sold_options_info):
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
-        if profit_amount < -3000:
-            print(f"Profit amount: {profit_amount} is greater than 3000")
-            logging.info(f"Profit amount: {profit_amount} is greater than 3000")
+        if profit_amount < -2500:
+            print(f"Profit amount: {profit_amount} is greater than 2500")
+            logging.info(f"Profit amount: {profit_amount} is greater than 2500")
             return False
 
         # sold_options_info has more than 1 row

@@ -276,14 +276,14 @@ class FarSellStratergy:
                                 existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
                             print(option_chain_analyzer['prev_ce_strangle_price'] , option_chain_analyzer['prev_pe_strangle_price'])
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['ce_strangle_price']
+                                option_chain_analyzer['prev_ce_strangle_price']
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['pe_strangle_price']
+                                option_chain_analyzer['prev_pe_strangle_price']
                         else:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['ce_strangle_price']
+                                option_chain_analyzer['prev_ce_strangle_price']
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['pe_strangle_price']
+                                option_chain_analyzer['prev_pe_strangle_price']
 
                         profit_or_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
 
