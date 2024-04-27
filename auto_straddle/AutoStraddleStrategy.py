@@ -639,7 +639,7 @@ class AutoStraddleStrategy:
                 sold_options_info.iloc[-1]['close_time'] and sold_options_info.iloc[-1]['trade_state'] == 'closed'
                 and (
                 datetime.now() - datetime.strptime(sold_options_info.iloc[-1]['close_time'], '%Y-%m-%d %H:%M:%S.%f'))
-                >= timedelta(minutes=5)
+                >= timedelta(minutes=10)
         ):
             return True
         return False
