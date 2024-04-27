@@ -47,6 +47,16 @@ class AutoStraddleStrategy:
         self.accounts = accounts
         self.symbols = symbols
 
+    def loss_limit(self, symbol):
+        if symbol == "NIFTY":
+            return -1000
+        if symbol == "BANKNIFTY":
+            return -2000
+        if symbol == "FINNIFTY":
+            return -2000
+        logging.error(f"Symbol {symbol} not found in loss limit")
+        return -2000
+
     def send_error_message(self, account, symbol, error_message):
         sold_options_file_path = self.get_sold_options_file_path(account, symbol)
 
@@ -71,7 +81,7 @@ class AutoStraddleStrategy:
             with open(error_options_file_path, 'w', encoding='utf-8') as _:
                 pass
 
-    def check_if_trade_is_executed(self, account, symbol, place_order_obj, option_chain_analyzer):
+    def check_if_trade_is_executed(self, account, symbol, place_order_obj):
 
         error_path = self.get_error_options_file_path(account, symbol)
         if os.path.exists(error_path):
@@ -92,7 +102,7 @@ class AutoStraddleStrategy:
             if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['pe_open_order_id'],
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'])
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_price'] = price
@@ -105,7 +115,7 @@ class AutoStraddleStrategy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['ce_open_order_id'],
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'])
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_price'] = price
@@ -116,7 +126,7 @@ class AutoStraddleStrategy:
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
-                        get_option_price(option_chain_analyzer, 'PE'))
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
@@ -128,7 +138,7 @@ class AutoStraddleStrategy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
-                        get_option_price(option_chain_analyzer, 'CE'))
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'])
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
@@ -162,7 +172,7 @@ class AutoStraddleStrategy:
             # Example: Sell ATM call and put options after 9:30 AM
             current_time = datetime.now().time()
 
-            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj, option_chain_analyzer)
+            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj)
             if not check_if_trade_is_executed:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
@@ -286,7 +296,7 @@ class AutoStraddleStrategy:
 
                         # Check if the conditions to close the trade are met
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
-                                or profit_or_loss < -2500:
+                                or profit_or_loss < self.loss_limit(symbol):
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
@@ -615,7 +625,7 @@ class AutoStraddleStrategy:
     def should_reenter_trade(self, sold_options_info):
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
-        if profit_amount < -2500:
+        if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
             print(f"Profit amount: {profit_amount} is greater than 2500")
             logging.info(f"Profit amount: {profit_amount} is greater than 2500")
             return False

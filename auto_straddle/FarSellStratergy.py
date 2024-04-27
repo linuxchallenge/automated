@@ -42,6 +42,15 @@ class FarSellStratergy:
         self.accounts = accounts
         self.symbols = symbols
 
+    def loss_limit(self, symbol):
+        if symbol == "NIFTY":
+            return -250
+        if symbol == "BANKNIFTY":
+            return -500
+        if symbol == "FINNIFTY":
+            return -500
+        logging.error(f"Symbol {symbol} not found in loss limit")
+        return -500
 
     def send_error_message(self, account, symbol, error_message):
         sold_options_file_path = self.get_sold_options_file_path(account, symbol)
@@ -67,7 +76,7 @@ class FarSellStratergy:
             with open(error_options_file_path, 'w', encoding='utf-8') as _:
                 pass
 
-    def check_if_trade_is_executed(self, account, symbol, place_order_obj, option_chain_analyzer):
+    def check_if_trade_is_executed(self, account, symbol, place_order_obj):
 
         error_path = self.get_error_options_file_path(account, symbol)
         if os.path.exists(error_path):
@@ -112,7 +121,7 @@ class FarSellStratergy:
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
-                        option_chain_analyzer['pe_strangle_price'])
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] )
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = price
@@ -124,7 +133,7 @@ class FarSellStratergy:
                 t.sleep(3) # Sleep for 3 seconds
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
-                        option_chain_analyzer['ce_strangle_price'])
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] )
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = price
@@ -160,7 +169,7 @@ class FarSellStratergy:
             # Example: Sell strangle call and put options after 9:30 AM
             current_time = datetime.now().time()
 
-            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj, option_chain_analyzer)
+            check_if_trade_is_executed = self.check_if_trade_is_executed(account, symbol, place_order_obj)
             if not check_if_trade_is_executed:
                 print(f"Trade is not executed for account {account} {symbol}")
                 return
@@ -192,9 +201,9 @@ class FarSellStratergy:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                            option_chain_analyzer['ce_strangle_price']
+                            option_chain_analyzer['prev_ce_strangle_price']
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                            option_chain_analyzer['pe_strangle_price']
+                            option_chain_analyzer['prev_pe_strangle_price']
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                             'closed'
@@ -272,24 +281,18 @@ class FarSellStratergy:
                             f"Auto Straddle trade is still open for account {option_chain_analyzer['prev_strangle_pe_strike']}")
                         # logging.info(f"Auto Straddle CE trade is still open for account {option_chain_analyzer['given_ce_strike']}")
                         # logging.info(f"Auto Straddle PE trade is still open for account {option_chain_analyzer['given_pe_strike']}")
-                        if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1 or \
-                                existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-                            print(option_chain_analyzer['prev_ce_strangle_price'] , option_chain_analyzer['prev_pe_strangle_price'])
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['prev_ce_strangle_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['prev_pe_strangle_price']
-                        else:
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                                option_chain_analyzer['prev_ce_strangle_price']
-                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                                option_chain_analyzer['prev_pe_strangle_price']
+                        print(option_chain_analyzer['prev_ce_strangle_price'] , option_chain_analyzer['prev_pe_strangle_price'])
+
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
+                            option_chain_analyzer['prev_ce_strangle_price']
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
+                            option_chain_analyzer['prev_pe_strangle_price']
 
                         profit_or_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
 
                         # Check if the conditions to close the trade are met
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
-                                or profit_or_loss < -500:
+                                or profit_or_loss < self.loss_limit(symbol):
                             print(option_chain_analyzer['prev_ce_strangle_price'], option_chain_analyzer['prev_pe_strangle_price'])
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
@@ -375,7 +378,7 @@ class FarSellStratergy:
                                     error_message = "Error in placing ce open order"
                                     self.send_error_message(account, symbol, error_message)
                                     return
-                                t.sleep(2) # Sleep for 2 seconds
+                                t.sleep(1) # Sleep for 2 seconds
                                 sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
                                 if sold_options_info['pe_open_order_id'] == -1:
                                     error_message = "Error in placing pe open order"
@@ -626,7 +629,7 @@ class FarSellStratergy:
     def should_reenter_trade(self, sold_options_info):
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
-        if profit_amount < -500:
+        if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
             print(f"Profit amount: {profit_amount} is greater than 500")
             logging.info(f"Profit amount: {profit_amount} is greater than 500")
             return False
