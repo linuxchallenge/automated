@@ -203,10 +203,17 @@ class AutoStraddleStrategy:
                         if existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
 
-                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
-                            option_chain_analyzer['prev_atm_next_ce_price']
-                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
-                            option_chain_analyzer['prev_atm_next_pe_price']
+                        if existing_sold_options_info.iloc[-1]['atm_ce_price'] == -1 or \
+                                existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
+                                option_chain_analyzer['prev_atm_next_ce_price']
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
+                                option_chain_analyzer['prev_atm_next_pe_price']
+                        else:
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = \
+                                option_chain_analyzer['prev_atm_ce_price']
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = \
+                                option_chain_analyzer['prev_atm_pe_price']
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = \
                             'closed'

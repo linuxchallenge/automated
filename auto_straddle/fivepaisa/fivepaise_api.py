@@ -84,7 +84,7 @@ class fivepaise_api(object):
             self.scrip_master_df.to_csv("scrip_master_5paise.csv")
         except Exception as e:
             print(f"Error: {e}")
-            
+
             # Check if the file exists
             try:
                 self.scrip_master_df = pd.read_csv("scrip_master_5paise.csv")
