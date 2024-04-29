@@ -280,8 +280,8 @@ class AutoStraddleStrategy:
                             df = pd.DataFrame([pl_dict])
                             df.to_csv(file_name, index=False)
                 return
-            if current_time > time(9, 35):
-                # Execute strategy only after 9:30 AM
+            if current_time > time(9, 39):
+                # Execute strategy only after 9:39 AM
 
                 # Example: Print a message for demonstration purposes
                 # logging.info(f"Selling ATM call and put options for account {account} and symbol {symbol}")
@@ -345,15 +345,15 @@ class AutoStraddleStrategy:
                                 'account': account,
                                 'symbol': symbol,
                                 'atm_strike': spot_price,
-                                'atm_ce_price': self.get_option_price(option_chain_analyzer, 'CE'),
-                                'atm_pe_price': self.get_option_price(option_chain_analyzer, 'PE'),
+                                'atm_ce_price': self.get_option_price(option_chain_analyzer, 'CE', symbol),
+                                'atm_pe_price': self.get_option_price(option_chain_analyzer, 'PE', symbol),
                                 'trade_state': 'open',
                                 'open_time': datetime.now(),
                                 'close_time': None,
                                 'atm_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE', symbol),
                                 'atm_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE', symbol),
-                                'atm_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE'),
-                                'atm_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE'),
+                                'atm_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE', symbol),
+                                'atm_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE', symbol),
                                 'pe_open_order_id': -1,
                                 'ce_open_order_id': -1,
                                 'pe_close_order_id': -1,
@@ -366,7 +366,7 @@ class AutoStraddleStrategy:
 
                             # Place orders for ATM CE and ATM PE, if pe is less than 0.7 place only CE order and\
                             # if pe greater than 1.4 place only PE order else place both orders
-                            if self.isBearish(option_chain_analyzer):
+                            if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                                 # Place only CE order
                                 sold_options_info['atm_pe_price'] = -1
                                 sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
@@ -378,7 +378,7 @@ class AutoStraddleStrategy:
                                 sold_options_info['pe_open_order_id'] = -1
                                 sold_options_info['pe_open_state'] = 'closed'
 
-                            elif self.isBullish(option_chain_analyzer):
+                            elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                                 # Place only PE order
                                 sold_options_info['atm_ce_price'] = -1
                                 sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
@@ -409,8 +409,8 @@ class AutoStraddleStrategy:
                             print(f"Auto Straddle trade re-entered for account {account}")
                             logging.info(f"Auto Straddle trade re-entered for account {account} \
                                          {option_chain_analyzer['pe_to_ce_ratio']} {symbol} {option_chain_analyzer['spot_price']}")
-                            logging.info(f"Auto Straddle {self.get_option_price(option_chain_analyzer, 'CE')} \
-                                    {self.get_option_price(option_chain_analyzer, 'PE')}")
+                            logging.info(f"Auto Straddle {self.get_option_price(option_chain_analyzer, 'CE', symbol)} \
+                                    {self.get_option_price(option_chain_analyzer, 'PE', symbol)}")
                             existing_sold_options_info = pd.concat(
                                 [existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
 
@@ -421,15 +421,15 @@ class AutoStraddleStrategy:
                         'account': account,
                         'symbol': symbol,
                         'atm_strike': spot_price,
-                        'atm_ce_price': self.get_option_price(option_chain_analyzer, 'CE'),
-                        'atm_pe_price': self.get_option_price(option_chain_analyzer, 'PE'),
+                        'atm_ce_price': self.get_option_price(option_chain_analyzer, 'CE', symbol),
+                        'atm_pe_price': self.get_option_price(option_chain_analyzer, 'PE', symbol),
                         'trade_state': 'open',
                         'open_time': datetime.now(),
                         'close_time': None,
                         'atm_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE', symbol),
                         'atm_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE', symbol),
-                        'atm_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE'),
-                        'atm_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE'),
+                        'atm_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE', symbol),
+                        'atm_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE', symbol),
                         'pe_open_order_id': 0,
                         'ce_open_order_id': 0,
                         'pe_close_order_id': 0,
@@ -442,19 +442,22 @@ class AutoStraddleStrategy:
 
                     # Place orders for ATM CE and ATM PE, if pe is less than 0.7 place only CE order
                     # and if pe greater than 1.4 place only PE order else place both orders
-                    logging.info(f"Auto Straddle {symbol} {self.get_option_price(option_chain_analyzer, 'CE')} {self.get_option_price(option_chain_analyzer, 'PE')}")
-                    logging.info(f"Auto Straddle {option_chain_analyzer['pe_to_ce_ratio']} {symbol} {option_chain_analyzer['spot_price']}")
-                    if self.isBearish(option_chain_analyzer):
+                    logging.info(f"Auto Straddle {symbol} {self.get_option_price(option_chain_analyzer, 'CE', symbol)} \
+                                 {self.get_option_price(option_chain_analyzer, 'PE', symbol)}")
+                    logging.info(f"Auto Straddle {option_chain_analyzer['pe_to_ce_ratio']} {symbol} \
+                                 {option_chain_analyzer['spot_price']}")
+                    if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                         # Place only CE order
                         sold_options_info['atm_pe_price'] = -1
-                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account,
+                                                 atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
                         if sold_options_info['ce_open_order_id'] == -1:
                             error_message = "Error in placing ce open order"
                             self.send_error_message(account, symbol, error_message)
                             return
                         sold_options_info['pe_open_order_id'] = -1
                         sold_options_info['pe_open_state'] = 'closed'
-                    elif self.isBullish(option_chain_analyzer):
+                    elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                         # Place only PE order
                         sold_options_info['atm_ce_price'] = -1
                         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
@@ -662,21 +665,19 @@ class AutoStraddleStrategy:
         return False
 
 
-    def get_option_price(self, option_chain_analyzer, option_type):
+    def get_option_price(self, option_chain_analyzer, option_type, symbol):
         # Implement your logic to get the option price based on strike price and type (CE/PE)
         # You can extract this information from option_chain_analyzer
         # For example, option_chain_analyzer['CE'] and option_chain_analyzer['PE']
         # return option_price from option_chain_analyzer
         if option_type == 'CE':
-            if self.isBearish(option_chain_analyzer):
+            if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                 return option_chain_analyzer['atm_next_ce_price']
-            else:
-                return option_chain_analyzer['atm_current_ce_price']
+            return option_chain_analyzer['atm_current_ce_price']
         elif option_type == 'PE':
-            if self.isBullish(option_chain_analyzer):
+            if self.check_bullish_option_chain(option_chain_analyzer, symbol):
                 return option_chain_analyzer['atm_next_pe_price']
-            else:
-                return option_chain_analyzer['atm_current_pe_price']
+            return option_chain_analyzer['atm_current_pe_price']
 
 
     def get_option_strike(self, option_chain_analyzer, option_type, symbol):
@@ -685,15 +686,65 @@ class AutoStraddleStrategy:
         # For example, option_chain_analyzer['CE'] and option_chain_analyzer['PE']
         # return option_price from option_chain_analyzer
         if option_type == 'CE':
-            if self.isBearish(option_chain_analyzer):
+            if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                 return option_chain_analyzer['atm_strike'] + get_strike_interval(symbol)
-            else:
-                return option_chain_analyzer['atm_strike']
+            return option_chain_analyzer['atm_strike']
         elif option_type == 'PE':
-            if self.isBullish(option_chain_analyzer):
+            if self.check_bullish_option_chain(option_chain_analyzer, symbol):
                 return option_chain_analyzer['atm_strike'] - get_strike_interval(symbol)
-            else:
-                return option_chain_analyzer['atm_strike']
+            return option_chain_analyzer['atm_strike']
+
+    def check_bullish_option_chain(self, option_chain_info, symbol):
+        if option_chain_info is None:
+            return False
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
+
+        # Check file exists, if read from file and append new data
+        # if not create a new file and write data
+
+        if os.path.exists(file_name):
+            data_frame = pd.read_csv(file_name)
+        else:
+            return False
+
+        # Get lowest pe_to_ce_ratio from the data_frame
+        min_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].min()
+
+        if (option_chain_info['pe_to_ce_ratio'] - min_pe_to_ce_ratio) > 0.3:
+            return True
+
+        if option_chain_info['pe_to_ce_ratio']  > 1.4:
+            return True
+
+        return False
+
+    def check_bearish_option_chain(self, option_chain_info, symbol):
+        if option_chain_info is None:
+            return False
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
+
+        # Check file exists, if read from file and append new data
+        # if not create a new file and write data
+
+        if os.path.exists(file_name):
+            data_frame = pd.read_csv(file_name)
+        else:
+            return False
+
+        # Get highest pe_to_ce_ratio from the data_frame
+        max_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].max()
+
+        if (max_pe_to_ce_ratio - option_chain_info['pe_to_ce_ratio']) > 0.3:
+            return True
+
+        if option_chain_info['pe_to_ce_ratio'] < 0.7:
+            return True
+
+        return False
 
 
 """

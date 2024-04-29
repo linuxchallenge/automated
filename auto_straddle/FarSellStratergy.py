@@ -59,10 +59,10 @@ class FarSellStratergy:
 
         telegram_group = account + "_telegram"
 
-        id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+        id3 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
         # Send profit loss over telegramsend send_message
-        x.send_message(id, f"Far sell critical error far sell {account} {symbol} {error_message}")
+        x.send_message(id3, f"Far sell critical error far sell {account} {symbol} {error_message}")
 
         if os.path.exists(sold_options_file_path):
             # Since trade is closed rename the file to sold_options_info_error
@@ -223,14 +223,14 @@ class FarSellStratergy:
 
                         telegram_group = account + "_telegram"
 
-                        id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                        id4 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
                         # Send profit loss over telegramsend send_message
-                        x.send_message(id, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
+                        x.send_message(id4, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
-                        x.send_file(id, sold_options_file_path)
+                        x.send_file(id4, sold_options_file_path)
 
                         # Since trade is closed rename the file to sold_options_info_closed
                         os.rename(sold_options_file_path,
@@ -260,7 +260,7 @@ class FarSellStratergy:
                             df.to_csv(file_name, index=False)
 
                 return
-            elif current_time > time(9, 30):
+            elif current_time > time(9, 33):
                 # Execute strategy only after 9:30 AM
 
                 # Example: Print a message for demonstration purposes

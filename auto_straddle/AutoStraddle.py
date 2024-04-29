@@ -96,6 +96,13 @@ def main():
     try:
         while True:
             try:
+
+                current_time_dt = datetime.now().time()
+
+                if current_time_dt < time_dt(9, 30):
+                    time.sleep(60)
+                    continue
+
                 # Get current time
                 current_time = datetime.now().second
 
