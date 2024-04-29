@@ -188,6 +188,5 @@ def dump_option_chain_data_to_csv(option_chain_info, symbol):
     # Dump option chain data to a CSV file
     data_frame.to_csv(file_name, index=False)
 
-
 if __name__ == "__main__":
     main()
