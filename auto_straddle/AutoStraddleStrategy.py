@@ -280,8 +280,8 @@ class AutoStraddleStrategy:
                             df = pd.DataFrame([pl_dict])
                             df.to_csv(file_name, index=False)
                 return
-            if current_time > time(9, 39):
-                # Execute strategy only after 9:39 AM
+            if current_time > time(9, 55):
+                # Execute strategy only after 9:55 AM
 
                 # Example: Print a message for demonstration purposes
                 # logging.info(f"Selling ATM call and put options for account {account} and symbol {symbol}")

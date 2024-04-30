@@ -613,9 +613,9 @@ class FarSellStratergy:
             existing_sold_options_info = self.read_existing_sold_options_info(file_name)
             if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
                 if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-                    return 0, existing_sold_options_info.iloc[-1]['strangle_pe_strike']
+                    return 0, existing_sold_options_info.iloc[-1]['strangle_ce_strike']
                 elif existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
-                    return existing_sold_options_info.iloc[-1]['strangle_ce_strike'], 0
+                    return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], 0
                 else:
                     return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
                         existing_sold_options_info.iloc[-1]['strangle_ce_strike']
