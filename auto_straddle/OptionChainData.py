@@ -106,6 +106,9 @@ class OptionChainData:
             # get strangle strike price which has minimium difference between lastPrice_ce and lastPrice_pe
             strangle_strike = df_merge_temp['strikePrice'].iloc[0]
 
+            atm_ce_strike = strangle_strike
+            atm_pe_strike = strangle_strike
+
             print(symbolData, strangle_strike, df_merge_temp['lastPrice_ce'].iloc[0], df_merge_temp['lastPrice_pe'].iloc[0])
 
             # ce strangle strike price is 2 times of sum of lastPrice_ce and lastPrice_pe
@@ -294,6 +297,9 @@ class OptionChainData:
 
         # get strangle strike price which has minimium difference between lastPrice_ce and lastPrice_pe
         strangle_strike = df_merge_temp['strikePrice'].iloc[0]
+
+        atm_ce_strike = strangle_strike
+        atm_pe_strike = strangle_strike        
 
         print(symbolData, strangle_strike, df_merge_temp['call_ltp'].iloc[0], df_merge_temp['put_ltp'].iloc[0])
 
