@@ -576,19 +576,36 @@ class AutoStraddleStrategy:
         finnifty_movement = 60
         banknifty_movement = 120
 
-        if (
-                symbol == "NIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= nifty_movement
-        ) or (
-                symbol == "FINNIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= finnifty_movement
-        ) or (
-                symbol == "BANKNIFTY"
-                and abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= banknifty_movement
-        ):
-            logging.info(
-                f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['atm_strike']}")
-            return True
+        # function to return movement depending on symbol
+        def get_movement(symbol):
+            if symbol == "NIFTY":
+                return nifty_movement
+            if symbol == "BANKNIFTY":
+                return banknifty_movement
+            if symbol == "FINNIFTY":
+                return finnifty_movement
+            return 0
+
+        if sold_options_info['atm_ce_price'] != -1 and sold_options_info['atm_pe_price'] != -1:
+            if abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= get_movement(symbol):
+                logging.info(
+                    f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['atm_strike']}")
+                return True
+
+        if sold_options_info['atm_ce_price'] == -1:
+            if (sold_options_info['atm_strike'] - option_chain_analyzer['spot_price'] ) > get_movement(symbol):
+                return True
+            if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= 2 * get_movement(symbol):
+                return True
+            return False
+        
+        if sold_options_info['atm_pe_price'] == -1:
+            if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) > get_movement(symbol):
+                return True
+            if (sold_options_info['atm_strike'] - option_chain_analyzer['spot_price']) >= 2 * get_movement(symbol):
+                return True
+            return False
+
         return False
 
     def close_trade(self, account, pe_strike, ce_strike, pe_price, ce_price, symbol, place_order_obj, qty):
