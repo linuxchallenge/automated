@@ -642,22 +642,21 @@ class AutoStraddleStrategy:
             print(f"Error storing sold options information: {e}")
             logging.error(f"Error storing sold options information: {e}")
 
-    def get_strike_price(self, account, symbol):
+    def get_strike_price(self, accounts, symbol):
         # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
-        file_name = self.get_sold_options_file_path(account, symbol)
-        if os.path.exists(file_name):
-            existing_sold_options_info = self.read_existing_sold_options_info(file_name)
-            if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
-                if existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
-                    return existing_sold_options_info.iloc[-1]['atm_pe_strike']
-                elif existing_sold_options_info.iloc[-1]['atm_ce_price'] == -1:
-                    return existing_sold_options_info.iloc[-1]['atm_ce_strike']
-                else:
-                    return existing_sold_options_info.iloc[-1]['atm_ce_strike']
-            else:
-                return 0
-        else:
-            return 0
+
+        for account in accounts:
+            file_name = self.get_sold_options_file_path(account, symbol)
+            if os.path.exists(file_name):
+                existing_sold_options_info = self.read_existing_sold_options_info(file_name)
+                if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
+                    if existing_sold_options_info.iloc[-1]['atm_pe_price'] == -1:
+                        return existing_sold_options_info.iloc[-1]['atm_pe_strike']
+                    elif existing_sold_options_info.iloc[-1]['atm_ce_price'] == -1:
+                        return existing_sold_options_info.iloc[-1]['atm_ce_strike']
+                    else:
+                        return existing_sold_options_info.iloc[-1]['atm_ce_strike']
+        return 0
 
     def should_reenter_trade(self, sold_options_info):
 

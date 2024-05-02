@@ -109,8 +109,8 @@ def main():
                 for symbol in symbols:
                     option_chain_analyzer = OptionChainData(symbol)
 
-                    strike_data = auto_straddle_strategy.get_strike_price("dummy", symbol)
-                    pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price("dummy", symbol)
+                    strike_data = auto_straddle_strategy.get_strike_price(accounts, symbol)
+                    pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts, symbol)
 
                     print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
 

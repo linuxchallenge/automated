@@ -605,26 +605,22 @@ class FarSellStratergy:
             print(f"Error storing sold options information: {e}")
             logging.error(f"Error storing sold options information: {e}")
 
-    def get_strangle_strike_price(self, account, symbol):
-        print(f"Getting strike price for account {account} and symbol {symbol}")
-        # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
-        file_name = self.get_sold_options_file_path(account, symbol)
-        if os.path.exists(file_name):
-            existing_sold_options_info = self.read_existing_sold_options_info(file_name)
-            if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
-                if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-                    return 0, existing_sold_options_info.iloc[-1]['strangle_ce_strike']
-                elif existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
-                    return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], 0
-                else:
-                    return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
-                        existing_sold_options_info.iloc[-1]['strangle_ce_strike']
-            else:
-                return 0, 0
-        else:
-            print("File does not exists file_name = ", file_name)
-            #logging.error("File does not exists file_name = %s", file_name)
-            return 0, 0
+    def get_strangle_strike_price(self, accounts, symbol):
+
+        for account in accounts:
+            # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
+            file_name = self.get_sold_options_file_path(account, symbol)
+            if os.path.exists(file_name):
+                existing_sold_options_info = self.read_existing_sold_options_info(file_name)
+                if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
+                    if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
+                        return 0, existing_sold_options_info.iloc[-1]['strangle_ce_strike']
+                    elif existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
+                        return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], 0
+                    else:
+                        return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
+                            existing_sold_options_info.iloc[-1]['strangle_ce_strike']
+        return 0,0
 
     def should_reenter_trade(self, sold_options_info):
 
