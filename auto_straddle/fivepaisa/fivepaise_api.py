@@ -101,6 +101,10 @@ class fivepaise_api(object):
         df = df[(df['SymbolRoot'] == symbol) & (df['StrikeRate'] == strike_price) & (df['ScripType'] == pe_ce)]
         # Sort the df by expiry date and get the first row
         df = df.sort_values(by='Expiry')
+
+        # df.iloc[0]['expiry'] is befor current date retunr the next row
+        if df.iloc[0]['Expiry'] < datetime.now().strftime('%Y-%m-%d'):
+            return df.iloc[1]
         return df.iloc[0]
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
