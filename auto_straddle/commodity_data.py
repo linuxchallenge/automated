@@ -1,9 +1,9 @@
-import pandas as pd
-import requests, time
-import pandas as pd
+"""Module providing a function for main function """
+
+import time
 from datetime import datetime, timedelta
-
-
+import pandas as pd
+import requests
 
 class commodity_data:
 
@@ -12,7 +12,6 @@ class commodity_data:
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
-        pass
 
     def intializeSymbolAndGetExpiryData(self):
         try:
@@ -72,10 +71,12 @@ class commodity_data:
         dt = pd.DataFrame(date)
         intraday_data = pd.concat([dt, data['o'], data['h'], data['l'], data['c']], axis=1). \
             rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close'})
+        
+        intraday_data.dropna(inplace=True)
 
         return intraday_data
 
-
+"""
 # test code
 cd = commodity_data()
 #expiry_date = cd.get_expiry_date('CRUDEOIL')
@@ -126,3 +127,5 @@ print(data)
 print("=====  SILVER ======")
 
 #print(expiry_date)
+
+"""

@@ -34,6 +34,7 @@ logging.getLogger().setLevel(logging.INFO)
 def main():
     # Replace these lists with your desired accounts and symbols
     accounts = []
+    accounts_commodity = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
     logging.info("Starting the program, welcome to AutoStraddle")
@@ -44,9 +45,15 @@ def main():
     while True:
         current_time_dt = datetime.now().time()
 
-        if current_time_dt < time_dt(9, 15):
+        if current_time_dt < time_dt(8, 55):
             time.sleep(60)
             continue
+
+        # If sat or sun, then break the loop
+        if current_time_dt.weekday() == 5 or current_time_dt.weekday() == 6:
+            time.sleep(60)
+            continue
+
         break
 
     # Get home directory
@@ -75,10 +82,25 @@ def main():
     for _, row in account_details.iterrows():
         accounts.append(row['Account'])
 
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
+    commodity_account_details = pd.read_csv(coomodity_path)
+
+    # Append accounts with data from google sheet
+    for _, row in commodity_account_details.iterrows():
+        accounts_commodity.append(row['Account'])
+
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
     print(accounts)
     logging.info("Accounts: %s", str(accounts))
+
+    accounts_commodity = list(dict.fromkeys(accounts_commodity))
+
+    #merge accounts and accounts_commodity
+    accounts_merged = accounts + accounts_commodity
+
+    # remove duplicates of accounts_merged
+    accounts_merged = list(dict.fromkeys(accounts_merged))
 
     # Create an instance of PlaceOrder
     place_order = PlaceOrder()
@@ -86,7 +108,7 @@ def main():
     logging.info("After creating instance of PlaceOrder")
 
     # Initalize all accounts
-    for account in accounts:
+    for account in accounts_merged:
         logging.info("Initializing account: %s", account)
         print("Initializing account: ", account)
         place_order.init_account(account)
@@ -97,67 +119,18 @@ def main():
         while True:
             try:
 
-                current_time_dt = datetime.now().time()
-
-                if current_time_dt < time_dt(9, 30):
-                    time.sleep(60)
-                    continue
-
                 # Get current time
                 current_time = datetime.now().second
 
-                for symbol in symbols:
-                    option_chain_analyzer = OptionChainData(symbol)
+                execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details)
 
-                    strike_data = auto_straddle_strategy.get_strike_price(accounts, symbol)
-                    pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts, symbol)
-
-                    print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
-
-                    # Get option chain data for the specified symbol
-                    option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
-
-                    # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
-                    dump_option_chain_data_to_csv(option_chain_info, symbol)
-
-                    if option_chain_info is not None:
-                        for account in accounts:
-                            # Execute the strategy for the current account and symbol
-                            # In account_details if for symbol and account, stratergy is 'as' then execute auto straddle strategy
-                            # if stratergy is 'fr' then execute far sell strategy
-                            if account_details.loc[
-                                (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
-                                & (account_details['Stratergy'] == 'as')].shape[0] > 0:
-                                quantity = account_details.loc[
-                                    (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
-                                    & (account_details['Stratergy'] == 'as')]['quantity'].values[0]
-                                if quantity > 0:
-                                    print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
-                                    auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
-                                                                            quantity, place_order)
-                                    print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
-
-                            if account_details.loc[
-                                (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
-                                & (account_details['Stratergy'] == 'fr')].shape[0] > 0:
-                                quantity = account_details.loc[
-                                    (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
-                                    & (account_details['Stratergy'] == 'fr')]['quantity'].values[0]
-                                if quantity > 0:
-                                    print("==== Executing far sell strategy for account: " + account + " " + symbol)
-                                    farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
-                                                                               quantity, place_order)
-                                    print("==== Exit far sell strategy for account: " + account + " " + symbol)
-
-                    else:
-                        print("Option chain data is not available for the symbol: " + symbol)
-                        logging.error("Option chain data is not available for the symbol: " + symbol)
+                execute_commity_stratergy(accounts_commodity, place_order, commodity_account_details)
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
                 time.sleep(60 - (after_loop_time - current_time))
 
-                if current_time_dt > time_dt(15, 40):
+                if current_time_dt > time_dt(23, 50):
                     print("Exiting the program.")
                     logging.info("Exiting the program.")
                     exit(1)
@@ -170,6 +143,68 @@ def main():
 
     except KeyboardInterrupt:
         print("Exiting the program.")
+
+def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details):
+
+    # return if time is greater than 3:20 PM
+    current_time_dt = datetime.now().time()
+    if current_time_dt > time_dt(15, 20):
+        return
+
+    if current_time_dt < time_dt(9, 30):
+        time.sleep(60)
+        return
+
+    for symbol in symbols:
+        option_chain_analyzer = OptionChainData(symbol)
+
+        strike_data = auto_straddle_strategy.get_strike_price(accounts, symbol)
+        pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts, symbol)
+
+        print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
+
+        # Get option chain data for the specified symbol
+        option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
+
+        # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
+        dump_option_chain_data_to_csv(option_chain_info, symbol)
+
+        if option_chain_info is not None:
+            for account in accounts:
+                # Execute the strategy for the current account and symbol
+                # In account_details if for symbol and account, stratergy is 'as' then execute auto straddle strategy
+                # if stratergy is 'fr' then execute far sell strategy
+                if account_details.loc[
+                    (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                    & (account_details['Stratergy'] == 'as')].shape[0] > 0:
+                    quantity = account_details.loc[
+                        (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                        & (account_details['Stratergy'] == 'as')]['quantity'].values[0]
+                    if quantity > 0:
+                        print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
+                        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
+                                                                quantity, place_order)
+                        print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
+
+                if account_details.loc[
+                    (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                    & (account_details['Stratergy'] == 'fr')].shape[0] > 0:
+                    quantity = account_details.loc[
+                        (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                        & (account_details['Stratergy'] == 'fr')]['quantity'].values[0]
+                    if quantity > 0:
+                        print("==== Executing far sell strategy for account: " + account + " " + symbol)
+                        farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
+                                                                    quantity, place_order)
+                        print("==== Exit far sell strategy for account: " + account + " " + symbol)
+
+        else:
+            print("Option chain data is not available for the symbol: " + symbol)
+            logging.error("Option chain data is not available for the symbol: " + symbol)
+
+
+def execute_commity_stratergy(accounts, place_order, account_details):
+    pass
 
 
 # Funcion to dump option chain data to a CSV file with file name of symbol and date.

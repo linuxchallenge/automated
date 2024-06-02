@@ -56,7 +56,7 @@ class alligator_api(object):
         cross_over = "no"
         try:
             max_alligator = max(last_df.iloc[-1]['jaw'], last_df.iloc[-1]['teeth'], last_df.iloc[-1]['lips'])
-            min_alligator = min(last_df.iloc[-1][7], last_df.iloc[-1][8], last_df.iloc[-1][9])
+            min_alligator = min(last_df.iloc[-1]['jaw'], last_df.iloc[-1]['teeth'], last_df.iloc[-1]['lips'])
 
             if min_alligator > last_df.iloc[-1]['close']:
                 trend = "downtrend"
