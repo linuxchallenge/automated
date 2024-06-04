@@ -1,5 +1,17 @@
 """Module providing a function for main function """
 
+"""Module providing a function for far cell"""
+
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+# pylint: disable=C0200
+# pylint: disable=W0718
+
 import time
 from datetime import datetime, timedelta
 import pandas as pd
@@ -62,7 +74,20 @@ class commodity_data:
                 '&to=' + str(end) + '&currencyCode=INR'
 
         hdr = {'User-Agent': 'Mozilla/5.0'}
-        resp = requests.get(url, headers=hdr, timeout=50).json()
+
+        try:
+            resp = requests.get(url, headers=hdr, timeout=50).json()
+        except Exception as e:
+            print(f"Error executing historic_data: {e}")
+            time.sleep(3)
+
+            # retry
+            try:
+                resp = requests.get(url, headers=hdr, timeout=50).json()
+            except Exception as e1:
+                print(f"Error executing historic_data: {e1}")
+                return None
+
         data = pd.DataFrame(resp)
         date = []
         for dt in data['t']:
@@ -71,7 +96,7 @@ class commodity_data:
         dt = pd.DataFrame(date)
         intraday_data = pd.concat([dt, data['o'], data['h'], data['l'], data['c']], axis=1). \
             rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close'})
-        
+
         intraday_data.dropna(inplace=True)
 
         return intraday_data

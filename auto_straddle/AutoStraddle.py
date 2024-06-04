@@ -23,6 +23,7 @@ from OptionChainData import OptionChainData
 from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
 import configuration
+from CommodityStratergy import CommodityStratergy
 
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
@@ -49,8 +50,10 @@ def main():
             time.sleep(60)
             continue
 
+        current_time_week = datetime.now()
+
         # If sat or sun, then break the loop
-        if current_time_dt.weekday() == 5 or current_time_dt.weekday() == 6:
+        if current_time_week.weekday() == 5 or current_time_week.weekday() == 6:
             time.sleep(60)
             continue
 
@@ -70,6 +73,8 @@ def main():
     auto_straddle_strategy = AutoStraddleStrategy(accounts, symbols)
     farsell_straddle_strategy = FarSellStratergy(accounts, symbols)
 
+    commodity_stratergy = CommodityStratergy(accounts_commodity)
+
     path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQt7b9qZSCk8Un-5nTeOKyiaCNZPjeRLQHv41f8J2JVrXCvNPhaXtuoZEXEz7o3O4NG_ltFCjimld8Y/pub?output=csv'
     #path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTbpF19Et4qAM5OECrRCEMyb2s5x6R6Im9XXwxrTbLi097-QpLMc3aPcpWO7OF6QTOwUHce91zQPkU8/pub?output=csv'
     account_details = pd.read_csv(path)
@@ -84,6 +89,8 @@ def main():
 
     coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
+
+    print(commodity_account_details)
 
     # Append accounts with data from google sheet
     for _, row in commodity_account_details.iterrows():
@@ -124,7 +131,7 @@ def main():
 
                 execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details)
 
-                execute_commity_stratergy(accounts_commodity, place_order, commodity_account_details)
+                execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
@@ -203,8 +210,8 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
             logging.error("Option chain data is not available for the symbol: " + symbol)
 
 
-def execute_commity_stratergy(accounts, place_order, account_details):
-    pass
+def execute_commity_stratergy(commodity_stratergy, accounts, place_order, account_details):
+     commodity_stratergy.execute_strategy(accounts, place_order, account_details)
 
 
 # Funcion to dump option chain data to a CSV file with file name of symbol and date.

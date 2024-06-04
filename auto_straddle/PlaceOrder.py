@@ -36,6 +36,12 @@ class PlaceOrder:
             self.obj_3 = fivepaise_api.fivepaise_api(account)
 
 
+    def place_buy_orders_commodity(self, account, symbol, qty):
+        pass
+
+    def close_sell_orders_commodity(self, account, symbol, qty):
+        pass
+
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
             'NIFTY': 25,
