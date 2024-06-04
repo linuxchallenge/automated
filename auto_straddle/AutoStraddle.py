@@ -103,6 +103,10 @@ def main():
                     time.sleep(60)
                     continue
 
+                if current_time_dt > time_dt(15, 40):
+                    time.sleep(60)
+                    continue
+
                 # Get current time
                 current_time = datetime.now().second
 
@@ -156,11 +160,6 @@ def main():
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
                 time.sleep(60 - (after_loop_time - current_time))
-
-                if current_time_dt > time_dt(15, 40):
-                    print("Exiting the program.")
-                    logging.info("Exiting the program.")
-                    exit(1)
 
             except Exception as e:
                 logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
