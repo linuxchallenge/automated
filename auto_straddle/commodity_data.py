@@ -1,7 +1,5 @@
 """Module providing a function for main function """
 
-"""Module providing a function for far cell"""
-
 # pylint: disable=W1203
 # pylint: disable=W0718
 # pylint: disable=C0301
@@ -10,6 +8,7 @@
 # pylint: disable=C0103
 # pylint: disable=W0105
 # pylint: disable=C0200
+# pylint: disable=C0413
 # pylint: disable=W0718
 
 import time
@@ -44,7 +43,7 @@ class commodity_data:
             for s in self.symbol:
                 df = token_df[token_df['name'] == s]
                 df = df.sort_values(by='expiry')
-                
+
                 # Save to dictionary
                 self.symbolTokenMap[s] = df.iloc[0]['expiry'].strftime("%Y-%m-%d")  # Modified format to "yyyy-mm-dd"
 

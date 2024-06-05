@@ -39,7 +39,7 @@ class PlaceOrder:
     def place_buy_orders_commodity(self, account, symbol, qty):
         pass
 
-    def close_sell_orders_commodity(self, account, symbol, qty):
+    def place_sell_orders_commodity(self, account, symbol, qty):
         pass
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):

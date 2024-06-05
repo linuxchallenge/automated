@@ -299,7 +299,7 @@ class OptionChainData:
         strangle_strike = df_merge_temp['strikePrice'].iloc[0]
 
         atm_ce_strike = strangle_strike
-        atm_pe_strike = strangle_strike        
+        atm_pe_strike = strangle_strike
 
         print(symbolData, strangle_strike, df_merge_temp['call_ltp'].iloc[0], df_merge_temp['put_ltp'].iloc[0])
 

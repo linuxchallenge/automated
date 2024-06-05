@@ -22,6 +22,7 @@ import pandas as pd
 import configuration
 import commodity_data
 from alligator_api import alligator_api
+from TelegramSend import telegram_send_api
 
 logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
                     format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
@@ -108,7 +109,7 @@ class CommodityStratergy:
                     print(f"Processing account: {account}")
 
                     # Get cvs file with account name, month and year in the file name
-                    file_name = f'Commodity-{account}.csv'
+                    file_name = f'csv/Commodity-{account}.csv'
 
                     row_number = -1
 
@@ -144,6 +145,11 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'exit_order_state'] = 'open'
                                 current_trade.loc[row_number, 'state'] = 'closed'
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                    current_trade.loc[row_number, 'exit_price']
+                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
+                                                  current_trade.loc[row_number, 'profit'])
+
                     elif alligator[0] == "downtrend":
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] < bearish:
@@ -157,11 +163,15 @@ class CommodityStratergy:
                         else:
                             if (current_trade.shape[0] != 0) and current_trade.iloc[row_number]['trade_type'] == 'long':
                                 print ("Exit long trade")
-                                place_order.place_sell_orders_commodity(account, s, 1)                                
+                                place_order.place_sell_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'exit_time']  = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'exit_order_state'] = 'open'
                                 current_trade.loc[row_number, 'state'] = 'closed'
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                    current_trade.loc[row_number, 'exit_price']
+                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
+                                                  current_trade.loc[row_number, 'profit'])
                     else: # sideways
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.iloc[-1]['state'] == 'open':
@@ -169,14 +179,20 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                    current_trade.loc[row_number, 'exit_price']
+                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
+                                                  current_trade.loc[row_number, 'profit'])
                                 if current_trade.iloc[-1]['trade_type'] == 'long':
                                     print ("Exit long trade")
                                     place_order.place_sell_orders_commodity(account, s, 1)
-                                    current_trade.at[current_trade.index[-1], 'profit'] = current_trade.iloc[-1]['exit_price'] - current_trade.iloc[-1]['entry_price']
+                                    current_trade.at[current_trade.index[-1], 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                        current_trade.loc[row_number, 'exit_price']
                                 else:
                                     print ("Exit short trade")
                                     place_order.place_buy_orders_commodity(account, s, 1)
-                                    current_trade.at[current_trade.index[-1], 'profit'] = current_trade.iloc[-1]['entry_price'] - current_trade.iloc[-1]['exit_price']
+                                    current_trade.at[current_trade.index[-1], 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                        current_trade.loc[row_number, 'exit_price']
                     if current_trade is not None:
                         current_trade.to_csv(file_name, index=False)
 
@@ -211,6 +227,41 @@ class CommodityStratergy:
         except Exception as e:
             logging.error(f"Error executing execute_strategy: {e}")
             traceback.print_exc()
+
+    def send_message(self, account, symbol_msg, error_message, compute_profit_loss):
+        x = telegram_send_api()
+
+        telegram_group = account + "_telegram"
+
+        id3 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
+        # Send profit loss over telegramsend send_message
+        x.send_message(id3, f"{account} {symbol_msg} {error_message}")
+
+        pl_dict = {
+            'Date': datetime.now().strftime("%Y-%m-%d"),
+            'Account': account,
+            'Symbol': symbol_msg,
+            'Quantity': 1,
+            'NumberofTrade': 1,
+            'TotalPNL': compute_profit_loss * 1,
+            'Brokarge': 60,
+            'CloseTime': datetime.now().strftime("%H:%M:%S"),
+            'Stratergy': 'Commodity',
+            'NetPNL': compute_profit_loss - 60
+        }
+
+        current_month = datetime.now().strftime("%m")
+        file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+        if os.path.exists(file_name):
+            df = pd.read_csv(file_name)
+            df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+            df.to_csv(file_name, index=False)
+        else:
+            df = pd.DataFrame([pl_dict])
+            df.to_csv(file_name, index=False)
+
+
 
 '''
 # Test code
