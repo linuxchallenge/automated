@@ -53,7 +53,11 @@ class OptionChainData:
 
     def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
         if self.get_from == "groww":
-            ret = self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            try :
+                ret = self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            except Exception as e:
+                print(f"Error: {e}")
+                ret = None
             if ret is None:
                 return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
             else:

@@ -126,6 +126,16 @@ def main():
         while True:
             try:
 
+                current_time_dt = datetime.now().time()
+
+                if current_time_dt < time_dt(8, 55):
+                    time.sleep(60)
+                    continue
+
+                if current_time_dt > time_dt(23, 50):
+                    time.sleep(60)
+                    continue
+
                 # Get current time
                 current_time = datetime.now().second
 
