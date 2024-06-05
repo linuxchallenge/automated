@@ -166,6 +166,7 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
     # return if time is greater than 3:20 PM
     current_time_dt = datetime.now().time()
     if current_time_dt > time_dt(15, 20):
+        time.sleep(60)
         return
 
     if current_time_dt < time_dt(9, 30):

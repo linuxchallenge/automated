@@ -9,7 +9,6 @@
 # pylint: disable=W0105
 # pylint: disable=C0200
 
-
 import os
 import traceback
 from datetime import datetime, time
@@ -207,8 +206,6 @@ class CommodityStratergy:
                     self.last_executed_hour = current_time_dt.hour
                     self.last_proccesed_symbol = symbol[0]
 
-                time_difference = (after_loop_time - start_loop_time).total_seconds()
-
                 # Assign next symbol to self.last_proccesed_symbol
                 for i in range(len(symbol)):
                     if symbol[i] == s:
@@ -216,7 +213,8 @@ class CommodityStratergy:
                             self.last_proccesed_symbol = symbol[0]
                         else:
                             self.last_proccesed_symbol = symbol[i+1]
-                        return
+
+                time_difference = (after_loop_time - start_loop_time).total_seconds()
 
                 print(f"Time taken for symbol: {s} is {time_difference}")
 
@@ -261,34 +259,55 @@ class CommodityStratergy:
             df = pd.DataFrame([pl_dict])
             df.to_csv(file_name, index=False)
 
+"""
+
+import PlaceOrder
+
+import os
+from pathlib import Path
 
 
-'''
 # Test code
 if __name__ == '__main__':
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
+    commodity_account_details = pd.read_csv(coomodity_path)
+
+    place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
+
+    # Get home directory
+    cur_dir = Path.home()
+    # Add /temp/data_collection to the home directory
+    cur_dir = cur_dir / 'temp' / 'data_collection'
+    # Create the directory if it does not exist
+    cur_dir.mkdir(parents=True, exist_ok=True)
+
+    #Change the current working directory to the directory
+    os.chdir(cur_dir)
+
     commodity_stratergy = CommodityStratergy(['dummy'])
     print("Starting")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 1    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 2    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 3    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 4    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 5    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 6    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 7    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 8    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 9    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 10    ")
-    commodity_stratergy.execute_strategy(['dummy'])
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 11    ")
-    commodity_stratergy.execute_strategy(['dummy'])
-'''
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+
+"""    
