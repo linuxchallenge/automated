@@ -146,7 +146,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
+                                self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
                                                   current_trade.loc[row_number, 'profit'])
 
                     elif alligator[0] == "downtrend":
@@ -169,8 +169,8 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
-                                                  current_trade.loc[row_number, 'profit'])
+                                self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
+                                            current_trade.loc[row_number, 'profit'])
                     else: # sideways
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.iloc[-1]['state'] == 'open':
@@ -180,7 +180,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                self.send_message(account, s, "p/l is {current_trade.loc[row_number, 'profit']}", \
+                                self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
                                                   current_trade.loc[row_number, 'profit'])
                                 if current_trade.iloc[-1]['trade_type'] == 'long':
                                     print ("Exit long trade")
