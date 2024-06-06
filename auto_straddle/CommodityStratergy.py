@@ -30,6 +30,18 @@ logging.getLogger().setLevel(logging.INFO)
 
 symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
+# Map symbol to lot
+symbol_to_lot = {
+    'CRUDEOIL': 10,
+    'NATURALGAS': 250,
+    'COPPER': 2500,
+    'GOLD': 100,
+    'LEAD': 1000,
+    'ZINC': 1000,
+    'ALUMINIUM': 1000,
+    'SILVER': 5000,
+}
+
 class CommodityStratergy:
     def __init__(self, accounts):
         self.accounts = accounts
@@ -146,6 +158,8 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[s]
                                 self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
                                                   current_trade.loc[row_number, 'profit'])
 
@@ -169,6 +183,8 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[s]
                                 self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
                                             current_trade.loc[row_number, 'profit'])
                     else: # sideways
@@ -180,6 +196,8 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[s]
                                 self.send_message(account, s, f"p/l is {current_trade.loc[row_number, 'profit']}", \
                                                   current_trade.loc[row_number, 'profit'])
                                 if current_trade.iloc[-1]['trade_type'] == 'long':

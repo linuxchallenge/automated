@@ -222,7 +222,7 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
 
 
 def execute_commity_stratergy(commodity_stratergy, accounts, place_order, account_details):
-     commodity_stratergy.execute_strategy(accounts, place_order, account_details)
+    commodity_stratergy.execute_strategy(accounts, place_order, account_details)
 
 
 # Funcion to dump option chain data to a CSV file with file name of symbol and date.

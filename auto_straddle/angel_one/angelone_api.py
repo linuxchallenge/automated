@@ -94,6 +94,58 @@ class angelone_api(object):
         elif exch_seg == 'NFO' and (instrumenttype == 'OPTSTK' or instrumenttype == 'OPTIDX'):
             return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
                         df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+        elif exch_seg == 'MCX' and (instrumenttype == 'FUTCOM'):
+            return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
+
+    def place_order_commodity(self, symbol, qty, buy_sell):
+        try:
+            tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X').iloc[0]
+            symbol = tokenInfo['symbol']
+            token = tokenInfo['token']
+            lot = int(tokenInfo['lotsize'])
+
+            if qty % lot != 0:
+                return -1
+
+            orderparams = {
+                "variety": "NORMAL",
+                "tradingsymbol": symbol,
+                "symboltoken": token,
+                "transactiontype": buy_sell,
+                "exchange": "MCX",
+                "ordertype": "MARKET",
+                "producttype": "CARRYFORWARD",
+                "duration": "DAY",
+                "quantity": qty
+            }
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+            try :
+                orderparams["price"] = 0
+                orderid = self.obj.placeOrder(orderparams)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            except Exception as e:
+                try:
+                    print("Error placing order, trying again")
+                    print(f"Error: {e}")
+                    #x = TelegramSend.telegram_send_api()
+
+                    # Send profit loss over telegramsend send_message
+                    #x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")
+                    time.sleep(2)
+                    orderid = self.obj.placeOrder(orderparams)
+                except Exception as e1:
+                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(f"Error executing place_order: {e1}")
+                    logging.error(f"Error executing place_order: {e1}")
+                    return -1
+
+            return orderid
+        except Exception as e:
+            #print("Order placement failed: {}".format(e.message))
+            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(f"Error executing place_order: {e}")
+            return -1
 
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
@@ -181,6 +233,21 @@ class angelone_api(object):
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
             return -1, -1
+
+
+'''
+
+# Print timestamp with seconds
+print("Starting")
+angel_obj = angelone_api()
+print(angel_obj)
+print("Object created")
+angel_obj.intializeSymbolTokenMap()
+print("Initialized")
+
+orderid = angel_obj.place_order_commodity('GOLD', 1, 'SELL')
+
+'''
 
 '''
 # Print timestamp with seconds

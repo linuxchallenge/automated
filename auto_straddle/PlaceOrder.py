@@ -20,6 +20,18 @@ logging_order.basicConfig(filename='/tmp/order.log', filemode='w',
 
 logging_order.getLogger().setLevel(logging_order.INFO)
 
+# Map commoidity to symbol
+commodity_to_symbol = {
+    'CRUDEOIL': 'CRUDEOILM',
+    'NATURALGAS': 'NATGASMINI',
+    'COPPER': 'COPPER',
+    'GOLD': 'GOLDM',
+    'LEAD': 'LEADMINI',
+    'SILVER': 'SILVERM',
+    'ZINC': 'ZINCMINI',
+    'ALUMINIUM': 'ALUMINI',
+}
+
 class PlaceOrder:
     obj_1 = None
 
@@ -37,10 +49,60 @@ class PlaceOrder:
 
 
     def place_buy_orders_commodity(self, account, symbol, qty):
-        pass
+
+        # Implementation of commodity buy orders
+        # Convert qty to integer
+        qty = int(qty)
+
+        print(f"Placing Sell order for account {account}: commodity {symbol}")
+        logging_order.info(f"Placing Sell order for commodity account {account} {symbol}")
+        order_id = 0
+
+        if account == 'deepti':
+            order_id = self.obj_1.place_order_commodity(symbol, qty, 'BUY')
+            if (order_id == -1):
+                order_id = self.obj_1.place_order_commodity(symbol, qty, 'BUY')
+
+        if (account == 'leelu'):
+            order_id = self.obj_2.place_order_commodity(symbol, qty, 'BUY')
+            if (order_id == -1):
+                order_id = self.obj_2.place_order_commodity(symbol, qty, 'BUY')
+
+        if (account == 'avanthi'):
+            order_id = self.obj_3.place_order_commodity(symbol, qty, 'BUY')
+            if (order_id == -1):
+                order_id = self.obj_3.place_order_commodity(symbol, qty, 'BUY')
+
+        logging_order.info(f"Order id for account: {order_id}")
+        return order_id
 
     def place_sell_orders_commodity(self, account, symbol, qty):
-        pass
+        # Implementation of commodity buy orders
+        # Convert qty to integer
+        qty = int(qty)
+
+        print(f"Placing Sell order for account {account}: commodity {symbol}")
+        logging_order.info(f"Placing Sell order for commodity account {account} {symbol}")
+        order_id = 0
+
+        if account == 'deepti':
+            order_id = self.obj_1.place_order_commodity(symbol, qty, 'SELL')
+            if (order_id == -1):
+                order_id = self.obj_1.place_order_commodity(symbol, qty, 'SELL')
+
+        if (account == 'leelu'):
+            order_id = self.obj_2.place_order_commodity(symbol, qty, 'SELL')
+            if (order_id == -1):
+                order_id = self.obj_2.place_order_commodity(symbol, qty, 'SELL')
+
+        if (account == 'avanthi'):
+            order_id = self.obj_3.place_order_commodity(symbol, qty, 'SELL')
+            if (order_id == -1):
+                order_id = self.obj_3.place_order_commodity(symbol, qty, 'SELL')
+
+        logging_order.info(f"Order id for account: {order_id}")
+        return order_id
+
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {

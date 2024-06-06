@@ -107,6 +107,62 @@ class fivepaise_api(object):
             return df.iloc[1]
         return df.iloc[0]
 
+    def get_commodity_symbol(self, symbol):
+        df = self.scrip_master_df
+
+        df = df[(df['SymbolRoot'] == symbol) & (df['ScripType'] == 'XX')]
+        # Sort the df by expiry date and get the first row
+        df = df.sort_values(by='Expiry')
+
+        # df.iloc[0]['expiry'] is befor current date retunr the next row
+        if df.iloc[0]['Expiry'] < datetime.now().strftime('%Y-%m-%d'):
+            return df.iloc[1]
+        return df.iloc[0]
+
+    def place_order_commodity(self, symbol, qty, buy_sell):
+        tokenInfo = self.get_commodity_symbol(symbol)
+
+        print("five paise place order")
+
+        symbol = tokenInfo['SymbolRoot']
+        token = tokenInfo['ScripCode']
+        lot = int(tokenInfo['LotSize'])
+
+        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+
+        if qty % lot != 0:
+            return -1
+        if buy_sell == 'BUY':
+            buy_sell = 'B'
+        else:
+            buy_sell = 'S'
+        try:
+            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='C', ExchangeType='C', \
+                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+            print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+        except Exception as e1:
+            try:
+                time.sleep(2)
+                print(f" Retry order Time: {datetime.now().strftime('%H:%M:%S')})")
+                print("Error placing order, trying again")
+
+                x = TelegramSend.telegram_send_api()
+
+                # Send profit loss over telegramsend send_message
+                x.send_message("-4008545231", f"Warning 5 paise {symbol} order Pls check")
+
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='C', ExchangeType='C', \
+                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+            except Exception as e2:
+                print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
+                print(f"Error executing place_order: {e2}")
+                logging.error("Error executing place_order: %s", e2)
+                return -1
+        return order_id['BrokerOrderID']
+
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
 
