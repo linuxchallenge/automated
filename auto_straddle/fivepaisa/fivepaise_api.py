@@ -23,6 +23,29 @@ import fivepaisa.credentials_2 as credentials_leelu
 import fivepaisa.credentials_3 as credentials_avanthi
 import TelegramSend
 
+commodity_to_symbol = {
+    'CRUDEOILM': 'CRUDEOIL',
+    'NATGASMINI': 'NATURALGAS',
+    'COPPER': 'COPPER',
+    'GOLDM': 'GOLD',
+    'LEADMINI': 'LEAD',
+    'SILVERM': 'SILVER',
+    'ZINCMINI': 'ZINC',
+    'ALUMINI': 'ALUMINIUM',
+}
+
+
+symbol_to_lot = {
+    'CRUDEOIL': 10,
+    'NATURALGAS': 250,
+    'COPPER': 2500,
+    'GOLD': 100,
+    'LEAD': 1000,
+    'ZINC': 1000,
+    'ALUMINIUM': 1000,
+    'SILVER': 5000,
+}
+
 class fivepaise_api(object):
 
     def __init__(self, account):
@@ -128,6 +151,8 @@ class fivepaise_api(object):
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
+        qty = qty * symbol_to_lot[commodity_to_symbol[symbol]]
+
         print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
         if qty % lot != 0:
@@ -137,7 +162,7 @@ class fivepaise_api(object):
         else:
             buy_sell = 'S'
         try:
-            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='C', ExchangeType='C', \
+            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                             ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
@@ -241,6 +266,18 @@ class fivepaise_api(object):
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
             return -1, -1
+
+
+"""
+print("Starting")
+angel_obj = fivepaise_api("leelu")
+print("Object created")
+#orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
+orderid = angel_obj.place_order_commodity('GOLDM', 1, 'BUY')
+print(orderid)
+
+"""
+
 
 """
 
