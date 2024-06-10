@@ -35,11 +35,11 @@ symbol_to_lot = {
     'CRUDEOIL': 10,
     'NATURALGAS': 250,
     'COPPER': 2500,
-    'GOLD': 100,
+    'GOLD': 10,
     'LEAD': 1000,
     'ZINC': 1000,
     'ALUMINIUM': 1000,
-    'SILVER': 5000,
+    'SILVER': 5,
 }
 
 class CommodityStratergy:
@@ -196,15 +196,19 @@ class CommodityStratergy:
                             if current_trade.iloc[-1]['trade_type'] == 'long':
                                 print ("Exit long trade")
                                 place_order.place_sell_orders_commodity(account, s, 1)
-                                current_trade.at[current_trade.index[-1], 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
-                                    current_trade.loc[row_number, 'entry_price'] 
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
+                                    current_trade.loc[row_number, 'entry_price']
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[s]
                                 self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                             else:
                                 print ("Exit short trade")
                                 place_order.place_buy_orders_commodity(account, s, 1)
-                                current_trade.at[current_trade.index[-1], 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[s]
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
 
