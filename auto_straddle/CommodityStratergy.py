@@ -193,7 +193,7 @@ class CommodityStratergy:
                             current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                             current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                             current_trade.loc[row_number, 'state'] = 'closed'
-                            if current_trade.iloc[-1]['trade_type'] == 'long':
+                            if current_trade.loc[row_number, 'trade_type'] == 'long':
                                 print ("Exit long trade")
                                 place_order.place_sell_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
