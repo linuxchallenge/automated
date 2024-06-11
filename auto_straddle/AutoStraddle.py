@@ -128,11 +128,7 @@ def main():
 
                 current_time_dt = datetime.now().time()
 
-                if current_time_dt < time_dt(8, 55):
-                    time.sleep(60)
-                    continue
-
-                if current_time_dt > time_dt(23, 50):
+                if current_time_dt < time_dt(9, 00):
                     time.sleep(60)
                     continue
 
