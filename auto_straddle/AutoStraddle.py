@@ -38,6 +38,13 @@ def main():
     accounts_commodity = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
+    current_time_dt = datetime.now().time()
+    if current_time_dt > time_dt(23, 45):
+        time.sleep(60)
+        print("Exiting the program.")
+        logging.info("Exiting the program.")
+        exit(1)
+
     logging.info("Starting the program, welcome to AutoStraddle")
 
     configuration.ConfigurationLoader.load_configuration()
