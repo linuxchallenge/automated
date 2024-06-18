@@ -150,13 +150,8 @@ class angelone_api(object):
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
         try:
-            df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
+            tokenInfo = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce).iloc[0]
 
-            if df.iloc[0]['Expiry'] < datetime.now().strftime('%Y-%m-%d'):
-                tokenInfo = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce).iloc[1]
-            else:
-                tokenInfo = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce).iloc[0]
-            
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
