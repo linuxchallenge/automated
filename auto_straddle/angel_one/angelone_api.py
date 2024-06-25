@@ -20,9 +20,9 @@ from SmartApi import SmartConnect  # or
 #from smartapi.smartConnect import SmartConnect
 import pyotp
 import login as l
-#import TelegramSend
+import TelegramSend
 #import credentials
-import credentials as credentials
+import angel_one.credentials as credentials
 
 
 
@@ -266,10 +266,10 @@ print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
 
-orderid = angel_obj.place_order('NIFTY', 50, 'SELL', 21300, 'PE')
+#orderid = angel_obj.place_order('NIFTY', 50, 'SELL', 21300, 'PE')
 
 # Print orderid type
-print(type(orderid))
+#print(type(orderid))
 
 
 #print("Nifty order placed with order id: {}".format(orderid))
