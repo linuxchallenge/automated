@@ -20,9 +20,9 @@ from SmartApi import SmartConnect  # or
 #from smartapi.smartConnect import SmartConnect
 import pyotp
 import login as l
-import TelegramSend
+#import TelegramSend
 #import credentials
-import angel_one.credentials as credentials
+import credentials as credentials
 
 
 
@@ -150,7 +150,14 @@ class angelone_api(object):
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
         try:
-            tokenInfo = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce).iloc[0]
+            df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
+            if df.empty:
+                return -1
+
+            if df.iloc[0]['expiry'] < datetime.strptime(datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d'):
+                tokenInfo = df.iloc[1]
+            else:
+                tokenInfo = df.iloc[0]
 
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
@@ -259,10 +266,10 @@ print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
 
-#orderid = angel_obj.place_order('NIFTY', 50, 'SELL', 21300, 'PE')
+orderid = angel_obj.place_order('NIFTY', 50, 'SELL', 21300, 'PE')
 
 # Print orderid type
-#print(type(orderid))
+print(type(orderid))
 
 
 #print("Nifty order placed with order id: {}".format(orderid))

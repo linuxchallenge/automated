@@ -148,7 +148,9 @@ def main():
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
-                time.sleep(60 - (after_loop_time - current_time))
+                time_to_sleep = 30 - (after_loop_time - current_time)
+                if (time_to_sleep > 0):
+                    time.sleep(time_to_sleep)
 
                 if current_time_dt > time_dt(23, 50):
                     print("Exiting the program.")
