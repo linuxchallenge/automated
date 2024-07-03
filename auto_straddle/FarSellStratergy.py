@@ -260,7 +260,7 @@ class FarSellStratergy:
                             df.to_csv(file_name, index=False)
 
                 return
-            elif current_time > time(9, 33):
+            elif current_time > time(9, 48):
                 # Execute strategy only after 9:30 AM
 
                 # Example: Print a message for demonstration purposes
