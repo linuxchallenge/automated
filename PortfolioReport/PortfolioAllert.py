@@ -64,7 +64,7 @@ path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQzOp6ERm8vCyYElR9dzDuOP
 #nifty_200_df = pd.read_csv('ind_nifty200list.csv')
 nifty_200_df = pd.read_csv(path)
 
-final_df = pd.DataFrame(columns=['Script Name', 'Daily', 'Daily Cross over', 'Weekly', 'Weekly Cross over', 'MACD Daily', 'MACD Weekly', 'Last traded', 'SL %', 'Percentage daily','Percentage Weekly'])
+final_df = pd.DataFrame(columns=['Script Name', 'Daily', 'Daily Cross over', 'Weekly', 'Weekly Cross over', 'Last traded', 'SL %', 'Percentage daily','Percentage Weekly'])
 x = PortfolioAllert()
 
 logging.warning("Running daly trend")
@@ -85,8 +85,6 @@ for index, row in nifty_200_df.iterrows():
         df = x.get_data(row["Symbol"], x.TimeFrame.WEEKLY)
         trend_analysis.append(x.compute_trend(df)[0])
         trend_analysis.append(x.compute_trend(df)[1])
-        trend_analysis.append(daily)
-        trend_analysis.append(x.macd_obj.macd_api(df))
         trend_analysis.append(df["Close"].iloc[-1:].tolist()[0])
         percent = (df["Close"].iloc[-1:].tolist()[0] - row["SL"]) / df["Close"].iloc[-1:].tolist()[0]
         percent = percent * 100
