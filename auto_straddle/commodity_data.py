@@ -59,7 +59,7 @@ class commodity_data:
     def timestamptodate(self, timestamp):
         return datetime.fromtimestamp(timestamp)
 
-    def historic_data(self, symbol):
+    def historic_data(self, symbol, daily = False):
         todate = datetime.now()
         fdate = todate - timedelta(days=60)
 
@@ -68,9 +68,14 @@ class commodity_data:
 
         expiry_date = self.symbolTokenMap[symbol]
 
-        url = 'https://priceapi.moneycontrol.com/techCharts/commodity/history?symbol=' \
-            + symbol + '_' + expiry_date + '_mcx&resolution=60&from=' + str(start) + \
-                '&to=' + str(end) + '&currencyCode=INR'
+        if not daily:
+            url = 'https://priceapi.moneycontrol.com/techCharts/commodity/history?symbol=' \
+                + symbol + '_' + expiry_date + '_mcx&resolution=60&from=' + str(start) + \
+                    '&to=' + str(end) + '&currencyCode=INR'
+        else:
+            url = 'https://priceapi.moneycontrol.com/techCharts/commodity/history?symbol=' \
+                + symbol + '_' + expiry_date + '_mcx&resolution=1D&from=' + str(start) + \
+                    '&to=' + str(end) + '&currencyCode=INR'
 
         hdr = {'User-Agent': 'Mozilla/5.0'}
 
@@ -107,40 +112,40 @@ cd = commodity_data()
 cd.intializeSymbolAndGetExpiryData()
 
 print("=====  GOLD ======")
-data = cd.historic_data('GOLD')
+data = cd.historic_data('GOLD', daily=True)
 print(data)
 print("=====  GOLD ======")
 
 print("=====  CRUDEOIL ======")
-data = cd.historic_data('CRUDEOIL')
+data = cd.historic_data('CRUDEOIL', daily=True)
 print(data)
 print("=====  CRUDEOIL ======")
 
 
 print("=====  NATURAL GAS ======")
-data = cd.historic_data('NATURALGAS')
+data = cd.historic_data('NATURALGAS', daily=True)
 print(data)
 print("=====  NATURAL GAS ======")
 
 print("=====  COPPER ======")
-data = cd.historic_data('COPPER')
+data = cd.historic_data('COPPER', daily=True)
 print(data)
 print("=====  COPPER ======")
 
 print("=====  LEAD ======")
-data = cd.historic_data('LEAD')
+data = cd.historic_data('LEAD', daily=True)
 print(data)
 print("=====  LEAD ======")
 
 
 print("=====  ZINC ======")
-data = cd.historic_data('ZINC')
+data = cd.historic_data('ZINC', daily=True)
 print(data)
 print("=====  ZINC ======")
 
 
 print("=====  ALUMINIUM ======")
-data = cd.historic_data('ALUMINIUM')
+data = cd.historic_data('ALUMINIUM', daily=True)
 print(data)
 print("=====  ALUMINIUM ======")
 
@@ -151,5 +156,4 @@ print(data)
 print("=====  SILVER ======")
 
 #print(expiry_date)
-
 """
