@@ -6,3 +6,7 @@ auto_straddle/angel_one/credentials.py
 auto_straddle/5paisa/credentials.py
 auto_straddle/fivepaisa/credentials_2.py
 auto_straddle/fivepaisa/credentials_3.py
+.idea/misc.xml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/inspectionProfiles/Project_Default.xml
