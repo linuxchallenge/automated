@@ -180,7 +180,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
-                                print ("Exit long trade " +  historic_data.iloc[-1]['close'] + current_trade.loc[row_number, 'exit_price'])
+                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 place_order.place_sell_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
@@ -196,7 +196,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
-                                print ("Exit short trade " +  historic_data.iloc[-1]['close'] + current_trade.loc[row_number, 'exit_price'])
+                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 place_order.place_buy_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
@@ -223,9 +223,9 @@ class CommodityStratergy:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
-                                print ("Exit short trade " +  historic_data.iloc[-1]['close'] + current_trade.loc[row_number, 'exit_price'])
+                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                             else:
-                                print ("Exit long trade " +  historic_data.iloc[-1]['close'] + current_trade.loc[row_number, 'exit_price'])
+                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
 
