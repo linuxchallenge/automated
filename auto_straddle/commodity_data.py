@@ -70,7 +70,7 @@ class commodity_data:
 
         if not daily:
             url = 'https://priceapi.moneycontrol.com/techCharts/commodity/history?symbol=' \
-                + symbol + '_' + expiry_date + '_mcx&resolution=60&from=' + str(start) + \
+                + symbol + '_' + expiry_date + '_mcx&resolution=30&from=' + str(start) + \
                     '&to=' + str(end) + '&currencyCode=INR'
         else:
             url = 'https://priceapi.moneycontrol.com/techCharts/commodity/history?symbol=' \
@@ -103,6 +103,20 @@ class commodity_data:
 
         intraday_data.dropna(inplace=True)
 
+        if not daily:
+            ohlc = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+            }
+
+            intraday_data.set_index('Date', inplace=True)
+            intraday_data = intraday_data.resample('60min', origin=00).apply(ohlc)
+            intraday_data.dropna(inplace=True)          
+            intraday_data.reset_index(inplace=True)  
+
+
         return intraday_data
 
 """
@@ -112,40 +126,40 @@ cd = commodity_data()
 cd.intializeSymbolAndGetExpiryData()
 
 print("=====  GOLD ======")
-data = cd.historic_data('GOLD', daily=True)
+data = cd.historic_data('GOLD')
 print(data)
 print("=====  GOLD ======")
 
 print("=====  CRUDEOIL ======")
-data = cd.historic_data('CRUDEOIL', daily=True)
+data = cd.historic_data('CRUDEOIL')
 print(data)
 print("=====  CRUDEOIL ======")
 
 
 print("=====  NATURAL GAS ======")
-data = cd.historic_data('NATURALGAS', daily=True)
+data = cd.historic_data('NATURALGAS')
 print(data)
 print("=====  NATURAL GAS ======")
 
 print("=====  COPPER ======")
-data = cd.historic_data('COPPER', daily=True)
+data = cd.historic_data('COPPER')
 print(data)
 print("=====  COPPER ======")
 
 print("=====  LEAD ======")
-data = cd.historic_data('LEAD', daily=True)
+data = cd.historic_data('LEAD')
 print(data)
 print("=====  LEAD ======")
 
 
 print("=====  ZINC ======")
-data = cd.historic_data('ZINC', daily=True)
+data = cd.historic_data('ZINC')
 print(data)
 print("=====  ZINC ======")
 
 
 print("=====  ALUMINIUM ======")
-data = cd.historic_data('ALUMINIUM', daily=True)
+data = cd.historic_data('ALUMINIUM')
 print(data)
 print("=====  ALUMINIUM ======")
 
