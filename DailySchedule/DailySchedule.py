@@ -77,7 +77,11 @@ class DailySchedule:
         if base is None:
             base = df["Close"].iloc[-2:].tolist()[0]
         percent = (df["Close"].iloc[-1:].tolist()[0] - base) / df["Close"].iloc[-1:].tolist()[0]
-        return percent * 100
+        percent = percent * 100
+        if percent < 3:
+            return "Yes"
+        else:
+            return "No"
 
     def teardown(self):
         pass
