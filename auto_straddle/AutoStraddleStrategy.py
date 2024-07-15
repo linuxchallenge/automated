@@ -542,8 +542,8 @@ class AutoStraddleStrategy:
             # Multiply the total profit or loss by the factor based on the symbol
             total_profit_loss *= multiplication_factor.get(symbol, 1)
 
-            print(f"Total profit or loss: {total_profit_loss}")
-            logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
+            #print(f"Total profit or loss: {total_profit_loss}")
+            #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
 
             # Check if the total loss is more than 2500
             return total_profit_loss
@@ -662,8 +662,8 @@ class AutoStraddleStrategy:
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
         if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
-            print(f"Profit amount: {profit_amount} is greater than 2500")
-            logging.info(f"Profit amount: {profit_amount} is greater than 2500")
+            #print(f"Profit amount: {profit_amount} is greater than 2000")
+            #logging.info(f"Profit amount: {profit_amount} is greater than 2000")
             return False
 
         # sold_options_info has more than 1 row

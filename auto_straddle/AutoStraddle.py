@@ -184,7 +184,7 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
         strike_data = auto_straddle_strategy.get_strike_price(accounts, symbol)
         pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts, symbol)
 
-        print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
+        #print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
 
         # Get option chain data for the specified symbol
         option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
@@ -204,10 +204,10 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
                         (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                         & (account_details['Stratergy'] == 'as')]['quantity'].values[0]
                     if quantity > 0:
-                        print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
+                        #print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
                         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                 quantity, place_order)
-                        print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
+                        #print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
 
                 if account_details.loc[
                     (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
@@ -216,10 +216,10 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
                         (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
                         & (account_details['Stratergy'] == 'fr')]['quantity'].values[0]
                     if quantity > 0:
-                        print("==== Executing far sell strategy for account: " + account + " " + symbol)
+                        #print("==== Executing far sell strategy for account: " + account + " " + symbol)
                         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                     quantity, place_order)
-                        print("==== Exit far sell strategy for account: " + account + " " + symbol)
+                        #print("==== Exit far sell strategy for account: " + account + " " + symbol)
 
         else:
             print("Option chain data is not available for the symbol: " + symbol)

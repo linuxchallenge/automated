@@ -155,7 +155,7 @@ class FarSellStratergy:
 
     def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj):
 
-        print("Executing far sell strategy" , account , symbol , quantity)
+        #print("Executing far sell strategy" , account , symbol , quantity)
         try:
             if account not in self.accounts:
                 raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
@@ -209,7 +209,7 @@ class FarSellStratergy:
                             'closed'
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
                             datetime.now()
-                        print(f"Auto Straddle trade closed for account {account}")
+                        #print(f"Auto Straddle trade closed for account {account}")
                         logging.info(
                             f"Auto Straddle trade closed for account {account} {symbol} {option_chain_analyzer['spot_price']}\
                                 {option_chain_analyzer['pe_to_ce_ratio']}")
@@ -264,7 +264,7 @@ class FarSellStratergy:
                 # Execute strategy only after 9:30 AM
 
                 # Example: Print a message for demonstration purposes
-                print(f"Selling strangle call and put options for account {account} and symbol {symbol}")
+                #print(f"Selling strangle call and put options for account {account} and symbol {symbol}")
                 # logging.info(f"Selling strangle call and put options for account {account} and symbol {symbol}")
 
                 # Check if the file exists for the given account, symbol, and date
@@ -275,13 +275,13 @@ class FarSellStratergy:
 
                     # If the trade is closed, check if the conditions to re-enter the trade are met
                     if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
-                        print(
-                            f"Auto Straddle trade is still open for account {option_chain_analyzer['prev_strangle_ce_strike']}")
-                        print(
-                            f"Auto Straddle trade is still open for account {option_chain_analyzer['prev_strangle_pe_strike']}")
+                        #print(
+                        #    f"Auto Straddle trade is still open for account {option_chain_analyzer['prev_strangle_ce_strike']}")
+                        #print(
+                        #    f"Auto Straddle trade is still open for account {option_chain_analyzer['prev_strangle_pe_strike']}")
                         # logging.info(f"Auto Straddle CE trade is still open for account {option_chain_analyzer['given_ce_strike']}")
                         # logging.info(f"Auto Straddle PE trade is still open for account {option_chain_analyzer['given_pe_strike']}")
-                        print(option_chain_analyzer['prev_ce_strangle_price'] , option_chain_analyzer['prev_pe_strangle_price'])
+                        #print(option_chain_analyzer['prev_ce_strangle_price'] , option_chain_analyzer['prev_pe_strangle_price'])
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
                             option_chain_analyzer['prev_ce_strangle_price']
@@ -293,7 +293,7 @@ class FarSellStratergy:
                         # Check if the conditions to close the trade are met
                         if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
                                 or profit_or_loss < self.loss_limit(symbol):
-                            print(option_chain_analyzer['prev_ce_strangle_price'], option_chain_analyzer['prev_pe_strangle_price'])
+                            #print(option_chain_analyzer['prev_ce_strangle_price'], option_chain_analyzer['prev_pe_strangle_price'])
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
@@ -315,9 +315,9 @@ class FarSellStratergy:
                                 'closed'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = \
                                 datetime.now()
-                            print(f"Auto Straddle trade closed for account {account}")
-                            logging.info(f"Auto Straddle trade closed for account {account} {symbol} \
-                                {option_chain_analyzer['spot_price']} {option_chain_analyzer['pe_to_ce_ratio']}")
+                            #print(f"Auto Straddle trade closed for account {account}")
+                            #logging.info(f"Auto Straddle trade closed for account {account} {symbol} \
+                            #    {option_chain_analyzer['spot_price']} {option_chain_analyzer['pe_to_ce_ratio']}")
                         else:
                             # Conditions to close the trade are not met
                             print(f"Auto Straddle trade is still open for account {account}")
@@ -521,8 +521,8 @@ class FarSellStratergy:
             # Multiply the total profit or loss by the factor based on the symbol
             total_profit_loss *= multiplication_factor.get(symbol, 1)
 
-            print(f"Total profit or loss: {total_profit_loss}")
-            logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
+            #print(f"Total profit or loss: {total_profit_loss}")
+            #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
 
             # Check if the total loss is more than 3000
             return total_profit_loss
@@ -598,7 +598,7 @@ class FarSellStratergy:
             # Save data_frame to CSV with the current date appended to the symbol
             info.to_csv(file_name, index=False)
 
-            print(f"Sold options information stored in {file_name}")
+            #print(f"Sold options information stored in {file_name}")
             # logging.info(f"Sold options information stored in {file_name}")
 
         except Exception as e:
@@ -626,8 +626,8 @@ class FarSellStratergy:
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
         if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
-            print(f"Profit amount: {profit_amount} is greater than 500")
-            logging.info(f"Profit amount: {profit_amount} is greater than 500")
+            #print(f"Profit amount: {profit_amount} is greater than 500")
+            #logging.info(f"Profit amount: {profit_amount} is greater than 500")
             return False
 
         # sold_options_info has more than 1 row
