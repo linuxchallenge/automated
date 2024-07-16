@@ -320,8 +320,9 @@ class FarSellStratergy:
                             #    {option_chain_analyzer['spot_price']} {option_chain_analyzer['pe_to_ce_ratio']}")
                         else:
                             # Conditions to close the trade are not met
-                            print(f"Auto Straddle trade is still open for account {account}")
+                            #print(f"Auto Straddle trade is still open for account {account}")
                             # logging.info(f"Auto Straddle trade is still open for account {account}")
+                            pass
                     elif existing_sold_options_info.iloc[-1]['trade_state'] == 'closed':
                         # Check if the conditions to re-enter the trade are met
                         if self.should_reenter_trade(existing_sold_options_info):
