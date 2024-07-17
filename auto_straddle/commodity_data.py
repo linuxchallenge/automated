@@ -11,18 +11,66 @@
 # pylint: disable=C0413
 # pylint: disable=W0718
 
+import random
 import time
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
+from tvDatafeed import Interval, TvDatafeed
 
 class commodity_data:
 
     # define different comodity data
     symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
+    use_source = "tv"  # tv or mc
+
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
+
+        #username = 'cool_adi52002@rediffmail.com'
+        #password = 'CrazyTrading12@'
+        #username = 'demand_adi3890@rediffmail.com'
+        #password = 'CrazyTradingToday12@'
+
+        # Have multiple set of credentials stored in a list
+        credentials = [
+            {'username': 'bocaki6537@tiervio.com', 'password': 'TradingIsAmazing1@'},
+            {'username': 'muhume@citmo.net', 'password': 'WhatAWorldThisIs1@'},
+            {'username': 'mifxda4u6w@hellomailo.net', 'password': 'TheCruelTradingWord3$'},
+            {'username': '3mvzbkoy61@gonetor.com', 'password': 'TodayIsAmazingDay1@'},
+            {'username': 'hgggg', 'password': 'TodayWasAmazingDay7@'},
+            {'username': 'cool_adi52002@rediffmail.com', 'password':'CrazyTrading12@'},
+            {'username': 'demand_adi3890@rediffmail.com', 'password':'CrazyTradingToday12@'}
+        ]
+        
+        # Initialize the tv datafeed
+        # Randomly choose a set of credentials
+        for _ in range(5):
+            credentials12 = random.choice(credentials)
+            username = credentials12['username']
+            password = credentials12['password']
+            print(f"Using credentials: {username}")
+            print(f"Using credentials: {password}")
+
+            self.tv_obj = TvDatafeed(username, password)
+
+            if self.tv_obj.token != 'unauthorized_user_token':
+                break
+
+            # sleep for 3 seconds before retrying
+            time.sleep(5)
+
+            # If it fails 5 times, then switch self.use_source to mc
+            if _ == 4:
+                self.use_source = "mc"
+                print("Switching to MC as TV Datafeed failed")
+                break
+
+        print("TV Datafeed initialized " + self.tv_obj.token)
+
+    def change_source(self, source):
+        self.use_source = source
 
     def intializeSymbolAndGetExpiryData(self):
         try:
@@ -58,8 +106,41 @@ class commodity_data:
 
     def timestamptodate(self, timestamp):
         return datetime.fromtimestamp(timestamp)
-
+    
     def historic_data(self, symbol, daily = False):
+        if self.use_source == "tv":
+            return self.historic_data_tv(symbol, daily)
+        return self.historic_data_mc(symbol, daily)
+
+    def historic_data_tv(self, symbol, daily = False):
+        if not daily:
+            tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_1_hour, n_bars=500, fut_contract=1)
+        else:
+            tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_daily, n_bars=500, fut_contract=1)
+
+        # Drop symbol column
+        tv_data = tv_data.drop(columns=['symbol'])
+
+        # datetime column make non index
+        tv_data['datetime'] = tv_data.index
+
+        # Rename datetime column to Date
+        tv_data = tv_data.rename(columns={'datetime': 'Date'})
+
+        # Covert datetime from UTC to IST
+        tv_data['Date'] = tv_data['Date'].dt.tz_localize(None)
+
+        tv_data = tv_data.drop(columns='volume')
+
+        #tv_data = tv_data.reset_index().rename(columns={'index': 'Date'})
+
+        # Drop datetime column and make Date as index
+        tv_data = tv_data.set_index('Date')
+
+        return tv_data
+
+
+    def historic_data_mc(self, symbol, daily = False):
         todate = datetime.now()
         fdate = todate - timedelta(days=60)
 

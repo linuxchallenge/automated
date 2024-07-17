@@ -118,7 +118,7 @@ class CommodityStratergy:
 
                 alligator_daily, _, _ = self.get_alligator_fractal(historic_data_daily)
 
-                print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}")
+                print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
 
                 print(f"Symbol: {s}, close: {historic_data.iloc[-1]['close']}")
 
