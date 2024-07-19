@@ -132,10 +132,11 @@ class commodity_data:
 
         tv_data = tv_data.drop(columns='volume')
 
-        #tv_data = tv_data.reset_index().rename(columns={'index': 'Date'})
+        # Drop datetime as index
+        tv_data = tv_data.reset_index(drop=True)
 
-        # Drop datetime column and make Date as index
-        tv_data = tv_data.set_index('Date')
+        # Put Date at first column
+        tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
 
         return tv_data
 
