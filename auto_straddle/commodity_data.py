@@ -28,6 +28,8 @@ class commodity_data:
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
 
+        self.tv_obj = None
+
         #username = 'cool_adi52002@rediffmail.com'
         #password = 'CrazyTrading12@'
         #username = 'demand_adi3890@rediffmail.com'
@@ -106,11 +108,11 @@ class commodity_data:
 
     def timestamptodate(self, timestamp):
         return datetime.fromtimestamp(timestamp)
-    
+
     def historic_data(self, symbol, daily = False):
         if self.use_source == "tv":
             return self.historic_data_tv(symbol, daily)
-        return self.historic_data_mc(symbol, daily)
+        return self.historic_data_investing(symbol, daily)
 
     def historic_data_tv(self, symbol, daily = False):
         if not daily:
@@ -139,6 +141,103 @@ class commodity_data:
         tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
 
         return tv_data
+
+
+    def historic_data_investing(self, symbol, daily = False):
+        # Map symbol to ID
+        symbol_id_map = {
+            'CRUDEOIL': '49774',
+            'NATURALGAS': '49787',
+            'COPPER': '40015',
+            'GOLD': '49778',
+            'LEAD': '49784',
+            'ZINC': '49794',
+            'ALUMINIUM': '40015',
+            'SILVER': '49791'
+        }
+
+        # Define headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://www.investing.com',
+            'Connection': 'keep-alive',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Origin': 'https://www.investing.com',
+            'Host': 'api.investing.com'
+        }
+
+        # Define URL
+        if not daily:
+            url = f'https://api.investing.com/api/financialdata/{symbol_id_map[symbol]}/historical/chart/?interval=PT30M&pointscount=160'
+        else:
+            url = f'https://api.investing.com/api/financialdata/{symbol_id_map[symbol]}/historical/chart/?interval=PT1D&pointscount=160'
+
+        print(f"Fetching data from URL: {url}")
+
+        # Send a GET request to the URL with headers
+        response = requests.get(url, headers=headers, timeout=50)
+
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the response JSON
+            data = response.json()
+
+            # Extract relevant data for the DataFrame
+            if 'data' in data:
+
+                # Convert JSON data to DataFrame
+                df = pd.DataFrame(data['data'])
+
+                # Print the columns to inspect
+                print("Original columns:", df.columns)
+
+                # Drop the last column
+                df = df.iloc[:, :-1]
+
+                # Ensure the DataFrame has the expected number of columns
+                if len(df.columns) == 6:
+                    # Rename columns
+                    df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+
+                    # Convert timestamp from epoch to datetime
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+                    # Convert timestamp from UTC to IST
+                    df['timestamp'] = df['timestamp'] + timedelta(hours=5, minutes=30)
+
+                    # Rename timestamp to Date
+                    df = df.rename(columns={'timestamp': 'Date'})
+
+                    # Drop volume column
+                    df = df.drop(columns='volume')
+
+                    df.dropna(inplace=True)
+
+                    if not daily:
+                        ohlc = {
+                            'open': 'first',
+                            'high': 'max',
+                            'low': 'min',
+                            'close': 'last',
+                        }
+
+                        df.set_index('Date', inplace=True)
+                        df = df.resample('60min', origin=00).apply(ohlc)
+                        df.dropna(inplace=True)
+                        df.reset_index(inplace=True)
+                else:
+                    print(f"Unexpected number of columns: {len(df.columns)}")
+            else:
+                print("No 'data' field in the JSON response.")
+                return self.historic_data_mc(symbol, daily)
+        else:
+            print(f"Failed to fetch data. Status code: {response.status_code}")
+            return self.historic_data_mc(symbol, daily)
+
+        return df
 
 
     def historic_data_mc(self, symbol, daily = False):
