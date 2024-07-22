@@ -111,7 +111,11 @@ class commodity_data:
 
     def historic_data(self, symbol, daily = False):
         if self.use_source == "tv":
-            return self.historic_data_tv(symbol, daily)
+            try:
+                return self.historic_data_tv(symbol, daily)
+            except Exception as e:
+                print(f"Error executing historic_data: {e}")
+                return self.historic_data_investing(symbol, daily)
         return self.historic_data_investing(symbol, daily)
 
     def historic_data_tv(self, symbol, daily = False):
