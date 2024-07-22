@@ -45,7 +45,7 @@ class commodity_data:
             {'username': 'cool_adi52002@rediffmail.com', 'password':'CrazyTrading12@'},
             {'username': 'demand_adi3890@rediffmail.com', 'password':'CrazyTradingToday12@'}
         ]
-        
+
         # Initialize the tv datafeed
         # Randomly choose a set of credentials
         for _ in range(5):
@@ -298,8 +298,8 @@ class commodity_data:
 
             intraday_data.set_index('Date', inplace=True)
             intraday_data = intraday_data.resample('60min', origin=00).apply(ohlc)
-            intraday_data.dropna(inplace=True)          
-            intraday_data.reset_index(inplace=True)  
+            intraday_data.dropna(inplace=True)
+            intraday_data.reset_index(inplace=True)
 
 
         return intraday_data
