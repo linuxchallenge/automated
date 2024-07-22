@@ -144,7 +144,11 @@ def main():
 
                 execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details)
 
-                execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
+                try:
+                    execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second

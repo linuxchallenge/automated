@@ -17,13 +17,14 @@ from datetime import datetime, timedelta
 import pandas as pd
 import requests
 from tvDatafeed import Interval, TvDatafeed
+import pytz
 
 class commodity_data:
 
     # define different comodity data
     symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
-    use_source = "tv"  # tv or mc
+    use_source = "up"  # tv or mc
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
@@ -69,6 +70,12 @@ class commodity_data:
                 print("Switching to MC as TV Datafeed failed")
                 break
 
+        fileUrl ='https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz'
+        self.symboldf = pd.read_csv(fileUrl)
+        self.symboldf['expiry'] = pd.to_datetime(self.symboldf['expiry']).apply(lambda x: x.date())
+        self.symboldf = self.symboldf[self.symboldf.exchange == 'MCX_FO']
+        self.symboldf = self.symboldf[self.symboldf.strike == 0]
+        self.use_source = "up"
         print("TV Datafeed initialized " + self.tv_obj.token)
 
     def change_source(self, source):
@@ -116,6 +123,8 @@ class commodity_data:
             except Exception as e:
                 print(f"Error executing historic_data: {e}")
                 return self.historic_data_investing(symbol, daily)
+        elif self.use_source == "up":
+            return self.historic_data_upstox(symbol, daily)
         return self.historic_data_investing(symbol, daily)
 
     def historic_data_tv(self, symbol, daily = False):
@@ -304,7 +313,107 @@ class commodity_data:
 
         return intraday_data
 
+    def historic_data_upstox(self, symbol, isDaily = False):
+        try:
+            print("Fetching data from Upstox")
+            TIME_ZONE = pytz.timezone('Asia/Kolkata')
+
+            if symbol == 'CRUDEOIL':
+                symbol = 'CRUDE OIL'
+
+            # From self.symboldf get all the tokens for the given symbol
+            token = self.symboldf[self.symboldf.name == symbol]
+
+            # Sort tokens by expiry date
+            token = token.sort_values(by='expiry', ascending=True)
+
+            # Get the first token
+            token = token.iloc[0]['instrument_key']
+
+            if isDaily:
+                fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=100)) .strftime("%Y-%m-%d")
+                todate = datetime.now(TIME_ZONE).strftime("%Y-%m-%d")
+                url = f'https://api.upstox.com/v2/historical-candle/{token}/day/{todate}/{fromDate}'
+            else:
+                fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=20)) .strftime("%Y-%m-%d")
+                todate = datetime.now(TIME_ZONE).strftime("%Y-%m-%d")
+                url = f'https://api.upstox.com/v2/historical-candle/intraday/{token}/30minute'
+                url_history = f'https://api.upstox.com/v2/historical-candle/{token}/30minute/{todate}/{fromDate}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': 'https://api.upstox.com',
+                'Connection': 'keep-alive'
+            }
+
+            res = requests.get(url,headers=headers, params={},timeout=5.0)
+            candleRes = res.json()
+
+            if 'data' in candleRes and 'candles' in candleRes['data'] and  candleRes['data']['candles']:
+                candleData = pd.DataFrame(candleRes['data']['candles'])
+                candleData.columns = ['date','open','high','low', 'close','vol','oi']
+                candleData['date'] = pd.to_datetime(candleData['date']).dt.tz_convert('Asia/Kolkata')
+
+                # Drop vol and oi columns
+                candleData = candleData.drop(['vol','oi'], axis=1)
+
+                # From candleData['date'] remove time zone info
+                candleData = candleData.assign(date=candleData['date'].dt.tz_localize(None))
+
+                # Sort by date
+                candleData = candleData.sort_values(by='date', ascending=True)
+                # Reverse the index order
+                candleData = candleData.reset_index(drop=True)
+
+            else:
+                print('No data',candleRes)
+
+            if isDaily is False:
+                res = requests.get(url_history,headers=headers, params={},timeout=5.0)
+                candleRes = res.json()
+
+                if 'data' in candleRes and 'candles' in candleRes['data'] and  candleRes['data']['candles']:
+                    candleData_min = pd.DataFrame(candleRes['data']['candles'])
+                    candleData_min.columns = ['date','open','high','low', 'close','vol','oi']
+                    candleData_min['date'] = pd.to_datetime(candleData_min['date']).dt.tz_convert('Asia/Kolkata')
+
+                    # Drop vol and oi columns
+                    candleData_min = candleData_min.drop(['vol','oi'], axis=1)
+
+                    # From candleData['date'] remove time zone info
+                    candleData_min = candleData_min.assign(date=candleData_min['date'].dt.tz_localize(None))
+
+                    # Reverse the data
+                    candleData_min = candleData_min.sort_values(by='date', ascending=True)
+
+                    # Merge candleData_min and candleData
+                    candleData = pd.concat([candleData_min, candleData], ignore_index=True)
+
+                    ohlc = {
+                        'open': 'first',
+                        'high': 'max',
+                        'low': 'min',
+                        'close': 'last',
+                    }
+
+                    candleData.set_index('date', inplace=True)
+                    candleData = candleData.resample('60min', origin=00).apply(ohlc)
+                    candleData.dropna(inplace=True)
+                    candleData.reset_index(inplace=True)
+
+                else:
+                    print('No data',candleRes)
+
+        except Exception as e:
+            print(f"Error executing historic_data_upstox: {e}")
+
+        # Rename date column to Date
+        candleData = candleData.rename(columns={'date': 'Date'})
+        return candleData
+
 """
+
 # test code
 cd = commodity_data()
 #expiry_date = cd.get_expiry_date('CRUDEOIL')
