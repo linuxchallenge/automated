@@ -24,7 +24,7 @@ import TelegramSend
 #import credentials
 import angel_one.credentials as credentials
 
-
+logger = logging.getLogger(__name__)
 
 class angelone_api(object):
 
@@ -127,6 +127,7 @@ class angelone_api(object):
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
+                    logger.error(f"Error executing place_order again: {e}")
                     print(f"Error: {e}")
                     #x = TelegramSend.telegram_send_api()
 
@@ -145,6 +146,7 @@ class angelone_api(object):
             #print("Order placement failed: {}".format(e.message))
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing place_order: {e}")
+            logging.error(f"Error executing place_order: {e}")
             return -1
 
 
@@ -187,6 +189,7 @@ class angelone_api(object):
                 try:
                     print("Error placing order, trying again")
                     print(f"Error: {e}")
+                    logger.error(f"Error executing place_order again: {e}")
                     x = TelegramSend.telegram_send_api()
 
                     # Send profit loss over telegramsend send_message
@@ -204,6 +207,7 @@ class angelone_api(object):
             #print("Order placement failed: {}".format(e.message))
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing place_order: {e}")
+            logger.error(f"Error executing place_order: {e}")
             return -1
 
     def get_order_status(self, order_id):
@@ -240,6 +244,7 @@ class angelone_api(object):
         except Exception as e:
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
+            logger.error(f"Error executing get_order_status: {e}")
             return -1, -1
 
 

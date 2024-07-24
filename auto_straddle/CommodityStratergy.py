@@ -23,10 +23,7 @@ import commodity_data
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
 
-logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
-
-logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
@@ -99,6 +96,7 @@ class CommodityStratergy:
                     continue
 
                 print(f"Processing symbol: {s}")
+                logger.info(f"Processing symbol: {s}")
 
                 # Get the historic data
                 historic_data = self.commodity_data.historic_data(s)
@@ -119,6 +117,7 @@ class CommodityStratergy:
                 alligator_daily, _, _ = self.get_alligator_fractal(historic_data_daily)
 
                 print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
+                logger.info(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
 
                 print(f"Symbol: {s}, close: {historic_data.iloc[-1]['close']}")
 
@@ -126,6 +125,7 @@ class CommodityStratergy:
                 for account in accounts:
 
                     print(f"Processing account: {account}")
+                    logging.info(f"Processing account: {account}")
 
                     # Get cvs file with account name, month and year in the file name
                     file_name = f'csv/Commodity-{account}.csv'
@@ -151,7 +151,8 @@ class CommodityStratergy:
                     if alligator_daily[0] == "uptrend":
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] > bullish:
-                                print ("Enter long trade")
+                                print("Enter long trade")
+                                logging.info("Enter long trade")
                                 new_row = {'Symbol': s, 'trade_type': ['long'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : 0, 'enter_order_state': 'open', 'exit_orderid': 0, 'exit_order_state': 'none', \
@@ -163,6 +164,7 @@ class CommodityStratergy:
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] < bearish:
                                 print ("Enter short trade")
+                                logging.info("Enter short trade")
                                 place_order.place_sell_orders_commodity(account, s, 1)
                                 new_row = {'Symbol': s, 'trade_type': ['short'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
@@ -181,6 +183,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                logging.info("Exit long trade")
                                 place_order.place_sell_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
@@ -197,6 +200,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                logging.info("Exit short trade")
                                 place_order.place_buy_orders_commodity(account, s, 1)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
@@ -224,8 +228,10 @@ class CommodityStratergy:
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                logging.info("Exit short trade")
                             else:
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                logging.info("Exit long trade")
                                 self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
 
@@ -233,8 +239,10 @@ class CommodityStratergy:
                         current_trade.to_csv(file_name, index=False)
 
                     print(f"Processed account: {account}")
+                    logging.info(f"Processed account: {account}")
 
                 print(f"Processing symbol: {s}")
+                logging.info(f"Processing symbol: {s}")
 
                 after_loop_time = datetime.now()
 

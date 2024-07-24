@@ -11,14 +11,11 @@
 # pylint: disable=C0325
 # pylint: disable=W0201
 
-import logging as logging_order
+import logging
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_api
 
-logging_order.basicConfig(filename='/tmp/order.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
-
-logging_order.getLogger().setLevel(logging_order.INFO)
+logger = logging.getLogger(__name__)
 
 # Map commoidity to symbol
 commodity_to_symbol = {
@@ -55,7 +52,7 @@ class PlaceOrder:
         qty = int(qty)
 
         print(f"Placing Sell order for account {account}: commodity {symbol}")
-        logging_order.info(f"Placing Sell order for commodity account {account} {symbol}")
+        logging.info(f"Placing Sell order for commodity account {account} {symbol}")
         order_id = 0
 
         if account == 'deepti':
@@ -73,7 +70,7 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_3.place_order_commodity(symbol, qty, 'BUY')
 
-        logging_order.info(f"Order id for account: {order_id}")
+        logging.info(f"Order id for account: {order_id}")
         return order_id
 
     def place_sell_orders_commodity(self, account, symbol, qty):
@@ -82,7 +79,7 @@ class PlaceOrder:
         qty = int(qty)
 
         print(f"Placing Sell order for account {account}: commodity {symbol}")
-        logging_order.info(f"Placing Sell order for commodity account {account} {symbol}")
+        logging.info(f"Placing Sell order for commodity account {account} {symbol}")
         order_id = 0
 
         if account == 'deepti':
@@ -100,7 +97,7 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_3.place_order_commodity(symbol, qty, 'SELL')
 
-        logging_order.info(f"Order id for account: {order_id}")
+        logging.info(f"Order id for account: {order_id}")
         return order_id
 
 
@@ -116,7 +113,7 @@ class PlaceOrder:
         qty = int(qty)
 
         print(f"Placing Sell order for account {account}: option with strike price {atm_ce_strike}")
-        logging_order.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
+        logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
         order_id = 0
 
         if account == 'deepti':
@@ -134,7 +131,7 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
 
-        logging_order.info(f"Order id for account: {order_id}")
+        logging.info(f"Order id for account: {order_id}")
         return order_id
 
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
@@ -149,7 +146,7 @@ class PlaceOrder:
         qty = int(qty)
 
         print(f"Closing order for account {account}: option with strike price {atm_ce_strike}")
-        logging_order.info(f"Closing order for account {account}: option with strike price {atm_ce_strike} {symbol}")
+        logging.info(f"Closing order for account {account}: option with strike price {atm_ce_strike} {symbol}")
         order_id = 0
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
@@ -166,13 +163,13 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
-        logging_order.info(f"Order id for close account: {order_id}")
+        logging.info(f"Order id for close account: {order_id}")
 
         return order_id
 
     def order_status(self, account, order_id, old_price):
         print(f"Order status for order id {order_id}")
-        logging_order.info(f"Order status for order id {order_id}")
+        logging.info(f"Order status for order id {order_id}")
         order_status = ''
         average_price = 0
         if (account == 'deepti'):

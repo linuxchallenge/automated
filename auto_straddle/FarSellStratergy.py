@@ -20,10 +20,7 @@ import pandas as pd
 import TelegramSend
 import configuration
 
-logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
-
-logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
@@ -80,7 +77,6 @@ class FarSellStratergy:
 
         error_path = self.get_error_options_file_path(account, symbol)
         if os.path.exists(error_path):
-            logging.info(f"Critical error far sell so returing {account} {symbol}")
             return False
 
         # Check if the trade is executed
@@ -395,9 +391,7 @@ class FarSellStratergy:
                                 [existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
                         else:
                             # Conditions to re-enter the trade are not met
-                            print(f"Auto Straddle trade is still closed for account {account}")
-                            logging.info(f"Auto Straddle trade is still closed for account {account}")
-
+                            pass
                 else:
                     # If the file doesn't exist, create a new sold_options_info
                     existing_sold_options_info = pd.DataFrame()

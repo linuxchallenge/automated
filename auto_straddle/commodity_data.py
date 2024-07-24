@@ -10,7 +10,7 @@
 # pylint: disable=C0200
 # pylint: disable=C0413
 # pylint: disable=W0718
-
+import logging
 import random
 import time
 from datetime import datetime, timedelta
@@ -18,6 +18,9 @@ import pandas as pd
 import requests
 from tvDatafeed import Interval, TvDatafeed
 import pytz
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class commodity_data:
 
@@ -66,8 +69,9 @@ class commodity_data:
 
             # If it fails 5 times, then switch self.use_source to mc
             if _ == 4:
-                self.use_source = "mc"
-                print("Switching to MC as TV Datafeed failed")
+                self.use_source = "up"
+                print("Switching to UP as TV Datafeed failed")
+                logging.error("Switching to UP as TV Datafeed failed")
                 break
 
         fileUrl ='https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz'
@@ -75,7 +79,7 @@ class commodity_data:
         self.symboldf['expiry'] = pd.to_datetime(self.symboldf['expiry']).apply(lambda x: x.date())
         self.symboldf = self.symboldf[self.symboldf.exchange == 'MCX_FO']
         self.symboldf = self.symboldf[self.symboldf.strike == 0]
-        self.use_source = "up"
+        #self.use_source = "up"
         print("TV Datafeed initialized " + self.tv_obj.token)
 
     def change_source(self, source):
@@ -117,15 +121,20 @@ class commodity_data:
         return datetime.fromtimestamp(timestamp)
 
     def historic_data(self, symbol, daily = False):
-        if self.use_source == "tv":
-            try:
-                return self.historic_data_tv(symbol, daily)
-            except Exception as e:
-                print(f"Error executing historic_data: {e}")
-                return self.historic_data_investing(symbol, daily)
-        elif self.use_source == "up":
-            return self.historic_data_upstox(symbol, daily)
-        return self.historic_data_investing(symbol, daily)
+        try:
+            if self.use_source == "tv":
+                try:
+                    return self.historic_data_tv(symbol, daily)
+                except Exception as e:
+                    print(f"Error executing historic_data: {e}")
+                    return self.historic_data_upstox(symbol, daily)
+            elif self.use_source == "up":
+                return self.historic_data_upstox(symbol, daily)
+            return self.historic_data_investing(symbol, daily)
+        except Exception as e:
+            print(f"Error executing historic_data: {e}")
+            logging.error(f"Error executing historic_data: {e}")
+            return self.historic_data_mc(symbol, daily)
 
     def historic_data_tv(self, symbol, daily = False):
         if not daily:

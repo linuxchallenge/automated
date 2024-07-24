@@ -22,8 +22,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
+logger = logging.getLogger(__name__)
 
 class UnderlyingSymbol(Enum):
     NIFTY = "NIFTY"

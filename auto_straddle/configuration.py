@@ -1,5 +1,16 @@
 """Module providing a function for main function """
 
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+# pylint: disable=C0200
+# pylint: disable=C0413
+# pylint: disable=W0718
+
 import pandas as pd
 
 class ConfigurationLoader:

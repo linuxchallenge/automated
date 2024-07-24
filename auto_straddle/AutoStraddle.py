@@ -9,7 +9,6 @@
 # pylint: disable=C0115
 # pylint: disable=C0103
 
-
 import time
 from datetime import datetime
 from datetime import time as time_dt
@@ -24,12 +23,10 @@ from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
 import configuration
 from CommodityStratergy import CommodityStratergy
+import logging_config  # This sets up the logging
 
-
-logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
-
-logging.getLogger().setLevel(logging.INFO)
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def main():

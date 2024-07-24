@@ -25,11 +25,8 @@ import configuration
 #from PlaceOrder import PlaceOrder
 
 
-logging.basicConfig(filename='/tmp/autostraddle.log', filemode='w',
-                    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s')
-
-logging.getLogger().setLevel(logging.INFO)
-
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
 def get_strike_interval(symbol):
@@ -95,7 +92,6 @@ class AutoStraddleStrategy:
 
         error_path = self.get_error_options_file_path(account, symbol)
         if os.path.exists(error_path):
-            logging.info(f"Critical error far sell so returing {account} {symbol}")
             return False
 
         # Check if the trade is executed
@@ -598,7 +594,7 @@ class AutoStraddleStrategy:
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= 2 * get_movement(symbol):
                 return True
             return False
-        
+
         if sold_options_info['atm_pe_price'] == -1:
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) > get_movement(symbol):
                 return True
