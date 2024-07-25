@@ -13,7 +13,7 @@ def setup_logging(log_level=logging.INFO):
         'disable_existing_loggers': False,
         'formatters': {
             'standard': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s (%(filename)s:%(lineno)d)'
+                'format': '%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d): %(message)s'
             },
         },
         'handlers': {

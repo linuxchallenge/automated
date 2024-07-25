@@ -79,7 +79,7 @@ class commodity_data:
         self.symboldf['expiry'] = pd.to_datetime(self.symboldf['expiry']).apply(lambda x: x.date())
         self.symboldf = self.symboldf[self.symboldf.exchange == 'MCX_FO']
         self.symboldf = self.symboldf[self.symboldf.strike == 0]
-        self.use_source = "up"
+        #self.use_source = "up"
         print("TV Datafeed initialized " + self.tv_obj.token)
 
     def change_source(self, source):
@@ -126,7 +126,8 @@ class commodity_data:
                 try:
                     return self.historic_data_tv(symbol, daily)
                 except Exception as e:
-                    print(f"Error executing historic_data: {e}")
+                    print(f"Error executing historic_data_tv: {e}")
+                    logging.error(f"Error executing historic_data_tv: {e}")
                     return self.historic_data_upstox(symbol, daily)
             elif self.use_source == "up":
                 return self.historic_data_upstox(symbol, daily)
