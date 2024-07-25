@@ -487,7 +487,7 @@ class FarSellStratergy:
             multiplication_factor = {
                 'NIFTY': 25,
                 'BANKNIFTY': 15,
-                'FINNIFTY': 40
+                'FINNIFTY': 25
             }
             total_profit_loss = 0
 
