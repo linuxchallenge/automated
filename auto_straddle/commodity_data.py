@@ -79,7 +79,7 @@ class commodity_data:
         self.symboldf['expiry'] = pd.to_datetime(self.symboldf['expiry']).apply(lambda x: x.date())
         self.symboldf = self.symboldf[self.symboldf.exchange == 'MCX_FO']
         self.symboldf = self.symboldf[self.symboldf.strike == 0]
-        #self.use_source = "up"
+        self.use_source = "up"
         print("TV Datafeed initialized " + self.tv_obj.token)
 
     def change_source(self, source):
