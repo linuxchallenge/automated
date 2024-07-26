@@ -123,19 +123,23 @@ class commodity_data:
 
     def historic_data(self, symbol, daily = False):
         try:
+            logging.info(f"Fetching data for symbol: {symbol} {self.use_source}")
             if self.use_source == "tv":
                 try:
+                    logging.info(f"Fetching data from TV for symbol: {symbol}")
                     return self.historic_data_tv(symbol, daily)
                 except Exception as e:
                     print(f"Error executing historic_data_tv: {e}")
+                    logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                     logging.error(f"Error executing historic_data_tv: {e}")
                     return self.historic_data_upstox(symbol, daily)
             elif self.use_source == "up":
+                logging.info(f"Fetching data from UP for symbol: {symbol}")
                 return self.historic_data_upstox(symbol, daily)
             return self.historic_data_investing(symbol, daily)
         except Exception as e:
             print(f"Error executing historic_data: {e}")
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))            
+            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             logging.error(f"Error executing historic_data: {e}")
             return self.historic_data_mc(symbol, daily)
 
