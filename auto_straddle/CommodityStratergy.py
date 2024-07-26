@@ -42,8 +42,17 @@ symbol_to_lot = {
 class CommodityStratergy:
     def __init__(self, accounts):
         self.accounts = accounts
-        self.last_executed_hour = 0
-        self.last_proccesed_symbol = None
+
+        # Read last_proccesed_symbol and last_executed_hour from file
+        if os.path.exists('last_proccesed_symbol.txt'):
+            with open('last_proccesed_symbol.txt', 'r', encoding='utf-8') as f:
+                data = f.read().split(',')
+                self.last_proccesed_symbol = data[0]
+                self.last_executed_hour = int(data[1]) if len(data) > 1 else 0
+        else:
+            self.last_proccesed_symbol = None
+            self.last_executed_hour = 0
+
         self.commodity_data = commodity_data.commodity_data()
         self.commodity_data.intializeSymbolAndGetExpiryData()
 
@@ -250,6 +259,10 @@ class CommodityStratergy:
                 if s == symbol[-1]:
                     self.last_executed_hour = current_time_dt.hour
                     self.last_proccesed_symbol = symbol[0]
+
+                    # Save to file
+                    with open('last_proccesed_symbol.txt', 'w', encoding='utf-8') as f:
+                        f.write(f"{self.last_proccesed_symbol},{self.last_executed_hour}")
 
                 # Assign next symbol to self.last_proccesed_symbol
                 for i in range(len(symbol)):

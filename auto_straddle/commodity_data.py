@@ -123,6 +123,7 @@ class commodity_data:
 
     def historic_data(self, symbol, daily = False):
         try:
+
             logging.info(f"Fetching data for symbol: {symbol} {self.use_source}")
             if self.use_source == "tv":
                 try:
@@ -141,7 +142,7 @@ class commodity_data:
             print(f"Error executing historic_data: {e}")
             logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             logging.error(f"Error executing historic_data: {e}")
-            return self.historic_data_mc(symbol, daily)
+            return None
 
     def historic_data_tv(self, symbol, daily = False):
         if not daily:
@@ -363,7 +364,8 @@ class commodity_data:
                 'Connection': 'keep-alive'
             }
 
-            res = requests.get(url,headers=headers, params={},timeout=5.0)
+            res = requests.get(url, headers=headers, params={}, timeout=5.0)
+            logging.info("Response status code: %s", str(res.status_code))
             candleRes = res.json()
 
             if 'data' in candleRes and 'candles' in candleRes['data'] and  candleRes['data']['candles']:

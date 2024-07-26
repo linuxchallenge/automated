@@ -50,7 +50,7 @@ class AutoStraddleStrategy:
         if symbol == "BANKNIFTY":
             return -2000
         if symbol == "FINNIFTY":
-            return -2000
+            return -1500
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -2000
 
