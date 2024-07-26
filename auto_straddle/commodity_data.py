@@ -32,7 +32,7 @@ class commodity_data:
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
-
+        logging.info("Initializing commodity_data")
         self.tv_obj = None
 
         #username = 'cool_adi52002@rediffmail.com'
@@ -82,6 +82,7 @@ class commodity_data:
         self.symboldf = self.symboldf[self.symboldf.strike == 0]
         #self.use_source = "up"
         print("TV Datafeed initialized " + self.tv_obj.token)
+        logging.info(f"Fetching data from: {self.use_source}")
 
     def change_source(self, source):
         self.use_source = source
@@ -123,7 +124,6 @@ class commodity_data:
 
     def historic_data(self, symbol, daily = False):
         try:
-
             logging.info(f"Fetching data for symbol: {symbol} {self.use_source}")
             if self.use_source == "tv":
                 try:
