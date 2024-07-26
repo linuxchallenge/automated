@@ -169,13 +169,13 @@ def main():
 
 def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details):
 
-    # return if time is greater than 3:20 PM
+    # return if time is greater than 3:29 PM
     current_time_dt = datetime.now().time()
-    if current_time_dt > time_dt(15, 20):
+    if current_time_dt > time_dt(15, 29):
         time.sleep(60)
         return
 
-    if current_time_dt < time_dt(9, 30):
+    if current_time_dt < time_dt(9, 23):
         time.sleep(60)
         return
 

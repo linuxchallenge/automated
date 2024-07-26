@@ -724,7 +724,7 @@ class AutoStraddleStrategy:
         # Get lowest pe_to_ce_ratio from the data_frame
         min_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].min()
 
-        if (option_chain_info['pe_to_ce_ratio'] - min_pe_to_ce_ratio) > 0.3:
+        if (option_chain_info['pe_to_ce_ratio'] - min_pe_to_ce_ratio) > 0.2:
             return True
 
         if option_chain_info['pe_to_ce_ratio']  > 1.4:
@@ -750,7 +750,7 @@ class AutoStraddleStrategy:
         # Get highest pe_to_ce_ratio from the data_frame
         max_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].max()
 
-        if (max_pe_to_ce_ratio - option_chain_info['pe_to_ce_ratio']) > 0.3:
+        if (max_pe_to_ce_ratio - option_chain_info['pe_to_ce_ratio']) > 0.2:
             return True
 
         if option_chain_info['pe_to_ce_ratio'] < 0.7:
