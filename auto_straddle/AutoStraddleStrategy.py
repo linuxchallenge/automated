@@ -46,11 +46,11 @@ class AutoStraddleStrategy:
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
-            return -1000
+            return -750
         if symbol == "BANKNIFTY":
-            return -2000
-        if symbol == "FINNIFTY":
             return -1500
+        if symbol == "FINNIFTY":
+            return -1000
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -2000
 
