@@ -28,7 +28,7 @@ class commodity_data:
     # define different comodity data
     symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
-    use_source = "up"  # tv or mc
+    use_source = "tv"  # tv or mc
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
