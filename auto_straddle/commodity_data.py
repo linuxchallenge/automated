@@ -14,6 +14,7 @@ import logging
 import random
 import time
 from datetime import datetime, timedelta
+import traceback
 import pandas as pd
 import requests
 from tvDatafeed import Interval, TvDatafeed
@@ -134,6 +135,7 @@ class commodity_data:
             return self.historic_data_investing(symbol, daily)
         except Exception as e:
             print(f"Error executing historic_data: {e}")
+            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))            
             logging.error(f"Error executing historic_data: {e}")
             return self.historic_data_mc(symbol, daily)
 
@@ -417,6 +419,7 @@ class commodity_data:
 
         except Exception as e:
             print(f"Error executing historic_data_upstox: {e}")
+            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
 
         # Rename date column to Date
         candleData = candleData.rename(columns={'date': 'Date'})
