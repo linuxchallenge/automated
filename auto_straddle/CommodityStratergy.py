@@ -164,9 +164,11 @@ class CommodityStratergy:
                                 logging.info("Enter long trade")
                                 new_row = {'Symbol': s, 'trade_type': ['long'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
-                                        'enter_orderid' : 0, 'enter_order_state': 'open', 'exit_orderid': 0, 'exit_order_state': 'none', \
+                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
                                             'exit_order_id' : 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
-                                place_order.place_buy_orders_commodity(account, s, 1)
+                                order_id = place_order.place_buy_orders_commodity(account, s, \
+                                                                       account_details.loc[(account_details['Account'] == account) &\
+                                                                                            (account_details['Symbol'] == s)].shape[0])
                                 current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
                                 trade_entered = True
                     elif alligator_daily[0] == "downtrend":
@@ -174,10 +176,12 @@ class CommodityStratergy:
                             if historic_data.iloc[-1]['close'] < bearish:
                                 print ("Enter short trade")
                                 logging.info("Enter short trade")
-                                place_order.place_sell_orders_commodity(account, s, 1)
+                                order_id = place_order.place_sell_orders_commodity(account, s, 
+                                            account_details.loc[(account_details['Account'] == account) & \
+                                                                (account_details['Symbol'] == s)].shape[0])
                                 new_row = {'Symbol': s, 'trade_type': ['short'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
-                                        'enter_orderid' : 0, 'enter_order_state': 'open', 'exit_orderid': 0, 'exit_order_state': 'none', \
+                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
                                             'exit_order_id' : 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
                                 trade_entered = True
@@ -193,11 +197,15 @@ class CommodityStratergy:
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit long trade")
-                                place_order.place_sell_orders_commodity(account, s, 1)
+                                order_id = place_order.place_sell_orders_commodity(account, s, 
+                                            account_details.loc[(account_details['Account'] == account)\
+                                                                 & (account_details['Symbol'] == s)].shape[0])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
+                                current_trade.loc[row_number, 'exit_orderid'] = order_id
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                                 self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                     elif trade_entered is False and alligator[0] == "uptrend":
@@ -210,11 +218,15 @@ class CommodityStratergy:
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit short trade")
-                                place_order.place_buy_orders_commodity(account, s, 1)
+                                order_id = place_order.place_buy_orders_commodity(account, s, 
+                                            account_details.loc[(account_details['Account'] == account) & 
+                                                                (account_details['Symbol'] == s)].shape[0])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
+                                current_trade.loc[row_number, 'exit_orderid'] = order_id
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'                                
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                     else:
@@ -226,13 +238,19 @@ class CommodityStratergy:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                place_order.place_buy_orders_commodity(account, s, 1)
+                                order_id = place_order.place_buy_orders_commodity(account, s,
+                                         account_details.loc[(account_details['Account'] == account) & \
+                                                             (account_details['Symbol'] == s)].shape[0])
                             else:
-                                place_order.place_sell_orders_commodity(account, s, 1)
+                                order_id = place_order.place_sell_orders_commodity(account, s,
+                                         account_details.loc[(account_details['Account'] == account) & \
+                                                             (account_details['Symbol'] == s)].shape[0])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
+                            current_trade.loc[row_number, 'exit_orderid'] = order_id
+                            current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
@@ -323,7 +341,7 @@ import PlaceOrder
 
 import os
 from pathlib import Path
-
+import logging_config  # This sets up the logging
 
 # Test code
 if __name__ == '__main__':
@@ -331,6 +349,7 @@ if __name__ == '__main__':
     commodity_account_details = pd.read_csv(coomodity_path)
 
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
+    place_order.init_account("deepti")
 
     # Get home directory
     cur_dir = Path.home()
@@ -342,11 +361,11 @@ if __name__ == '__main__':
     #Change the current working directory to the directory
     os.chdir(cur_dir)
 
-    commodity_stratergy = CommodityStratergy(['dummy'])
+    commodity_stratergy = CommodityStratergy(['dummy', 'deepti'])
     print("Starting")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy','deepti'], place_order, commodity_account_details)
     print("Exiting 1    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy','deepti'], place_order, commodity_account_details)
     print("Exiting 2    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 3    ")

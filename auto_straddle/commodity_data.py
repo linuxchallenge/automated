@@ -28,7 +28,7 @@ class commodity_data:
     # define different comodity data
     symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
 
-    use_source = "tv"  # tv or mc
+    use_source = "up"  # tv or mc
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
@@ -386,6 +386,7 @@ class commodity_data:
 
             else:
                 print('No data',candleRes)
+                candleData = None
 
             if isDaily is False:
                 res = requests.get(url_history,headers=headers, params={},timeout=5.0)
