@@ -162,13 +162,13 @@ class CommodityStratergy:
                             if historic_data.iloc[-1]['close'] > bullish:
                                 print("Enter long trade")
                                 logging.info("Enter long trade")
-                                new_row = {'Symbol': s, 'trade_type': ['long'], \
-                                        'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
-                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
-                                            'exit_order_id' : 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 order_id = place_order.place_buy_orders_commodity(account, s, \
                                                                        account_details.loc[(account_details['Account'] == account) &\
                                                                                             (account_details['Symbol'] == s)].shape[0])
+                                new_row = {'Symbol': s, 'trade_type': ['long'], \
+                                        'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
+                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
+                                            'exit_order_id' : 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}                                
                                 current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
                                 trade_entered = True
                     elif alligator_daily[0] == "downtrend":
@@ -226,7 +226,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
                                 current_trade.loc[row_number, 'exit_orderid'] = order_id
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'                                
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending' 
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                     else:
@@ -335,8 +335,8 @@ class CommodityStratergy:
             df = pd.DataFrame([pl_dict])
             df.to_csv(file_name, index=False)
 
-"""
 
+"""
 import PlaceOrder
 
 import os
@@ -347,6 +347,9 @@ import logging_config  # This sets up the logging
 if __name__ == '__main__':
     coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
+
+    # add deepti GOLD and 1 to commodity_account_details
+    commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
 
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
     place_order.init_account("deepti")
@@ -363,9 +366,9 @@ if __name__ == '__main__':
 
     commodity_stratergy = CommodityStratergy(['dummy', 'deepti'])
     print("Starting")
-    commodity_stratergy.execute_strategy(['dummy','deepti'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
     print("Exiting 1    ")
-    commodity_stratergy.execute_strategy(['dummy','deepti'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
     print("Exiting 2    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 3    ")
@@ -387,4 +390,4 @@ if __name__ == '__main__':
     print("Exiting 11    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
 
-"""    
+""" 

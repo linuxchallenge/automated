@@ -145,32 +145,38 @@ class commodity_data:
             return None
 
     def historic_data_tv(self, symbol, daily = False):
-        if not daily:
-            tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_1_hour, n_bars=500, fut_contract=1)
-        else:
-            tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_daily, n_bars=500, fut_contract=1)
+        try:
+            if not daily:
+                tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_1_hour, n_bars=500, fut_contract=1)
+            else:
+                tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_daily, n_bars=500, fut_contract=1)
 
-        # Drop symbol column
-        tv_data = tv_data.drop(columns=['symbol'])
+            # Drop symbol column
+            tv_data = tv_data.drop(columns=['symbol'])
 
-        # datetime column make non index
-        tv_data['datetime'] = tv_data.index
+            # datetime column make non index
+            tv_data['datetime'] = tv_data.index
 
-        # Rename datetime column to Date
-        tv_data = tv_data.rename(columns={'datetime': 'Date'})
+            # Rename datetime column to Date
+            tv_data = tv_data.rename(columns={'datetime': 'Date'})
 
-        # Covert datetime from UTC to IST
-        tv_data['Date'] = tv_data['Date'].dt.tz_localize(None)
+            # Covert datetime from UTC to IST
+            tv_data['Date'] = tv_data['Date'].dt.tz_localize(None)
 
-        tv_data = tv_data.drop(columns='volume')
+            tv_data = tv_data.drop(columns='volume')
 
-        # Drop datetime as index
-        tv_data = tv_data.reset_index(drop=True)
+            # Drop datetime as index
+            tv_data = tv_data.reset_index(drop=True)
 
-        # Put Date at first column
-        tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
+            # Put Date at first column
+            tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
 
-        return tv_data
+            return tv_data
+        except Exception as e:
+            print(f"Error executing historic_data_tv: {e}")
+            logging.error(f"Error executing historic_data_tv: {e}")
+            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            return None
 
 
     def historic_data_investing(self, symbol, daily = False):
