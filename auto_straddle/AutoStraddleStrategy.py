@@ -365,7 +365,7 @@ class AutoStraddleStrategy:
                             if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                                 # Place only CE order
                                 sold_options_info['atm_pe_price'] = -1
-                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + (2 * get_strike_interval(symbol)), 'CE', symbol, quantity)
 
                                 if sold_options_info['ce_open_order_id'] == -1:
                                     error_message = "Error in placing ce open order"
@@ -377,7 +377,7 @@ class AutoStraddleStrategy:
                             elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                                 # Place only PE order
                                 sold_options_info['atm_ce_price'] = -1
-                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - (2 * get_strike_interval(symbol)), 'PE', symbol, quantity)
 
                                 if sold_options_info['pe_open_order_id'] == -1:
                                     error_message = "Error in placing pe open order"
@@ -446,7 +446,7 @@ class AutoStraddleStrategy:
                         # Place only CE order
                         sold_options_info['atm_pe_price'] = -1
                         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account,
-                                                 atm_ce_strike + get_strike_interval(symbol), 'CE', symbol, quantity)
+                                                 atm_ce_strike + (2 * get_strike_interval(symbol)), 'CE', symbol, quantity)
                         if sold_options_info['ce_open_order_id'] == -1:
                             error_message = "Error in placing ce open order"
                             self.send_error_message(account, symbol, error_message)
@@ -456,7 +456,7 @@ class AutoStraddleStrategy:
                     elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                         # Place only PE order
                         sold_options_info['atm_ce_price'] = -1
-                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - get_strike_interval(symbol), 'PE', symbol, quantity)
+                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - (2 * get_strike_interval(symbol)), 'PE', symbol, quantity)
                         if sold_options_info['pe_open_order_id'] == -1:
                             error_message = "Error in placing pe open order"
                             self.send_error_message(account, symbol, error_message)
@@ -699,11 +699,11 @@ class AutoStraddleStrategy:
         # return option_price from option_chain_analyzer
         if option_type == 'CE':
             if self.check_bearish_option_chain(option_chain_analyzer, symbol):
-                return option_chain_analyzer['atm_strike'] + get_strike_interval(symbol)
+                return option_chain_analyzer['atm_strike'] + (2 *get_strike_interval(symbol))
             return option_chain_analyzer['atm_strike']
         elif option_type == 'PE':
             if self.check_bullish_option_chain(option_chain_analyzer, symbol):
-                return option_chain_analyzer['atm_strike'] - get_strike_interval(symbol)
+                return option_chain_analyzer['atm_strike'] - (2 * get_strike_interval(symbol))
             return option_chain_analyzer['atm_strike']
 
     def check_bullish_option_chain(self, option_chain_info, symbol):

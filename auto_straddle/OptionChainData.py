@@ -159,8 +159,8 @@ class OptionChainData:
             else:
                 prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
                 prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
-                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + get_strike_interval(symbolData)]['lastPrice'].values[0]
-                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - get_strike_interval(symbolData)]['lastPrice'].values[0]
+                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
+                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
 
             # Save data to a dictionary along with the current time
             result_dict = {
@@ -170,8 +170,8 @@ class OptionChainData:
                 'atm_strike': float(atm_ce_strike),
                 'atm_current_ce_price': float(atm_ce_last_price),
                 'atm_current_pe_price': float(atm_pe_last_price),
-                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + get_strike_interval(symbolData)]['lastPrice'].values[0]),
-                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - get_strike_interval(symbolData)]['lastPrice'].values[0]),
+                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]),
+                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]),
                 'prev_atm_strike': prev_atm_strike,
                 'prev_atm_ce_price': float(prev_atm_ce_price),
                 'prev_atm_pe_price': float(prev_atm_pe_price),
@@ -341,8 +341,8 @@ class OptionChainData:
         else:
             prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['call_ltp'].values[0]
             prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['put_ltp'].values[0]
-            prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + get_strike_interval(symbolData)]['call_ltp'].values[0]
-            prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - get_strike_interval(symbolData)]['put_ltp'].values[0]
+            prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]
+            prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 *get_strike_interval(symbolData))]['put_ltp'].values[0]
 
         # Save data to a dictionary along with the current time
         result_dict = {
@@ -352,8 +352,8 @@ class OptionChainData:
             'atm_strike': float(atm_ce_strike),
             'atm_current_ce_price': float(atm_ce_last_price),
             'atm_current_pe_price': float(atm_pe_last_price),
-            'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + get_strike_interval(symbolData)]['call_ltp'].values[0]),
-            'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - get_strike_interval(symbolData)]['put_ltp'].values[0]),
+            'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]),
+            'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData))]['put_ltp'].values[0]),
             'prev_atm_strike': prev_atm_strike,
             'prev_atm_ce_price': float(prev_atm_ce_price),
             'prev_atm_pe_price': float(prev_atm_pe_price),

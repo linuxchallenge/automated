@@ -176,7 +176,7 @@ class CommodityStratergy:
                             if historic_data.iloc[-1]['close'] < bearish:
                                 print ("Enter short trade")
                                 logging.info("Enter short trade")
-                                order_id = place_order.place_sell_orders_commodity(account, s, 
+                                order_id = place_order.place_sell_orders_commodity(account, s,
                                             account_details.loc[(account_details['Account'] == account) & \
                                                                 (account_details['Symbol'] == s)].shape[0])
                                 new_row = {'Symbol': s, 'trade_type': ['short'], \
@@ -197,7 +197,7 @@ class CommodityStratergy:
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit long trade")
-                                order_id = place_order.place_sell_orders_commodity(account, s, 
+                                order_id = place_order.place_sell_orders_commodity(account, s,
                                             account_details.loc[(account_details['Account'] == account)\
                                                                  & (account_details['Symbol'] == s)].shape[0])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
@@ -218,15 +218,15 @@ class CommodityStratergy:
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit short trade")
-                                order_id = place_order.place_buy_orders_commodity(account, s, 
-                                            account_details.loc[(account_details['Account'] == account) & 
+                                order_id = place_order.place_buy_orders_commodity(account, s,
+                                            account_details.loc[(account_details['Account'] == account) &
                                                                 (account_details['Symbol'] == s)].shape[0])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
                                 current_trade.loc[row_number, 'exit_orderid'] = order_id
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending' 
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                                 self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                                 current_trade.loc[row_number, 'profit'])
                     else:
