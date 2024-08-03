@@ -99,13 +99,25 @@ class angelone_api(object):
 
     def place_order_commodity(self, symbol, qty, buy_sell):
         try:
+            if symbol == 'GOLD':
+                symbol = 'GOLDM'
+            elif symbol == 'SILVER':
+                symbol = 'SILVERM'
+            elif symbol == 'CRUDEOIL':
+                symbol = 'CRUDEOILM'
+            elif symbol == 'LEAD':
+                symbol = 'LEADMINI'
+            elif symbol == 'ZINC':
+                symbol = 'ZINCMINI'
+            elif symbol == 'ALUMINIUM':
+                symbol = 'ALUMINI'
+
             tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X').iloc[0]
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
 
-            if qty % lot != 0:
-                return -1
+            qty = qty * lot
 
             orderparams = {
                 "variety": "NORMAL",
@@ -129,10 +141,10 @@ class angelone_api(object):
                     print("Error placing order, trying again")
                     logger.error(f"Error executing place_order again: {e}")
                     print(f"Error: {e}")
-                    #x = TelegramSend.telegram_send_api()
+                    x = TelegramSend.telegram_send_api()
 
                     # Send profit loss over telegramsend send_message
-                    #x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")
+                    x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")
                     time.sleep(2)
                     orderid = self.obj.placeOrder(orderparams)
                 except Exception as e1:
@@ -260,7 +272,21 @@ print("Initialized")
 
 orderid = angel_obj.place_order_commodity('GOLD', 1, 'SELL')
 
+orderid = angel_obj.place_order_commodity('SILVER', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('CRUDEOIL', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('LEAD', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('ZINC', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('ALUMINIUM', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('COPPER', 1, 'SELL')
+
+orderid = angel_obj.place_order_commodity('NATURALGAS', 1, 'SELL')
 '''
+
 
 '''
 # Print timestamp with seconds
