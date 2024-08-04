@@ -34,6 +34,7 @@ class commodity_data:
         self.symbolTokenMap = {}  # Add this line
         logging.info("Initializing commodity_data")
         self.tv_obj = None
+        self.tv_error = 0
 
         #username = 'cool_adi52002@rediffmail.com'
         #password = 'CrazyTrading12@'
@@ -171,11 +172,18 @@ class commodity_data:
             # Put Date at first column
             tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
 
+            self.tv_error = 0
             return tv_data
         except Exception as e:
             print(f"Error executing historic_data_tv: {e}")
             logging.error(f"Error executing historic_data_tv: {e}")
             logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+
+            # Maintian count is error is more than 5 times switch to UP
+            self.tv_error = self.tv_error + 1
+            if self.tv_error > 5:
+                self.use_source = "up"
+
             return None
 
 
@@ -347,8 +355,28 @@ class commodity_data:
             # From self.symboldf get all the tokens for the given symbol
             token = self.symboldf[self.symboldf.name == symbol]
 
+            if symbol == 'GOLD':
+                # Remove all entires which has PETAL and GUINEA in tradingsymbol column
+                token = token[~token.tradingsymbol.str.contains('PETAL')]
+                token = token[~token.tradingsymbol.str.contains('GUINEA')]
+
+            if symbol == 'LEAD' or symbol == 'ZINC':
+                # Remove all entires which has MINI in tradingsymbol column
+                token = token[~token.tradingsymbol.str.contains('MINI')]
+
+            if symbol == 'ALUMINIUM':
+                # Remove all entires which has MINI in tradingsymbol column
+                token = token[~token.tradingsymbol.str.contains('ALUMINIUM')]
+
             # Sort tokens by expiry date
             token = token.sort_values(by='expiry', ascending=True)
+
+            if symbol == 'LEAD' or symbol == 'ZINC' or symbol == 'ALUMINIUM':
+                # Get the first token
+                token = token.iloc[1]['instrument_key']
+            else:
+                # Get the first token
+                token = token.iloc[0]['instrument_key']
 
             # Get the first token
             token = token.iloc[0]['instrument_key']
