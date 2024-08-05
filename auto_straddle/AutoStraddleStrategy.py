@@ -760,7 +760,15 @@ class AutoStraddleStrategy:
 
 
 """
-accounts = ["dummy", "deepti", "leelu"]
+from pathlib import Path
+from PlaceOrder import PlaceOrder
+from OptionChainData import OptionChainData
+
+
+import logging_config  # This sets up the logging
+
+#accounts = ["dummy", "deepti", "leelu"]
+accounts = ["dummy"]
 symbols = ["BANKNIFTY"]
 
 place_order = PlaceOrder()
@@ -784,7 +792,7 @@ for symbol in symbols:
     option_chain_analyzer = OptionChainData(symbol)
 
     auto_straddle_strategy = AutoStraddleStrategy(accounts, symbol)
-    strike_data = auto_straddle_strategy.get_strike_price(accounts[0], symbol)
+    strike_data = auto_straddle_strategy.get_strike_price(accounts, symbol)
     print(f"Strike data: {strike_data}")
     # If symbol is nifty, use the following line to get the option chain data
     option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, 0, 0, symbol)
@@ -792,10 +800,10 @@ for symbol in symbols:
 
     if option_chain_info is not None:
         print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")
-        option_chain_info['pe_to_ce_ratio'] = 0.4
-        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
+        #option_chain_info['pe_to_ce_ratio'] = 0.4
+        #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
-        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
+        #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
     else:
         print(f"Option chain information not available for symbol {symbol}")
 """
