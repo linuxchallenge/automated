@@ -81,6 +81,56 @@ class CommodityStratergy:
             return trend, 0, 0
         return trend, data.loc[bearish.index[-1]]['high'], data.loc[bullish.index[-1]]['low']
 
+
+    def check_trade_executed(self, accounts, place_order):
+        # For all accounts
+        for account in accounts:
+            file_name = f'csv/Commodity-{account}.csv'
+            if os.path.exists(file_name):
+
+                # read file
+                current_trade = pd.read_csv(file_name)
+
+                # check if any enter_order_state is open_pending
+                if current_trade.loc[current_trade['enter_order_state'] == 'open_pending'].shape[0] != 0:
+                    row_number = current_trade.index.get_loc(current_trade[(current_trade['enter_order_state'] == 'open_pending')].index[0])
+
+                    # Check order status
+                    order_id = current_trade.loc[row_number, 'enter_orderid']
+                    old_price = current_trade.loc[row_number, 'entry_price']
+
+                    status, price = place_order.order_status(account, order_id, old_price)
+
+                    if status == "Complete":
+                        current_trade.loc[row_number, 'enter_order_state'] = 'open'
+                        current_trade.loc[row_number, 'entry_price'] = price
+                        current_trade.to_csv(file_name, index=False)
+                    else:
+                        # Send telegram message
+                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
+                        current_trade.loc[row_number, 'enter_order_state'] = 'error'
+
+                # check if any exit_order_state is close_pending
+                if current_trade.loc[current_trade['exit_order_state'] == 'close_pending'].shape[0] != 0:
+                    row_number = current_trade.index.get_loc(current_trade[(current_trade['enter_order_state'] == 'close_pending')].index[0])
+
+                    # Check order status
+                    order_id = current_trade.loc[row_number, 'exit_orderid']
+                    old_price = current_trade.loc[row_number, 'exit_price']
+
+                    status, price = place_order.order_status(account, order_id, old_price)
+
+                    if status == "Complete":
+                        current_trade.loc[row_number, 'exit_order_state'] = 'close'
+                        current_trade.loc[row_number, 'exit_price'] = price
+                        current_trade.to_csv(file_name, index=False)
+                    else:
+                        # Send telegram message
+                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
+                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
+
+
+
     def execute_strategy(self, accounts, place_order, account_details):
         try:
 
@@ -98,6 +148,8 @@ class CommodityStratergy:
 
             # Get the configuration
             configuration.ConfigurationLoader.load_configuration()
+
+            self.check_trade_executed(accounts, place_order)
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:
@@ -335,8 +387,8 @@ class CommodityStratergy:
             df = pd.DataFrame([pl_dict])
             df.to_csv(file_name, index=False)
 
-
 """
+
 import PlaceOrder
 
 import os
@@ -390,4 +442,4 @@ if __name__ == '__main__':
     print("Exiting 11    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
 
-""" 
+"""
