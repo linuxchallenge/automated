@@ -116,7 +116,7 @@ class CommodityStratergy:
 
                 # check if any exit_order_state is close_pending
                 if current_trade.loc[current_trade['exit_order_state'] == 'close_pending'].shape[0] != 0:
-                    row_number = current_trade.index.get_loc(current_trade[(current_trade['enter_order_state'] == 'close_pending')].index[0])
+                    row_number = current_trade.index.get_loc(current_trade[(current_trade['exit_order_state'] == 'close_pending')].index[0])
 
                     # Check order status
                     order_id = current_trade.loc[row_number, 'exit_orderid']
