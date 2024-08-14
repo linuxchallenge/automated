@@ -91,6 +91,10 @@ class CommodityStratergy:
                 # read file
                 current_trade = pd.read_csv(file_name)
 
+                # current_trade is empty return
+                if current_trade.shape[0] == 0:
+                    return
+
                 # check if any enter_order_state is open_pending
                 if current_trade.loc[current_trade['enter_order_state'] == 'open_pending'].shape[0] != 0:
                     row_number = current_trade.index.get_loc(current_trade[(current_trade['enter_order_state'] == 'open_pending')].index[0])
