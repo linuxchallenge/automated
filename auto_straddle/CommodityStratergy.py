@@ -22,6 +22,7 @@ import configuration
 import commodity_data
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
+from exchange_state import ExchangeData
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,15 @@ class CommodityStratergy:
 
                 print(f"Processing symbol: {s}")
                 logger.info(f"Processing symbol: {s}")
+
+                # Check if MCX is open
+                exchange_data = ExchangeData()
+                exchange_data_var = exchange_data.is_mcx_open()
+                if exchange_data_var is False:
+                    self.last_executed_hour = current_time_dt.hour
+                    logger.info("MCX is closed")
+                    print("MCX is closed")
+                    return
 
                 # Get the historic data
                 historic_data = self.commodity_data.historic_data(s)

@@ -19,7 +19,7 @@ import logging
 import pandas as pd
 import TelegramSend
 import configuration
-
+from exchange_state import ExchangeData
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +38,7 @@ class FarSellStratergy:
     def __init__(self, accounts, symbols):
         self.accounts = accounts
         self.symbols = symbols
+        self.nso_open = None
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
@@ -258,6 +259,19 @@ class FarSellStratergy:
                 return
             elif current_time > time(9, 48):
                 # Execute strategy only after 9:30 AM
+
+                # Check NFO market is open or not
+                if self.nso_open is None:
+                    exchange_data = ExchangeData()
+                    exchange_data_var = exchange_data.is_nfo_open()
+                    if exchange_data_var is False:
+                        print("NFO market is closed")
+                        self.nso_open = False
+                        return
+                    else:
+                        self.nso_open = True
+                elif self.nso_open is False:
+                    return
 
                 # Example: Print a message for demonstration purposes
                 #print(f"Selling strangle call and put options for account {account} and symbol {symbol}")

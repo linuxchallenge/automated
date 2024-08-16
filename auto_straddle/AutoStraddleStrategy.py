@@ -19,10 +19,13 @@ import time as t
 import pandas as pd
 import TelegramSend
 import configuration
+from exchange_state import ExchangeData
 
 #from OptionChainData import OptionChainData
 #from pathlib import Path
 #from PlaceOrder import PlaceOrder
+
+
 
 
 # Set up logging
@@ -43,6 +46,8 @@ class AutoStraddleStrategy:
     def __init__(self, accounts, symbols):
         self.accounts = accounts
         self.symbols = symbols
+        # Variable stores if NSO is open or not
+        self.nso_open = None
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
@@ -278,6 +283,20 @@ class AutoStraddleStrategy:
                 return
             if current_time > time(9, 55):
                 # Execute strategy only after 9:55 AM
+
+                # Check NFO market is open or not
+                if self.nso_open is None:
+                    exchange_data = ExchangeData()
+                    exchange_data_var = exchange_data.is_nfo_open()
+                    if exchange_data_var is False:
+                        print("NFO market is closed")
+                        self.nso_open = False
+                        return
+                    else:
+                        self.nso_open = True
+                    
+                elif self.nso_open is False:
+                    return
 
                 # Example: Print a message for demonstration purposes
                 # logging.info(f"Selling ATM call and put options for account {account} and symbol {symbol}")
