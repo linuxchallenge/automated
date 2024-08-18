@@ -142,6 +142,23 @@ class OptionChainData:
             df_ce.drop(columns=columns_to_drop, inplace=True)
             df_pe.drop(columns=columns_to_drop, inplace=True)
 
+            # Get the rows with the highest, second highest, and third highest openInterest in df_ce and df_pe
+            ce_rows_sorted_by_open_interest = self.extract_top_open_interest_values(df_ce)
+            pe_rows_sorted_by_open_interest = self.extract_top_open_interest_values(df_pe)
+
+            # Extract values of strikePrice, openInterest, and lastPrice from the rows with the highest, second highest, and third highest openInterest
+            ce_highest_values = ce_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'openInterest', 'lastPrice']].values
+            ce_second_highest_values = ce_rows_sorted_by_open_interest.iloc[1][
+                ['strikePrice', 'openInterest', 'lastPrice']].values
+            ce_third_highest_values = ce_rows_sorted_by_open_interest.iloc[2][
+                ['strikePrice', 'openInterest', 'lastPrice']].values
+
+            pe_highest_values = pe_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'openInterest', 'lastPrice']].values
+            pe_second_highest_values = pe_rows_sorted_by_open_interest.iloc[1][
+                ['strikePrice', 'openInterest', 'lastPrice']].values
+            pe_third_highest_values = pe_rows_sorted_by_open_interest.iloc[2][
+                ['strikePrice', 'openInterest', 'lastPrice']].values
+
             # Calculate the PE to CE ratio
             total_open_interest_ce = df_ce['openInterest'].sum()
             total_open_interest_pe = df_pe['openInterest'].sum()
@@ -184,7 +201,25 @@ class OptionChainData:
                 'prev_strangle_ce_strike': prev_strangle_ce_strike,
                 'prev_strangle_pe_strike': prev_strangle_pe_strike,
                 'prev_ce_strangle_price': float(df_ce[df_ce['strikePrice'] == prev_strangle_ce_strike]['lastPrice'].values[0]),
-                'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['lastPrice'].values[0])
+                'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['lastPrice'].values[0]),
+                'ce_highest_strike': float(ce_highest_values[0]),
+                'ce_highest_open_interest': float(ce_highest_values[1]),
+                'ce_highest_last_price': float(ce_highest_values[2]),
+                'pe_highest_strike': float(pe_highest_values[0]),
+                'pe_highest_open_interest': float(pe_highest_values[1]),
+                'pe_highest_last_price': float(pe_highest_values[2]),
+                'ce_second_highest_strike': float(ce_second_highest_values[0]),
+                'ce_second_highest_open_interest': float(ce_second_highest_values[1]),
+                'ce_second_highest_last_price': float(ce_second_highest_values[2]),
+                'pe_second_highest_strike': float(pe_second_highest_values[0]),
+                'pe_second_highest_open_interest': float(pe_second_highest_values[1]),
+                'pe_second_highest_last_price': float(pe_second_highest_values[2]),
+                'ce_third_highest_strike': float(ce_third_highest_values[0]),
+                'ce_third_highest_open_interest': float(ce_third_highest_values[1]),
+                'ce_third_highest_last_price': float(ce_third_highest_values[2]),
+                'pe_third_highest_strike': float(pe_third_highest_values[0]),
+                'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
+                'pe_third_highest_last_price': float(pe_third_highest_values[2])                
             }
 
             return result_dict
@@ -226,6 +261,14 @@ class OptionChainData:
     def extract_top_open_interest_values(self, df, top_n=3):
         df_with_open_interest = df[df['openInterest'] > 0]
         return df_with_open_interest.nlargest(top_n, 'openInterest')
+
+    def extract_top_open_interest_values_ce(self, df, top_n=3):
+        df_with_open_interest = df[df['call_open_interest'] > 0]
+        return df_with_open_interest.nlargest(top_n, 'call_open_interest')
+
+    def extract_top_open_interest_values_pe(self, df, top_n=3):
+        df_with_open_interest = df[df['put_open_interest'] > 0]
+        return df_with_open_interest.nlargest(top_n, 'put_open_interest')
 
     def parse_json_groww(self, data, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
         # In livePrice get value as current price
@@ -274,6 +317,23 @@ class OptionChainData:
         #rename strikePrice to strike_price
         df_ce.rename(columns={'strike_price': 'strikePrice'}, inplace=True)
         df_pe.rename(columns={'strike_price': 'strikePrice'}, inplace=True)
+
+        # Get the rows with the highest, second highest, and third highest openInterest in df_ce and df_pe
+        ce_rows_sorted_by_open_interest = self.extract_top_open_interest_values_ce(df_ce)
+        pe_rows_sorted_by_open_interest = self.extract_top_open_interest_values_pe(df_pe)
+
+        # Extract values of strikePrice, openInterest, and lastPrice from the rows with the highest, second highest, and third highest openInterest
+        ce_highest_values = ce_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'call_open_interest', 'call_ltp']].values
+        ce_second_highest_values = ce_rows_sorted_by_open_interest.iloc[1][
+            ['strikePrice', 'call_open_interest', 'call_ltp']].values
+        ce_third_highest_values = ce_rows_sorted_by_open_interest.iloc[2][
+            ['strikePrice', 'call_open_interest', 'call_ltp']].values
+
+        pe_highest_values = pe_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'put_open_interest', 'put_ltp']].values
+        pe_second_highest_values = pe_rows_sorted_by_open_interest.iloc[1][
+            ['strikePrice', 'put_open_interest', 'put_ltp']].values
+        pe_third_highest_values = pe_rows_sorted_by_open_interest.iloc[2][
+            ['strikePrice', 'put_open_interest', 'put_ltp']].values
 
         # Find the ATM strike (nearest to spot price) for CE and PE
         atm_ce_strike = df_ce.loc[(df_ce['strikePrice'] - spot_price).abs().idxmin()]['strikePrice']
@@ -366,7 +426,25 @@ class OptionChainData:
             'prev_strangle_ce_strike': prev_strangle_ce_strike,
             'prev_strangle_pe_strike': prev_strangle_pe_strike,
             'prev_ce_strangle_price': float(df_ce[df_ce['strikePrice'] == prev_strangle_ce_strike]['call_ltp'].values[0]),
-            'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['put_ltp'].values[0])
+            'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['put_ltp'].values[0]),
+            'ce_highest_strike': float(ce_highest_values[0]),
+            'ce_highest_open_interest': float(ce_highest_values[1]),
+            'ce_highest_last_price': float(ce_highest_values[2]),
+            'pe_highest_strike': float(pe_highest_values[0]),
+            'pe_highest_open_interest': float(pe_highest_values[1]),
+            'pe_highest_last_price': float(pe_highest_values[2]),
+            'ce_second_highest_strike': float(ce_second_highest_values[0]),
+            'ce_second_highest_open_interest': float(ce_second_highest_values[1]),
+            'ce_second_highest_last_price': float(ce_second_highest_values[2]),
+            'pe_second_highest_strike': float(pe_second_highest_values[0]),
+            'pe_second_highest_open_interest': float(pe_second_highest_values[1]),
+            'pe_second_highest_last_price': float(pe_second_highest_values[2]),
+            'ce_third_highest_strike': float(ce_third_highest_values[0]),
+            'ce_third_highest_open_interest': float(ce_third_highest_values[1]),
+            'ce_third_highest_last_price': float(ce_third_highest_values[2]),
+            'pe_third_highest_strike': float(pe_third_highest_values[0]),
+            'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
+            'pe_third_highest_last_price': float(pe_third_highest_values[2])            
         }
 
         return result_dict
@@ -444,9 +522,11 @@ print(option_chain_info)
 symbol = "NIFTY"
 option_chain_analyzer = OptionChainData(symbol)
 option_chain_info_groww = option_chain_analyzer.extract_options_data_groww(22400, 23300, 22300, symbol)
+print("Groww data \n")
 print(option_chain_info_groww)
 
 option_chain_info = option_chain_analyzer.get_option_chain_info_nse(22400, 23300, 22300, symbol)
+print("NSE data \n")
 print(option_chain_info)
 
 print("\n \n")
