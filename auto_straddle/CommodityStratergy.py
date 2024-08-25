@@ -128,6 +128,20 @@ class CommodityStratergy:
                     if status == "Complete":
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
                         current_trade.loc[row_number, 'exit_price'] = price
+
+                        if current_trade.loc[row_number, 'trade_type'] == 'short':
+                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                current_trade.loc[row_number, 'exit_price']
+                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
+                                              f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
+                                            current_trade.loc[row_number, 'profit'])
+                        else:
+                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
+                                current_trade.loc[row_number, 'entry_price']
+                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
+                                              f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
+                                            current_trade.loc[row_number, 'profit'])
+
                         current_trade.to_csv(file_name, index=False)
                     else:
                         # Send telegram message
@@ -272,8 +286,6 @@ class CommodityStratergy:
                                     * symbol_to_lot[s]
                                 current_trade.loc[row_number, 'exit_orderid'] = order_id
                                 current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                                self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
-                                                current_trade.loc[row_number, 'profit'])
                     elif trade_entered is False and alligator[0] == "uptrend":
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
@@ -293,8 +305,6 @@ class CommodityStratergy:
                                     * symbol_to_lot[s]
                                 current_trade.loc[row_number, 'exit_orderid'] = order_id
                                 current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                                self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
-                                                current_trade.loc[row_number, 'profit'])
                     else:
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             print(historic_data.iloc[-1]['Date'])
@@ -318,15 +328,11 @@ class CommodityStratergy:
                             current_trade.loc[row_number, 'exit_orderid'] = order_id
                             current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
-                                self.send_message(account, s, f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
-                                                current_trade.loc[row_number, 'profit'])
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit short trade")
                             else:
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit long trade")
-                                self.send_message(account, s, f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
-                                                current_trade.loc[row_number, 'profit'])
 
                     if current_trade is not None:
                         current_trade.to_csv(file_name, index=False)
