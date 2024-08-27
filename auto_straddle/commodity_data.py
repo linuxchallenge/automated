@@ -379,7 +379,9 @@ class commodity_data:
                 token = token.iloc[0]['instrument_key']
 
             # Get the first token
-            token = token.iloc[0]['instrument_key']
+            #logging.info(f"Token: {token}")
+            #print(f"Token: {token}")
+            #token_id = token.iloc[0]['instrument_key']
 
             if isDaily:
                 fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=100)) .strftime("%Y-%m-%d")
