@@ -132,12 +132,16 @@ class CommodityStratergy:
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                 current_trade.loc[row_number, 'exit_price']
+                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
                                               f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                             current_trade.loc[row_number, 'profit'])
                         else:
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                 current_trade.loc[row_number, 'entry_price']
+                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
                                               f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                             current_trade.loc[row_number, 'profit'])
@@ -158,6 +162,8 @@ class CommodityStratergy:
             if current_time_dt < time(8, 59):
                 t.sleep(60)
                 return
+            
+            self.check_trade_executed(accounts, place_order)            
 
             # If last_executed_hour is same as current hour, then return
             if self.last_executed_hour == current_time_dt.hour:
@@ -167,8 +173,6 @@ class CommodityStratergy:
 
             # Get the configuration
             configuration.ConfigurationLoader.load_configuration()
-
-            self.check_trade_executed(accounts, place_order)
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:
