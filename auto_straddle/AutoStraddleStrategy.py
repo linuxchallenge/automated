@@ -600,11 +600,22 @@ class AutoStraddleStrategy:
             if symbol == "FINNIFTY":
                 return finnifty_movement
             return 0
+        
+        multiplication_factor = {
+            'NIFTY': 25,
+            'BANKNIFTY': 15,
+            'FINNIFTY': 25
+        }
 
         if sold_options_info['atm_ce_price'] != -1 and sold_options_info['atm_pe_price'] != -1:
             if abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= get_movement(symbol):
                 logging.info(
                     f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['atm_strike']}")
+                return True
+            
+            if (((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) + \
+            (sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price'])) * multiplication_factor.get(symbol)) \
+                  < (self.loss_limit(symbol) / 2):
                 return True
 
         if sold_options_info['atm_ce_price'] == -1:
@@ -612,6 +623,11 @@ class AutoStraddleStrategy:
                 return True
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= 2 * get_movement(symbol):
                 return True
+            
+            if ((sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price']) * multiplication_factor.get(symbol)) \
+                  < (self.loss_limit(symbol) / 2):
+                return True
+
             return False
 
         if sold_options_info['atm_pe_price'] == -1:
@@ -619,7 +635,10 @@ class AutoStraddleStrategy:
                 return True
             if (sold_options_info['atm_strike'] - option_chain_analyzer['spot_price']) >= 2 * get_movement(symbol):
                 return True
-            return False
+
+            if ((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) * multiplication_factor.get(symbol)) \
+                  < (self.loss_limit(symbol) / 2):
+                return True
 
         return False
 
@@ -818,8 +837,8 @@ for symbol in symbols:
     #print(f"Option chain info: {option_chain_info}")
 
     if option_chain_info is not None:
-        print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")
-        #option_chain_info['pe_to_ce_ratio'] = 0.4
+        option_chain_info['pe_to_ce_ratio'] = 1.5
+        print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")        
         #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
         #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
