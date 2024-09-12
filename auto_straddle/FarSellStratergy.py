@@ -565,7 +565,7 @@ class FarSellStratergy:
             'NIFTY': 25,
             'BANKNIFTY': 15,
             'FINNIFTY': 25
-        }        
+        }
         nifty_movement = 120
         finnifty_movement = 120
         banknifty_movement = 240
@@ -580,11 +580,11 @@ class FarSellStratergy:
                 symbol_data == "BANKNIFTY"
                 and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
         ) or (
-            (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * multiplication_factor.get(symbol) \
-                < (self.loss_limit(symbol) / 2) and (sold_options_info['strangle_ce_price'] != -1)
+            (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * multiplication_factor.get(symbol_data) \
+                < (self.loss_limit(symbol_data) / 2) and (sold_options_info['strangle_ce_price'] != -1)
         ) or (
-            (sold_options_info['strangle_pe_price'] - sold_options_info['strangle_pe_close_price']) * multiplication_factor.get(symbol) \
-                < (self.loss_limit(symbol) / 2) and (sold_options_info['strangle_pe_price'] != -1)
+            (sold_options_info['strangle_pe_price'] - sold_options_info['strangle_pe_close_price']) * multiplication_factor.get(symbol_data) \
+                < (self.loss_limit(symbol_data) / 2) and (sold_options_info['strangle_pe_price'] != -1)
         ):
             logging.info(
                 f"Closing the trade for account {symbol_data} {option_chain_data['spot_price']} from {sold_options_info['spot_price']}")
