@@ -560,6 +560,12 @@ class FarSellStratergy:
     def should_close_trade(self, option_chain_data, sold_options_info, symbol_data):
         # Implement conditions to close the trade based on spot price movement
         # Example: Close the trade if NIFTY spot_price has moved by 60, FINNIFTY by 60, and BANKNIFTY by 120
+
+        multiplication_factor = {
+            'NIFTY': 25,
+            'BANKNIFTY': 15,
+            'FINNIFTY': 25
+        }        
         nifty_movement = 120
         finnifty_movement = 120
         banknifty_movement = 240
@@ -573,6 +579,12 @@ class FarSellStratergy:
         ) or (
                 symbol_data == "BANKNIFTY"
                 and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
+        ) or (
+            (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * multiplication_factor.get(symbol) \
+                < (self.loss_limit(symbol) / 2) and (sold_options_info['strangle_ce_price'] != -1)
+        ) or (
+            (sold_options_info['strangle_pe_price'] - sold_options_info['strangle_pe_close_price']) * multiplication_factor.get(symbol) \
+                < (self.loss_limit(symbol) / 2) and (sold_options_info['strangle_pe_price'] != -1)
         ):
             logging.info(
                 f"Closing the trade for account {symbol_data} {option_chain_data['spot_price']} from {sold_options_info['spot_price']}")
@@ -683,8 +695,11 @@ def get_option_strike(option_chain_analyzer, option_type):
 
 """
 accounts = ["dummy", "deepti", "leelu"]
-symbols = ["BANKNIFTY"]
-
+symbols = ["BANKNIFTY", "NIFTY", "FINNIFTY"]
+from PlaceOrder import PlaceOrder
+import os
+from pathlib import Path
+from OptionChainData import OptionChainData
 place_order = PlaceOrder()
 
 # Get home directory
@@ -709,7 +724,7 @@ for symbol in symbols:
     pe_strike, ce_strike = farsell_straddle_strategy.get_strangle_strike_price(accounts[0], symbol)
     print(f"Strike data: {pe_strike} {ce_strike}")
     # If symbol is nifty, use the following line to get the option chain data
-    option_chain_info = option_chain_analyzer.get_option_chain_info(0, ce_strike, pe_strike)
+    option_chain_info = option_chain_analyzer.get_option_chain_info(0, ce_strike, pe_strike, symbol)
     #print(f"Option chain info: {option_chain_info}")
 
     if option_chain_info is not None:
