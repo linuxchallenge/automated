@@ -294,7 +294,7 @@ class AutoStraddleStrategy:
                         return
                     else:
                         self.nso_open = True
-                    
+
                 elif self.nso_open is False:
                     return
 
@@ -600,7 +600,7 @@ class AutoStraddleStrategy:
             if symbol == "FINNIFTY":
                 return finnifty_movement
             return 0
-        
+
         multiplication_factor = {
             'NIFTY': 25,
             'BANKNIFTY': 15,
@@ -612,7 +612,7 @@ class AutoStraddleStrategy:
                 logging.info(
                     f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['atm_strike']}")
                 return True
-            
+
             if (((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) + \
             (sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price'])) * multiplication_factor.get(symbol)) \
                   < (self.loss_limit(symbol) / 2):
@@ -623,7 +623,7 @@ class AutoStraddleStrategy:
                 return True
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= 2 * get_movement(symbol):
                 return True
-            
+
             if ((sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price']) * multiplication_factor.get(symbol)) \
                   < (self.loss_limit(symbol) / 2):
                 return True

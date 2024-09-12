@@ -162,8 +162,8 @@ class CommodityStratergy:
             if current_time_dt < time(8, 59):
                 t.sleep(60)
                 return
-            
-            self.check_trade_executed(accounts, place_order)            
+
+            self.check_trade_executed(accounts, place_order)
 
             # If last_executed_hour is same as current hour, then return
             if self.last_executed_hour == current_time_dt.hour:
