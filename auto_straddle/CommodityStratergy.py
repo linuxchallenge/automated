@@ -243,7 +243,7 @@ class CommodityStratergy:
 
                     if alligator_daily[0] == "uptrend":
                         if current_trade is None or row_number == -1:
-                            if historic_data.iloc[-1]['close'] > bullish:
+                            if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
                                 print("Enter long trade")
                                 logging.info("Enter long trade")
                                 order_id = place_order.place_buy_orders_commodity(account, s, \
@@ -257,7 +257,7 @@ class CommodityStratergy:
                                 trade_entered = True
                     elif alligator_daily[0] == "downtrend":
                         if current_trade is None or row_number == -1:
-                            if historic_data.iloc[-1]['close'] < bearish:
+                            if historic_data.iloc[-1]['close'] < bearish and alligator[0] == "downtrend":
                                 print ("Enter short trade")
                                 logging.info("Enter short trade")
                                 order_id = place_order.place_sell_orders_commodity(account, s,
