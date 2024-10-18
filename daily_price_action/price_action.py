@@ -195,6 +195,7 @@ def test_calculate_ranges_and_strength(ohlc_data):
 
 
 # read ind_nifty500list.csv
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 csv_file = 'ind_nifty500list.csv'
 nifty500 = pd.read_csv(csv_file)
@@ -206,7 +207,7 @@ data_fetcher = DataFetcher()
 today = datetime.date.today()
 
 # Append today's date to the output file name
-output_file = f"price_action/output_{today}.csv"
+output_file = f"output_{today}.csv"
 
 # create empty nifty500_output data frame
 nifty500_output = pd.DataFrame()
