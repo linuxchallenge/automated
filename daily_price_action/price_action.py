@@ -196,7 +196,7 @@ def test_calculate_ranges_and_strength(ohlc_data):
 
 # read ind_nifty500list.csv
 
-csv_file = 'price_action/ind_nifty500list.csv'
+csv_file = 'ind_nifty500list.csv'
 nifty500 = pd.read_csv(csv_file)
 
 # create DataFetcher object
