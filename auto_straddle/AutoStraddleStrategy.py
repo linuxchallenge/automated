@@ -174,6 +174,9 @@ class AutoStraddleStrategy:
             if account not in self.accounts:
                 raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
 
+            start_hour = configuration.ConfigurationLoader.get_configuration().get("autostraddle_hour")
+            start_min = configuration.ConfigurationLoader.get_configuration().get("autostraddle_min")
+
             # Extract relevant information from option_chain_analyzer
             spot_price = option_chain_analyzer['spot_price']
             atm_ce_strike = option_chain_analyzer['atm_strike']
@@ -281,7 +284,7 @@ class AutoStraddleStrategy:
                             df = pd.DataFrame([pl_dict])
                             df.to_csv(file_name, index=False)
                 return
-            if current_time > time(9, 55):
+            if current_time > time(start_hour, start_min):
                 # Execute strategy only after 9:55 AM
 
                 # Check NFO market is open or not

@@ -157,6 +157,9 @@ class FarSellStratergy:
             if account not in self.accounts:
                 raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
 
+            start_hour = configuration.ConfigurationLoader.get_configuration().get("farsell_hour")
+            start_min = configuration.ConfigurationLoader.get_configuration().get("farsell_min")
+
             # Extract relevant information from option_chain_analyzer
             spot_price = option_chain_analyzer['spot_price']
             ce_strangle_strike = option_chain_analyzer['ce_strangle_strike']
@@ -257,7 +260,7 @@ class FarSellStratergy:
                             df.to_csv(file_name, index=False)
 
                 return
-            elif current_time > time(9, 48):
+            elif current_time > time(start_hour, start_min):
                 # Execute strategy only after 9:30 AM
 
                 # Check NFO market is open or not
