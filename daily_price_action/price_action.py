@@ -229,13 +229,17 @@ for index, row in nifty500.iterrows():
         sz_low, sz_high, dz_low, dz_high = None, None, None, None
         pass
 
-    # Append values to data frame
-    nifty500_output.loc[index, 'symbol'] = symbol
-    nifty500_output.loc[index, 'sz_low'] = sz_low
-    nifty500_output.loc[index, 'sz_high'] = sz_high
-    nifty500_output.loc[index, 'dz_low'] = dz_low
-    nifty500_output.loc[index, 'dz_high'] = dz_high
-    nifty500_output.loc[index, 'close'] = ohlc_data.iloc[0]['close']
+    try:    
+        # Append values to data frame
+        nifty500_output.loc[index, 'symbol'] = symbol
+        nifty500_output.loc[index, 'sz_low'] = sz_low
+        nifty500_output.loc[index, 'sz_high'] = sz_high
+        nifty500_output.loc[index, 'dz_low'] = dz_low
+        nifty500_output.loc[index, 'dz_high'] = dz_high
+        nifty500_output.loc[index, 'close'] = ohlc_data.iloc[0]['close']
+    except Exception as e:
+        print(f"Error: {e}")
+        continue
 
     # If ohlc_data[0] close - dz_high < 1 % then put near_dz yes
     if dz_high is not None:
