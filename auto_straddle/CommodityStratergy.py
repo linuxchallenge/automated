@@ -241,14 +241,14 @@ class CommodityStratergy:
 
                     trade_entered = False
 
+                    quantity = account_details.loc[(account_details['Account'] == account) & (account_details['Symbol'] == s)]['quantity'].values[0]
+
                     if alligator_daily[0] == "uptrend":
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
                                 print("Enter long trade")
                                 logging.info("Enter long trade")
-                                order_id = place_order.place_buy_orders_commodity(account, s, \
-                                                                       account_details.loc[(account_details['Account'] == account) &\
-                                                                                            (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_buy_orders_commodity(account, s, quantity)
                                 new_row = {'Symbol': s, 'trade_type': ['long'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
@@ -260,9 +260,7 @@ class CommodityStratergy:
                             if historic_data.iloc[-1]['close'] < bearish and alligator[0] == "downtrend":
                                 print ("Enter short trade")
                                 logging.info("Enter short trade")
-                                order_id = place_order.place_sell_orders_commodity(account, s,
-                                            account_details.loc[(account_details['Account'] == account) & \
-                                                                (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_sell_orders_commodity(account, s, quantity)
                                 new_row = {'Symbol': s, 'trade_type': ['short'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
@@ -281,9 +279,7 @@ class CommodityStratergy:
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit long trade")
-                                order_id = place_order.place_sell_orders_commodity(account, s,
-                                            account_details.loc[(account_details['Account'] == account)\
-                                                                 & (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_sell_orders_commodity(account, s, quantity)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -300,9 +296,7 @@ class CommodityStratergy:
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit short trade")
-                                order_id = place_order.place_buy_orders_commodity(account, s,
-                                            account_details.loc[(account_details['Account'] == account) &
-                                                                (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_buy_orders_commodity(account, s, quantity)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -318,13 +312,9 @@ class CommodityStratergy:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                order_id = place_order.place_buy_orders_commodity(account, s,
-                                         account_details.loc[(account_details['Account'] == account) & \
-                                                             (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_buy_orders_commodity(account, s, quantity)
                             else:
-                                order_id = place_order.place_sell_orders_commodity(account, s,
-                                         account_details.loc[(account_details['Account'] == account) & \
-                                                             (account_details['Symbol'] == s)].shape[0])
+                                order_id = place_order.place_sell_orders_commodity(account, s, quantity)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
