@@ -26,14 +26,14 @@ import TelegramSend
 logger = logging.getLogger(__name__)
 
 commodity_to_symbol = {
-    'CRUDEOILM': 'CRUDEOIL',
-    'NATGASMINI': 'NATURALGAS',
+    'CRUDEOIL': 'CRUDEOILM',
+    'NATURALGAS': 'NATGASMINI',
     'COPPER': 'COPPER',
-    'GOLDM': 'GOLD',
-    'LEADMINI': 'LEAD',
-    'SILVERM': 'SILVER',
-    'ZINCMINI': 'ZINC',
-    'ALUMINI': 'ALUMINIUM',
+    'GOLD': 'GOLDM',
+    'LEAD': 'LEADMINI',
+    'SILVER': 'SILVERM',
+    'ZINC': 'ZINCMINI',
+    'ALUMINIUM': 'ALUMINI',
 }
 
 
@@ -62,7 +62,7 @@ class fivepaise_api(object):
                 "USER_KEY":credentials_leelu.USER_KEY,
                 "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY
             }
-        if account == 'avanthi':
+        elif account == 'avanthi':
             cred={
                 "APP_NAME":credentials_avanthi.APP_NAME,
                 "APP_SOURCE":credentials_avanthi.APP_SOURCE,
@@ -71,6 +71,9 @@ class fivepaise_api(object):
                 "USER_KEY":credentials_avanthi.USER_KEY,
                 "ENCRYPTION_KEY":credentials_avanthi.ENCRYPTION_KEY
             }
+        else:
+            print("Invalid account")
+            return
 
         self.obj = FivePaisaClient(cred=cred)
 
@@ -132,20 +135,26 @@ class fivepaise_api(object):
             return df.iloc[1]
         return df.iloc[0]
 
-    def get_commodity_symbol(self, symbol):
+    def get_commodity_symbol(self, symbol, expiry=None):
         df = self.scrip_master_df
 
         df = df[(df['SymbolRoot'] == symbol) & (df['ScripType'] == 'XX')]
         # Sort the df by expiry date and get the first row
         df = df.sort_values(by='Expiry')
 
-        # df.iloc[0]['expiry'] is befor current date retunr the next row
-        if df.iloc[0]['Expiry'] < datetime.now().strftime('%Y-%m-%d'):
-            return df.iloc[1]
-        return df.iloc[0]
+        if expiry is not None:
+            df = df[df['Expiry'] == expiry]
+            if df.empty:
+                return -1
+            return df.iloc[0]
 
-    def place_order_commodity(self, symbol, qty, buy_sell):
-        tokenInfo = self.get_commodity_symbol(symbol)
+        # Check if the first expiry is within 10 days
+        if pd.to_datetime(df.iloc[0]['Expiry']) - pd.Timestamp.now() <= pd.Timedelta(days=10):
+            return df.iloc[1]  # Return the next expiry
+        return df.iloc[0]  # Return the first expiry
+
+    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
+        tokenInfo = self.get_commodity_symbol(symbol, expiry)
 
         print("five paise place order")
 
@@ -190,8 +199,8 @@ class fivepaise_api(object):
                 print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
-                return -1
-        return order_id['BrokerOrderID']
+                return -1, -1
+        return order_id['BrokerOrderID'], tokenInfo['Expiry']
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
@@ -284,8 +293,16 @@ print("Starting")
 angel_obj = fivepaise_api("leelu")
 print("Object created")
 #orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
-orderid = angel_obj.place_order_commodity('GOLDM', 1, 'BUY')
+orderid, expiry = angel_obj.place_order_commodity('GOLD', 1, 'BUY', None)
+
 print(orderid)
+print(expiry)
+
+orderid, expiry = angel_obj.place_order_commodity('GOLDM', 1, 'SELL', '2024-12-05')
+
+print(orderid)
+print(expiry)
+
 
 """
 

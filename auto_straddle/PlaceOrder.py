@@ -45,7 +45,7 @@ class PlaceOrder:
             self.obj_3 = fivepaise_api.fivepaise_api(account)
 
 
-    def place_buy_orders_commodity(self, account, symbol, qty):
+    def place_buy_orders_commodity(self, account, symbol, qty, expiry=None):
 
         # Implementation of commodity buy orders
         # Convert qty to integer
@@ -54,26 +54,27 @@ class PlaceOrder:
         print(f"Placing Sell order for account {account}: commodity {symbol}")
         logging.info(f"Placing Sell order for commodity account {account} {symbol}")
         order_id = 0
+        expiry_ret = '2021-07-29'
 
         if account == 'deepti':
-            order_id = self.obj_1.place_order_commodity(symbol, qty, 'BUY')
+            order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry)
             if (order_id == -1):
-                order_id = self.obj_1.place_order_commodity(symbol, qty, 'BUY')
+                order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry)
 
         if (account == 'leelu'):
-            order_id = self.obj_2.place_order_commodity(symbol, qty, 'BUY')
+            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry)
             if (order_id == -1):
-                order_id = self.obj_2.place_order_commodity(symbol, qty, 'BUY')
+                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry)
 
         if (account == 'avanthi'):
-            order_id = self.obj_3.place_order_commodity(symbol, qty, 'BUY')
+            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry)
             if (order_id == -1):
-                order_id = self.obj_3.place_order_commodity(symbol, qty, 'BUY')
+                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry)
 
         logging.info(f"Order id for account: {order_id}")
-        return order_id
+        return order_id, expiry_ret
 
-    def place_sell_orders_commodity(self, account, symbol, qty):
+    def place_sell_orders_commodity(self, account, symbol, qty, expiry=None):
         # Implementation of commodity buy orders
         # Convert qty to integer
         qty = int(qty)
@@ -81,24 +82,25 @@ class PlaceOrder:
         print(f"Placing Sell order for account {account}: commodity {symbol}")
         logging.info(f"Placing Sell order for commodity account {account} {symbol}")
         order_id = 0
+        expiry_ret = '2021-07-29'
 
         if account == 'deepti':
-            order_id = self.obj_1.place_order_commodity(symbol, qty, 'SELL')
+            order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry)
             if (order_id == -1):
-                order_id = self.obj_1.place_order_commodity(symbol, qty, 'SELL')
+                order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry)
 
         if (account == 'leelu'):
-            order_id = self.obj_2.place_order_commodity(symbol, qty, 'SELL')
+            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry)
             if (order_id == -1):
-                order_id = self.obj_2.place_order_commodity(symbol, qty, 'SELL')
+                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry)
 
         if (account == 'avanthi'):
-            order_id = self.obj_3.place_order_commodity(symbol, qty, 'SELL')
+            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry)
             if (order_id == -1):
-                order_id = self.obj_3.place_order_commodity(symbol, qty, 'SELL')
+                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry)
 
         logging.info(f"Order id for account: {order_id}")
-        return order_id
+        return order_id, expiry_ret
 
 
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):

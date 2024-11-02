@@ -82,7 +82,7 @@ class angelone_api(object):
                 logging.error(f"Error executing intializeSymbolTokenMap: {e1}")
                 raise e1
 
-    def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce):
+    def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
         df = self.l.token_map
         strike_price = strike_price * 100
         if exch_seg == 'NSE':
@@ -97,11 +97,17 @@ class angelone_api(object):
         elif exch_seg == 'MCX' and (instrumenttype == 'FUTCOM'):
             # if expiry is within 10 days then return the next expiry
             today = datetime.now().date()
-            if (df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry'].date() - today).days <= 10:
-                return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
-            return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
 
-    def place_order_commodity(self, symbol, qty, buy_sell):
+            if expiry is not None:
+                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                date_obj = pd.to_datetime(expiry).date()
+                return df[(df['exch_seg'] == 'MCX') & (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
+            else:
+                if (df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry'].date() - today).days <= 10:
+                    return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+                return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
+
+    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
         try:
             if symbol == 'GOLD':
                 symbol = 'GOLDM'
@@ -116,7 +122,7 @@ class angelone_api(object):
             elif symbol == 'ALUMINIUM':
                 symbol = 'ALUMINI'
 
-            tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X').iloc[0]
+            tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
@@ -155,15 +161,15 @@ class angelone_api(object):
                     print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                     print(f"Error executing place_order: {e1}")
                     logging.error(f"Error executing place_order: {e1}")
-                    return -1
+                    return -1, -1
 
-            return orderid
+            return orderid, tokenInfo['expiry']
         except Exception as e:
             #print("Order placement failed: {}".format(e.message))
             print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
             print(f"Error executing place_order: {e}")
             logging.error(f"Error executing place_order: {e}")
-            return -1
+            return -1, -1
 
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
@@ -274,8 +280,14 @@ print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
 
-orderid = angel_obj.place_order_commodity('GOLD', 1, 'SELL')
+orderid, expiry = angel_obj.place_order_commodity('GOLD', 1, 'SELL')
 
+print(f"Order id: {orderid}, Expiry: {expiry}")
+
+orderid, expiry = angel_obj.place_order_commodity('GOLD', 1, 'BUY', '2024-12-05')
+
+print(f"Order id: {orderid}, Expiry: {expiry}")
+"""
 orderid = angel_obj.place_order_commodity('SILVER', 1, 'SELL')
 
 orderid = angel_obj.place_order_commodity('CRUDEOIL', 1, 'SELL')
