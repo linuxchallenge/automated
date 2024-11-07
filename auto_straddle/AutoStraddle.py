@@ -59,6 +59,10 @@ def main():
         # If sat or sun, then break the loop
         if current_time_week.weekday() == 5 or current_time_week.weekday() == 6:
             time.sleep(60)
+            if current_time_dt > time_dt(23, 50):
+                print("Exiting the program.")
+                logging.info("Exiting the program.")
+                exit(1)
             continue
 
         break
