@@ -60,7 +60,8 @@ class fivepaise_api(object):
                 "USER_ID":credentials_leelu.USER_ID,
                 "PASSWORD":credentials_leelu.PASSWORD,
                 "USER_KEY":credentials_leelu.USER_KEY,
-                "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY
+                "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY,
+                "CLIENTCODE":credentials_leelu.CLIENTCODE
             }
         elif account == 'avanthi':
             cred={
@@ -69,7 +70,8 @@ class fivepaise_api(object):
                 "USER_ID":credentials_avanthi.USER_ID,
                 "PASSWORD":credentials_avanthi.PASSWORD,
                 "USER_KEY":credentials_avanthi.USER_KEY,
-                "ENCRYPTION_KEY":credentials_avanthi.ENCRYPTION_KEY
+                "ENCRYPTION_KEY":credentials_avanthi.ENCRYPTION_KEY,
+                "CLIENTCODE":credentials_avanthi.CLIENTCODE
             }
         else:
             print("Invalid account")
@@ -82,7 +84,7 @@ class fivepaise_api(object):
             if account == 'leelu':
                 totp_pin = pyotp.TOTP(credentials_leelu.TOTP).now()
 
-                self.session = self.obj.get_totp_session(credentials_leelu.EMAIL,totp_pin,credentials_leelu.PIN)
+                self.session = self.obj.get_totp_session(credentials_leelu.CLIENTCODE,totp_pin,credentials_leelu.PIN)
                 if self.session:
                     if None is self.obj.Login_check():
                         print("Login failed")
@@ -91,7 +93,7 @@ class fivepaise_api(object):
             if account == 'avanthi':
                 totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
 
-                self.session = self.obj.get_totp_session(credentials_avanthi.EMAIL,totp_pin,credentials_avanthi.PIN)
+                self.session = self.obj.get_totp_session(credentials_avanthi.CLIENTCODE,totp_pin,credentials_avanthi.PIN)
                 if self.session:
                     break
             attempts = attempts - 1
