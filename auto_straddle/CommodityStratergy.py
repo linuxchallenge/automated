@@ -279,7 +279,7 @@ class CommodityStratergy:
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit long trade")
-                                order_id = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -296,7 +296,7 @@ class CommodityStratergy:
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 logging.info("Exit short trade")
-                                order_id = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -312,9 +312,9 @@ class CommodityStratergy:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                order_id = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
                             else:
-                                order_id = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -415,10 +415,11 @@ if __name__ == '__main__':
     commodity_account_details = pd.read_csv(coomodity_path)
 
     # add deepti GOLD and 1 to commodity_account_details
-    commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
+    #commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
 
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
     place_order.init_account("deepti")
+    place_order.init_account("leelu")
 
     # Get home directory
     cur_dir = Path.home()
@@ -430,7 +431,7 @@ if __name__ == '__main__':
     #Change the current working directory to the directory
     os.chdir(cur_dir)
 
-    commodity_stratergy = CommodityStratergy(['dummy', 'deepti'])
+    commodity_stratergy = CommodityStratergy(['dummy', 'deepti', 'leelu'])
     print("Starting")
     commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
     print("Exiting 1    ")
@@ -440,9 +441,9 @@ if __name__ == '__main__':
     print("Exiting 3    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 4    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
     print("Exiting 5    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
     print("Exiting 6    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 7    ")
