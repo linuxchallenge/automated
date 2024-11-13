@@ -164,7 +164,7 @@ class fivepaise_api(object):
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
-        qty = qty * symbol_to_lot[commodity_to_symbol[symbol]]
+        qty = qty * lot
 
         print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
@@ -292,15 +292,32 @@ class fivepaise_api(object):
 
 """
 print("Starting")
-angel_obj = fivepaise_api("leelu")
+angel_obj = fivepaise_api("avanthi")
 print("Object created")
 #orderid = angel_obj.place_order('BANKNIFTY', 15, 'SELL', 44800, 'PE')
-orderid, expiry = angel_obj.place_order_commodity('GOLD', 1, 'BUY', None)
+orderid, expiry_gold = angel_obj.place_order_commodity('GOLD', 3, 'BUY', None)
+
+print(orderid)
+print(expiry_gold)
+
+orderid, expiry = angel_obj.place_order_commodity('SILVER', 3, 'BUY', None)
 
 print(orderid)
 print(expiry)
 
-orderid, expiry = angel_obj.place_order_commodity('GOLDM', 1, 'SELL', '2024-12-05')
+orderid, expiry = angel_obj.place_order_commodity('ALUMINIUM', 3, 'BUY', None)
+
+print(orderid)
+print(expiry)
+
+orderid, expiry = angel_obj.place_order_commodity('CRUDEOIL', 3, 'BUY', None)
+
+print(orderid)
+print(expiry)
+
+
+
+orderid, expiry = angel_obj.place_order_commodity('GOLD', 3, 'SELL', expiry_gold)
 
 print(orderid)
 print(expiry)
