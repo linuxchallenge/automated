@@ -61,7 +61,6 @@ class fivepaise_api(object):
                 "PASSWORD":credentials_leelu.PASSWORD,
                 "USER_KEY":credentials_leelu.USER_KEY,
                 "ENCRYPTION_KEY":credentials_leelu.ENCRYPTION_KEY,
-                "CLIENTCODE":credentials_leelu.CLIENTCODE
             }
         elif account == 'avanthi':
             cred={
@@ -71,7 +70,6 @@ class fivepaise_api(object):
                 "PASSWORD":credentials_avanthi.PASSWORD,
                 "USER_KEY":credentials_avanthi.USER_KEY,
                 "ENCRYPTION_KEY":credentials_avanthi.ENCRYPTION_KEY,
-                "CLIENTCODE":credentials_avanthi.CLIENTCODE
             }
         else:
             print("Invalid account")
@@ -156,7 +154,7 @@ class fivepaise_api(object):
         return df.iloc[0]  # Return the first expiry
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
-        tokenInfo = self.get_commodity_symbol(symbol, expiry)
+        tokenInfo = self.get_commodity_symbol(commodity_to_symbol[symbol], expiry)
 
         print("five paise place order")
 
