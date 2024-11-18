@@ -83,7 +83,7 @@ class CommodityStratergy:
         return trend, data.loc[bearish.index[-1]]['high'], data.loc[bullish.index[-1]]['low']
 
 
-    def check_trade_executed(self, accounts, place_order):
+    def check_trade_executed(self, accounts, place_order, account_details):
         # For all accounts
         for account in accounts:
             file_name = f'csv/Commodity-{account}.csv'
@@ -125,6 +125,9 @@ class CommodityStratergy:
 
                     status, price = place_order.order_status(account, order_id, old_price)
 
+                    quantity = account_details.loc[(account_details['Account'] == account) \
+                                                   & (account_details['Symbol'] == current_trade.loc[row_number, 'Symbol'])]['quantity'].values[0]
+
                     if status == "Complete":
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
                         current_trade.loc[row_number, 'exit_price'] = price
@@ -132,16 +135,16 @@ class CommodityStratergy:
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                 current_trade.loc[row_number, 'exit_price']
-                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
-                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]
+                            current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
                                               f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
                                             current_trade.loc[row_number, 'profit'])
                         else:
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                 current_trade.loc[row_number, 'entry_price']
-                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
-                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]
+                            current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
+                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
                                               f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
                                             current_trade.loc[row_number, 'profit'])
@@ -163,7 +166,7 @@ class CommodityStratergy:
                 t.sleep(60)
                 return
 
-            self.check_trade_executed(accounts, place_order)
+            self.check_trade_executed(accounts, place_order, account_details)
 
             # If last_executed_hour is same as current hour, then return
             if self.last_executed_hour == current_time_dt.hour:

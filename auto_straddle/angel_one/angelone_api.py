@@ -178,9 +178,14 @@ class angelone_api(object):
             if df.empty:
                 return -1
 
-            if df.iloc[0]['expiry'] < datetime.strptime(datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d'):
-                tokenInfo = df.iloc[1]
-            else:
+            try:
+                if df.iloc[0]['expiry'] < datetime.strptime(datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d'):
+                    tokenInfo = df.iloc[1]
+                else:
+                    tokenInfo = df.iloc[0]
+            except Exception as e:
+                print(f"Error executing place_order: {e}")
+                logging.error(f"Error executing place_order: {e}")
                 tokenInfo = df.iloc[0]
 
             symbol = tokenInfo['symbol']
