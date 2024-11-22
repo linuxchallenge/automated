@@ -103,7 +103,9 @@ class angelone_api(object):
                 date_obj = pd.to_datetime(expiry).date()
                 return df[(df['exch_seg'] == 'MCX') & (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
             else:
-                if (df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry'].date() - today).days <= 10:
+                expiry_str = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
+                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+                if (expiry_date - today).days <= 10:
                     return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
                 return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
 

@@ -162,19 +162,17 @@ class fivepaise_api(object):
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
-        qty = qty * lot
+        #qty = qty * lot
 
         print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
 
-        if qty % lot != 0:
-            return -1
         if buy_sell == 'BUY':
             buy_sell = 'B'
         else:
             buy_sell = 'S'
         try:
             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
-                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
