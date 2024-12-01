@@ -31,6 +31,8 @@ def get_strike_interval(symbol_str):
         return 100
     if symbol_str == "FINNIFTY":
         return 50
+    if symbol_str == "MIDCPNIFTY":
+        return 25
     return 0
 
 
@@ -47,6 +49,8 @@ class FarSellStratergy:
             return -500
         if symbol == "FINNIFTY":
             return -350
+        if symbol == "MIDCPNIFTY":
+            return -250
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -500
 
@@ -504,7 +508,8 @@ class FarSellStratergy:
             multiplication_factor = {
                 'NIFTY': 25,
                 'BANKNIFTY': 15,
-                'FINNIFTY': 25
+                'FINNIFTY': 25,
+                'MIDCPNIFTY': 50
             }
             total_profit_loss = 0
 
@@ -567,11 +572,13 @@ class FarSellStratergy:
         multiplication_factor = {
             'NIFTY': 25,
             'BANKNIFTY': 15,
-            'FINNIFTY': 25
+            'FINNIFTY': 25,
+            'MIDCPNIFTY': 50
         }
         nifty_movement = 120
         finnifty_movement = 120
         banknifty_movement = 240
+        midcpnifty_movement = 70
 
         if (
                 symbol_data == "NIFTY"
@@ -582,6 +589,9 @@ class FarSellStratergy:
         ) or (
                 symbol_data == "BANKNIFTY"
                 and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= banknifty_movement
+        ) or (
+                symbol_data == "MIDCPNIFTY"
+                and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= midcpnifty_movement
         ) or (
             (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * multiplication_factor.get(symbol_data) \
                 < (self.loss_limit(symbol_data) / 2) and (sold_options_info['strangle_ce_price'] != -1)

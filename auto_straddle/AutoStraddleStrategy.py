@@ -39,6 +39,8 @@ def get_strike_interval(symbol):
         return 100
     if symbol == "FINNIFTY":
         return 50
+    if symbol == "MIDCPNIFTY":
+        return 25
     return 0
 
 
@@ -56,6 +58,8 @@ class AutoStraddleStrategy:
             return -1500
         if symbol == "FINNIFTY":
             return -1000
+        if symbol == "MIDCPNIFTY":
+            return -750
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -2000
 
@@ -531,7 +535,8 @@ class AutoStraddleStrategy:
             multiplication_factor = {
                 'NIFTY': 25,
                 'BANKNIFTY': 15,
-                'FINNIFTY': 25
+                'FINNIFTY': 25,
+                'MIDCPNIFTY': 50
             }
             total_profit_loss = 0
 
@@ -593,6 +598,7 @@ class AutoStraddleStrategy:
         nifty_movement = 60
         finnifty_movement = 60
         banknifty_movement = 120
+        midcpnifty_movement = 35
 
         # function to return movement depending on symbol
         def get_movement(symbol):
@@ -602,12 +608,15 @@ class AutoStraddleStrategy:
                 return banknifty_movement
             if symbol == "FINNIFTY":
                 return finnifty_movement
+            if symbol == "MIDCPNIFTY":
+                return midcpnifty_movement
             return 0
 
         multiplication_factor = {
             'NIFTY': 25,
             'BANKNIFTY': 15,
-            'FINNIFTY': 25
+            'FINNIFTY': 25,
+            'MIDCPNIFTY': 50
         }
 
         if sold_options_info['atm_ce_price'] != -1 and sold_options_info['atm_pe_price'] != -1:

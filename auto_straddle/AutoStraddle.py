@@ -33,7 +33,7 @@ def main():
     # Replace these lists with your desired accounts and symbols
     accounts = []
     accounts_commodity = []
-    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
 
     current_time_dt = datetime.now().time()
     if current_time_dt > time_dt(23, 45):

@@ -28,6 +28,7 @@ class UnderlyingSymbol(Enum):
     NIFTY = "NIFTY"
     BANKNIFTY = "BANKNIFTY"
     FINNIFTY = "FINNIFTY"
+    MIDCPNIFTY = "MIDCPNIFTY"
 
 # For nifty return 50, for bank nifty return 100, for finnifty return 50
 def get_strike_interval(symbolsearch):
@@ -37,6 +38,8 @@ def get_strike_interval(symbolsearch):
         return 100
     if symbolsearch == "FINNIFTY":
         return 50
+    if symbolsearch == "MIDCPNIFTY":
+        return 25
     return 0
 
 class OptionChainData:
@@ -461,6 +464,10 @@ class OptionChainData:
             url = "https://groww.in/options/nifty-bank"
         elif symbolData == "FINNIFTY":
             url = "https://groww.in/options/nifty-financial-services"
+        elif symbolData == "MIDCPNIFTY":
+            url = "https://groww.in/options/nifty-midcap-select"
+        else:
+            return None
 
         baseurl = "https://groww.in/"
 
@@ -495,7 +502,7 @@ class OptionChainData:
                     return None
 
 
-'''
+"""
 # Example usage:
 symbol = "NIFTY"
 option_chain_analyzer = OptionChainData(symbol)
@@ -535,4 +542,20 @@ print("\n \n")
 diff = {k: option_chain_info[k] for k in option_chain_info if option_chain_info[k] != option_chain_info_groww[k]}
 print(diff)
 
-'''
+
+symbol = "MIDCPNIFTY"
+option_chain_analyzer = OptionChainData(symbol)
+option_chain_info_groww = option_chain_analyzer.extract_options_data_groww(12650, 12200, 12800, symbol)
+print("Groww data \n")
+print(option_chain_info_groww)
+
+option_chain_info = option_chain_analyzer.get_option_chain_info_nse(12650, 12200, 12800, symbol)
+print("NSE data \n")
+print(option_chain_info)
+
+print("\n \n")
+
+# find difference between two dictionaries
+diff = {k: option_chain_info[k] for k in option_chain_info if option_chain_info[k] != option_chain_info_groww[k]}
+print(diff)
+"""
