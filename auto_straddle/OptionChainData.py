@@ -379,6 +379,13 @@ class OptionChainData:
         ce_strangle_strike = round(ce_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
         pe_strangle_strike = round(pe_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
 
+        if symbolData == "MIDCPNIFTY" or symbolData == "FINNIFTY":
+            reminder = ce_strangle_strike % 100
+            ce_strangle_strike = ce_strangle_strike - reminder
+
+            reminder = pe_strangle_strike % 100
+            pe_strangle_strike = pe_strangle_strike - reminder
+
         #print(ce_strangle_strike, pe_strangle_strike)
 
         if prev_strangle_ce_strike == 0:
