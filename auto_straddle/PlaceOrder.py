@@ -107,7 +107,8 @@ class PlaceOrder:
         multiplication_factor = {
             'NIFTY': 25,
             'BANKNIFTY': 15,
-            'FINNIFTY': 25
+            'FINNIFTY': 25,
+            'MIDCPNIFTY': 50
         }
         qty = qty * multiplication_factor[symbol]
 
@@ -140,7 +141,8 @@ class PlaceOrder:
         multiplication_factor = {
             'NIFTY': 25,
             'BANKNIFTY': 15,
-            'FINNIFTY': 25
+            'FINNIFTY': 25,
+            'MIDCPNIFTY': 50
         }
         qty = qty * multiplication_factor[symbol]
 
