@@ -182,7 +182,7 @@ class angelone_api(object):
                 return -1
 
             try:
-                if df.iloc[0]['expiry'] < datetime.strptime(datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d'):
+                if df.iloc[0]['expiry'].date() < datetime.now().date():
                     tokenInfo = df.iloc[1]
                 else:
                     tokenInfo = df.iloc[0]
