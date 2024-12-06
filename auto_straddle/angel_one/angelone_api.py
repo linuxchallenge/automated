@@ -7,6 +7,7 @@
 # pylint: disable=C0116
 # pylint: disable=C0115
 # pylint: disable=C0103
+# pylint: disable=C0209
 
 
 # package import statement
@@ -82,6 +83,7 @@ class angelone_api(object):
                 logging.error(f"Error executing intializeSymbolTokenMap: {e1}")
                 raise e1
 
+
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
         df = self.l.token_map
         strike_price = strike_price * 100
@@ -109,6 +111,30 @@ class angelone_api(object):
                 if (expiry_date - today).days <= 10:
                     return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
                 return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
+
+    def place_order_cash(self, symbol, qty, buy_sell):
+        try:
+            print("Placing order for symbol: {}, qty: {}, buy_sell: {}".format(symbol, qty, buy_sell))
+            tokenInfo = self.getTokenInfo('NSE', 'EQ', symbol, 0, 'X')
+            token = tokenInfo.iloc[0]['token']
+            params = {
+                "variety":"NORMAL",
+                "tradingsymbol":"{}-EQ".format(symbol),
+                "symboltoken":token,
+                "transactiontype":buy_sell,
+                "exchange":"NSE",
+                "ordertype":"MARKET",
+                "producttype":"CARRYFORWARD",
+                "duration":"DAY",
+                "quantity":qty
+                }
+            params["price"] = 0
+            response = self.obj.placeOrder(params)
+            return response
+        except Exception as e:
+            print("Order placement failed: {}".format(str(e)))
+            logger.error("Order placement failed: {}".format(str(e)))
+            return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
         try:
@@ -278,7 +304,18 @@ class angelone_api(object):
             return -1, -1
 
 
+
+
+
 '''
+print("Starting")
+angel_obj = angelone_api()
+print(angel_obj)
+print("Object created")
+angel_obj.intializeSymbolTokenMap()
+print("Initialized")
+
+orderid = angel_obj.place_order_cash('SBIN', 1, 'BUY')
 
 # Print timestamp with seconds
 print("Starting")

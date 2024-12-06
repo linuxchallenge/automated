@@ -23,6 +23,7 @@ from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
 import configuration
 from CommodityStratergy import CommodityStratergy
+from cash_stratergy import cash_stratergy
 import logging_config  # This sets up the logging
 
 # Set up logging
@@ -120,6 +121,9 @@ def main():
     # Create an instance of PlaceOrder
     place_order = PlaceOrder()
 
+    cash_stratergy_obj = cash_stratergy()
+    cash_stratergy_obj.sync_cash_strategy()
+
     logging.info("After creating instance of PlaceOrder")
 
     # Initalize all accounts
@@ -150,6 +154,8 @@ def main():
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                     print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+
+                cash_stratergy_obj.execute_strategy(place_order)
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second

@@ -189,3 +189,16 @@ class PlaceOrder:
             order_status = 'Complete'
             average_price = old_price
         return order_status, average_price
+    
+    def place_cash_order(self, account, symbol, quantity, side):
+        print(f"Placing order for account {account}: symbol {symbol}")
+        logging.info(f"Placing order for account {account} {symbol}")
+        order_id = 0
+
+        if account == 'deepti':
+            order_id = self.obj_1.place_order_cash(symbol, quantity, side)
+            if (order_id == -1):
+                order_id = self.obj_1.place_order_cash(symbol, quantity, side)
+
+        logging.info(f"Order id for account: {order_id}")
+        return order_id
