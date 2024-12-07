@@ -125,15 +125,21 @@ class cash_stratergy:
                 continue
 
             try:
-                print(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
-                quantity = int(row['amount'] / last_price)
-                order_id = place_order.place_cash_order(row['account'], row['symbol'], quantity, "BUY")
+                if last_price > row['sl']:
+                    print(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
+                    quantity = int(row['amount'] / last_price)
+                    order_id = place_order.place_cash_order(row['account'], row['symbol'], quantity, "BUY")
 
-                # Update the row in the DataFrame
-                data.loc[idx, 'buy_order_id'] = order_id
-                data.loc[idx, 'buy_price'] = last_price
-                data.loc[idx, 'open_order_status'] = 'open_pending'
-                data.loc[idx, 'status'] = 'open_pending'
+                    # Update the row in the DataFrame
+                    data.loc[idx, 'buy_order_id'] = order_id
+                    data.loc[idx, 'buy_price'] = last_price
+                    data.loc[idx, 'open_order_status'] = 'open_pending'
+                    data.loc[idx, 'status'] = 'open_pending'
+                else:
+                    print(f"Skipping row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
+                    data.loc[idx, 'open_order_status'] = 'rejected'
+                    data.loc[idx, 'status'] = 'rejected'
+
             except Exception as e:
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
