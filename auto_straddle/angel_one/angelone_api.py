@@ -268,6 +268,9 @@ class angelone_api(object):
 
     def get_order_status(self, order_id):
         try:
+            # Convert orderid which is <class 'numpy.float64'> to int
+            order_id = int(order_id)
+
             order_id = str(order_id)
             try:
                 orderbook = self.obj.orderBook()['data']
