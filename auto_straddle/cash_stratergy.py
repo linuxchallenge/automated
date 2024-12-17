@@ -96,13 +96,18 @@ class cash_stratergy:
         # Determine if the function can execute based on the time of day
         now = datetime.now()
         if datetime.strptime("09:27:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("09:33:00", "%H:%M:%S").time():
+            logger.info(f"Execution tracker morning count: {self.execution_tracker['morning']}")
+            print(f"Execution tracker morning count: {self.execution_tracker['morning']}")
             # Check morning executions limit:
             if self.execution_tracker["morning"] >= max_executions:
+                logger.info("Maximum exceeded.")
                 return
             self.execution_tracker["morning"] += 1
         elif datetime.strptime("15:15:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("15:20:00", "%H:%M:%S").time():
+            logger.info(f"Execution tracker evening count: {self.execution_tracker['afternoon']}")
             # Check afternoon executions limit:
             if self.execution_tracker["afternoon"] >= max_executions + 1:
+                logger.info("Maximum exceeded.")
                 return
 
             if self.execution_tracker["afternoon"] == max_executions:
@@ -113,10 +118,12 @@ class cash_stratergy:
             return
 
         # Load the CSV
+        logger.info("Executing cash strategy.")
         data = pd.read_csv(self.csv_path)
 
         # Step 2.4: Process rows with status 'new'
         for idx, row in data[data['status'] == 'new'].iterrows():
+            logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
             try:
                 symbol = row['symbol'] + ".NS"
                 last_price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
@@ -127,6 +134,7 @@ class cash_stratergy:
             try:
                 if last_price > row['sl']:
                     print(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
+                    logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
                     quantity = int(row['amount'] / last_price)
                     order_id = place_order.place_cash_order(row['account'], row['symbol'], quantity, "BUY")
 
@@ -144,6 +152,7 @@ class cash_stratergy:
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
                 print(f"Error processing 'new' row {row['sl_no']}: {e}")
+                logger.error(f"Error processing 'new' row {row['sl_no']}: {e}")
                 telegram_group = row['account'] + "_telegram"
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
@@ -154,6 +163,7 @@ class cash_stratergy:
         for idx, row in data[data['status'] == 'open'].iterrows():
             try:
                 symbol = row['symbol'] + ".NS"
+                logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
                 last_price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
@@ -176,6 +186,7 @@ class cash_stratergy:
         # Step 2.6: Process rows with status 'open_pending' or 'close_pending'
         for idx, row in data[data['status'].isin(['open_pending', 'close_pending'])].iterrows():
             try:
+                logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
                 order_id = row['buy_order_id'] if row['status'] == 'open_pending' else row['close_order_id']
                 status, final_price = place_order.order_status(row['account'], order_id, row['buy_price'])
 
@@ -212,6 +223,7 @@ class cash_stratergy:
 
     # Function to send csv file over telegram
     def send_csv(self):
+        logger.info("Sending CSV file over Telegram.")
         telegram_group = "dummy" + "_telegram"
         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
         x = TelegramSend.telegram_send_api()
