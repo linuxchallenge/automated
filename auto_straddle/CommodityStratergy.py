@@ -199,6 +199,9 @@ class CommodityStratergy:
 
                 historic_data_daily = self.commodity_data.historic_data(s, daily=True)
 
+                # drop last row
+                historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
+
                 if historic_data is None:
                     print(f"Error getting historic data for symbol: {s}")
                     return
@@ -423,7 +426,7 @@ if __name__ == '__main__':
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
     place_order.init_account("deepti")
     place_order.init_account("leelu")
-
+    
     # Get home directory
     cur_dir = Path.home()
     # Add /temp/data_collection to the home directory
