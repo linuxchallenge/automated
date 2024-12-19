@@ -79,6 +79,11 @@ class cash_stratergy:
             max_executions (int): Maximum number of executions allowed in the morning and afternoon.
         """
 
+        # return if time is less than 9:15
+        now = datetime.now()
+        if datetime.strptime("09:15:00", "%H:%M:%S").time() > now.time():
+            return
+
         # Check NFO market is open or not
         if self.nso_open is None:
             exchange_data = ExchangeData()
