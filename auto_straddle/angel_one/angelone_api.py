@@ -133,7 +133,7 @@ class angelone_api(object):
             return response
         except Exception as e:
             print("Order placement failed: {}".format(str(e)))
-            logger.error("Order placement failed: {}".format(str(e)))
+            logger.error(f"Order placement failed: {str(e)}")
             return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
@@ -208,10 +208,7 @@ class angelone_api(object):
                 return -1
 
             try:
-                if df.iloc[0]['expiry'].date() < datetime.now().date():
-                    tokenInfo = df.iloc[1]
-                else:
-                    tokenInfo = df.iloc[0]
+                tokenInfo = df.iloc[0]
             except Exception as e:
                 print(f"Error executing place_order: {e}")
                 logging.error(f"Error executing place_order: {e}")
