@@ -124,7 +124,7 @@ class angelone_api(object):
                 "transactiontype":buy_sell,
                 "exchange":"NSE",
                 "ordertype":"MARKET",
-                "producttype":"CARRYFORWARD",
+                "producttype":"DELIVERY",
                 "duration":"DAY",
                 "quantity":qty
                 }
