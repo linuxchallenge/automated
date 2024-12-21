@@ -36,40 +36,82 @@ symbol_to_lot = {
 
 class IndexFutureStratergy:
     def __init__(self, accounts):
+        """Initialize IndexFutureStrategy with accounts and execution tracking"""
+        if not accounts:
+            raise ValueError("Accounts list cannot be empty")
+
         self.accounts = accounts
+        self.last_executed_time = None
+        self.last_processed_symbol = None  # Remove redundant initialization
 
-        self.last_executed_time = self._load_last_execution_time()
+        # Load saved state
+        loaded_time, loaded_symbol = self._load_execution_state()
+        if loaded_time and loaded_symbol:
+            self.last_executed_time = loaded_time
+            self.last_processed_symbol = loaded_symbol
 
-    def _load_last_execution_time(self):
-        """Load last execution time from file"""
+        self.logger = logging.getLogger(__name__)
+
+    def _load_execution_state(self):
+        """Load last execution time and symbol from file
+        
+        Returns:
+            tuple: (datetime | None, str | None) - Last execution time and symbol
+        """
+        filepath = 'last_processed_symbol_index.txt'
         try:
-            with open('last_proccesed_symbol_index.txt', 'r', encoding='utf-8') as f:
-                time_str = f.read().strip()
-                return datetime.fromisoformat(time_str) if time_str else None
-        except (FileNotFoundError, ValueError):
-            self.last_proccesed_symbol = None
-            self.last_executed_time = 0
-            return None
-
-    def _save_last_execution_time(self, execution_time):
-        """Save execution time to file"""
-        try:
-            with open('last_proccesed_symbol_index.txt', 'w', encoding='utf-8') as f:
-                f.write(execution_time.isoformat())
+            with open(filepath, 'r', encoding='utf-8') as f:
+                line = f.read().strip()
+                if line:
+                    time_str, symbol_par = line.split(',')
+                    return datetime.fromisoformat(time_str), symbol_par
+        except FileNotFoundError:
+            self.logger.info(f"No previous state found at {filepath}")
+        except ValueError as e:
+            self.logger.error(f"Invalid format in {filepath}: {e}")
         except Exception as e:
-            logger.error(f"Failed to save execution time: {e}")
+            self.logger.error(f"Unexpected error reading {filepath}: {e}")
+        return None, None
 
-    # Update the execution check to save time:
-    def is_same_time_block(self, last_time, current_time):
-        """Check if times are in same hour and 15-min block"""
-        if last_time is None:
+    def _save_execution_state(self, execution_time, symbol_par):
+        """Save execution time and symbol to file
+        
+        Args:
+            execution_time (datetime): Current execution time
+            symbol (str): Current symbol being processed
+        """
+        filepath = 'last_processed_symbol_index.txt'
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"{execution_time.isoformat()},{symbol_par}")
+        except Exception as e:
+            self.logger.error(f"Failed to save state to {filepath}: {e}")
+            raise
+
+    def is_same_time_block(self, current_time, symbol_par):
+        """Check if current time is in same 15-minute block as last execution
+        
+        Args:
+            current_time (datetime): Current time to check
+            symbol (str): Current symbol being processed
+            
+        Returns:
+            bool: True if in same time block, False otherwise
+        """
+        if not self.last_executed_time:
             return False
-        same_block = (last_time.hour == current_time.hour and
-                    (last_time.minute // 15) == (current_time.minute // 15))
-        if not same_block:
-            self._save_last_execution_time(current_time)
-        return same_block
 
+        same_block = (
+            self.last_executed_time.hour == current_time.hour and
+            (self.last_executed_time.minute // 15) == (current_time.minute // 15)
+        )
+
+        if not same_block:
+            self._save_execution_state(current_time, symbol_par)
+            self.last_executed_time = current_time
+            self.last_processed_symbol = symbol_par
+
+        return same_block
 
     def datetotimestamp(self, date):
         time_tuple = date.timetuple()
@@ -244,18 +286,18 @@ class IndexFutureStratergy:
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:
-                if self.last_proccesed_symbol is not None and s != self.last_proccesed_symbol:
+                if self.last_processed_symbol is not None and s != self.last_processed_symbol:
                     continue
 
                 print(f"Processing symbol: {s}")
-                logger.info(f"Processing symbol: {s}")
+                self.logger.info(f"Processing symbol: {s}")
 
-                # Check if MCX is open
+                # Check if NSE is open
                 exchange_data = ExchangeData()
                 exchange_data_var = exchange_data.is_nfo_open()
                 if exchange_data_var is False:
                     self.last_executed_time = current_time_dt
-                    logger.info("NSE is closed")
+                    self.logger.info("NSE is closed")
                     print("NSE is closed")
                     return
 
@@ -281,7 +323,7 @@ class IndexFutureStratergy:
                 alligator_daily, _, _ = self.get_alligator_fractal(historic_data_daily)
 
                 print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
-                logger.info(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
+                self.logger.info(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
 
                 print(f"Symbol: {s}, close: {historic_data.iloc[-1]['close']}")
 
@@ -289,10 +331,10 @@ class IndexFutureStratergy:
                 for account in accounts:
 
                     print(f"Processing account: {account}")
-                    logging.info(f"Processing account: {account}")
+                    self.logger.info(f"Processing account: {account}")
 
                     # Get cvs file with account name, month and year in the file name
-                    file_name = f'csv/Commodity-{account}.csv'
+                    file_name = f'csv/IndexFuture-{account}.csv'
 
                     row_number = -1
 
@@ -318,8 +360,8 @@ class IndexFutureStratergy:
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
                                 print("Enter long trade")
-                                logging.info("Enter long trade")
-                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, None)
+                                self.logger.info("Enter long trade")
+                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, None, False)
                                 new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': ['long'],
                                            'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], 
                                            'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', 
@@ -330,8 +372,8 @@ class IndexFutureStratergy:
                         if current_trade is None or row_number == -1:
                             if historic_data.iloc[-1]['close'] < bearish and alligator[0] == "downtrend":
                                 print ("Enter short trade")
-                                logging.info("Enter short trade")
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, None)
+                                self.logger.info("Enter short trade")
+                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, None, False)
                                 new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': ['short'], \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
@@ -349,8 +391,8 @@ class IndexFutureStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit long trade")
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                self.logger.info("Exit long trade")
+                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'], False)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -366,8 +408,8 @@ class IndexFutureStratergy:
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit short trade")
-                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                self.logger.info("Exit short trade")
+                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'], False)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -383,9 +425,9 @@ class IndexFutureStratergy:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
-                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'], False)
                             else:
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'], False)
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -394,38 +436,36 @@ class IndexFutureStratergy:
                             current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit short trade")
+                                self.logger.info("Exit short trade")
                             else:
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit long trade")
+                                self.logger.info("Exit long trade")
 
                     if current_trade is not None:
                         current_trade.to_csv(file_name, index=False)
 
                     print(f"Processed account: {account}")
-                    logging.info(f"Processed account: {account}")
+                    self.logger.info(f"Processed account: {account}")
 
                 print(f"Processing symbol: {s}")
-                logging.info(f"Processing symbol: {s}")
+                self.logger.info(f"Processing symbol: {s}")
 
                 after_loop_time = datetime.now()
 
-                # If symbol is last assign self.last_proccesed_symbol to first symbol
+                # If symbol is last assign self.last_processed_symbol to first symbol
                 if s == symbol[-1]:
-                    self.last_executed_hour = current_time_dt
-                    self.last_proccesed_symbol = symbol[0]
+                    self.last_executed_time, self.last_processed_symbol = self._load_execution_state()
 
                     # Save to file
-                    with open('last_proccesed_symbol.txt', 'w', encoding='utf-8') as f:
-                        f.write(f"{self.last_proccesed_symbol},{self.last_executed_hour}")
+                    self._save_execution_state(self.last_executed_time, self.last_processed_symbol)
 
-                # Assign next symbol to self.last_proccesed_symbol
+                # Assign next symbol to self.last_processed_symbol
                 for i in range(len(symbol)):
                     if symbol[i] == s:
                         if i == len(symbol) - 1:
-                            self.last_proccesed_symbol = symbol[0]
+                            self.last_processed_symbol = symbol[0]
                         else:
-                            self.last_proccesed_symbol = symbol[i+1]
+                            self.last_processed_symbol = symbol[i+1]
 
                 time_difference = (after_loop_time - start_loop_time).total_seconds()
 
@@ -436,7 +476,7 @@ class IndexFutureStratergy:
                     return
 
         except Exception as e:
-            logging.error(f"Error executing execute_strategy: {e}")
+            self.logger.error(f"Error executing execute_strategy: {e}")
             traceback.print_exc()
 
     def send_message(self, account, symbol_msg, error_message, compute_profit_loss):
@@ -458,7 +498,7 @@ class IndexFutureStratergy:
             'TotalPNL': compute_profit_loss * 1,
             'Brokarge': 60,
             'CloseTime': datetime.now().strftime("%H:%M:%S"),
-            'Stratergy': 'Commodity',
+            'Stratergy': 'IndexFuture',
             'NetPNL': compute_profit_loss - 60
         }
 
@@ -482,7 +522,7 @@ import logging_config  # This sets up the logging
 
 # Test code
 if __name__ == '__main__':
-    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSt9M_2rCWQqiDtbBY4hn7oCfRLpWpbdHonYbqiQmDznXWSK_0DTgtV3q2TtK1fnslRDjd0NpccSDZU/pub?output=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
 
     # add deepti GOLD and 1 to commodity_account_details

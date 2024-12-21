@@ -136,7 +136,7 @@ class angelone_api(object):
             logger.error(f"Order placement failed: {str(e)}")
             return -1
 
-    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
+    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
         try:
             if symbol == 'GOLD':
                 symbol = 'GOLDM'
@@ -151,24 +151,40 @@ class angelone_api(object):
             elif symbol == 'ALUMINIUM':
                 symbol = 'ALUMINI'
 
-            tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
+            if iscommodity:
+                tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
+            else:
+                tokenInfo = self.getTokenInfo('NFO', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
 
             qty = qty * lot
 
-            orderparams = {
-                "variety": "NORMAL",
-                "tradingsymbol": symbol,
-                "symboltoken": token,
-                "transactiontype": buy_sell,
-                "exchange": "MCX",
-                "ordertype": "MARKET",
-                "producttype": "CARRYFORWARD",
-                "duration": "DAY",
-                "quantity": qty
-            }
+            if iscommodity:
+                orderparams = {
+                    "variety": "NORMAL",
+                    "tradingsymbol": symbol,
+                    "symboltoken": token,
+                    "transactiontype": buy_sell,
+                    "exchange": "MCX",
+                    "ordertype": "MARKET",
+                    "producttype": "CARRYFORWARD",
+                    "duration": "DAY",
+                    "quantity": qty
+                }
+            else:
+                orderparams = {
+                    "variety": "NORMAL",
+                    "tradingsymbol": symbol,
+                    "symboltoken": token,
+                    "transactiontype": buy_sell,
+                    "exchange": "NFO",
+                    "ordertype": "MARKET",
+                    "producttype": "INTRADAY",
+                    "duration": "DAY",
+                    "quantity": qty
+                }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
             try :
