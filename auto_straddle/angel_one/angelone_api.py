@@ -91,8 +91,20 @@ class angelone_api(object):
             eq_df = df[(df['exch_seg'] == 'NSE') & (df['symbol'].str.contains('EQ'))]
             return eq_df[eq_df['name'] == symbol]
         elif exch_seg == 'NFO' and ((instrumenttype == 'FUTSTK') or (instrumenttype == 'FUTIDX')):
-            return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (
-                        df['name'] == symbol)].sort_values(by=['expiry'])
+            # if expiry is within 10 days then return the next expiry
+            today = datetime.now().date()
+
+            if expiry is not None:
+                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                date_obj = pd.to_datetime(expiry).date()
+                return df[(df['exch_seg'] == 'NFO') & (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
+            else:
+                expiry_str = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
+                expiry_str = expiry_str.strftime('%Y-%m-%d')
+                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+                if (expiry_date - today).days <= 10:
+                    return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+                return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
         elif exch_seg == 'NFO' and (instrumenttype == 'OPTSTK' or instrumenttype == 'OPTIDX'):
             return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
                         df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
@@ -154,7 +166,7 @@ class angelone_api(object):
             if iscommodity:
                 tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
             else:
-                tokenInfo = self.getTokenInfo('NFO', 'FUTCOM', symbol, 0, 'X', expiry).iloc[0]
+                tokenInfo = self.getTokenInfo('NFO', 'FUTIDX', symbol, 0, 'X', expiry).iloc[0]
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])

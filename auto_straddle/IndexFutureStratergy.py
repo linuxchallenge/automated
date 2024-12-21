@@ -11,7 +11,8 @@
 
 import os
 import traceback
-from datetime import datetime, time, timedelta
+import time
+from datetime import datetime, time, timedelta, date
 
 
 # basic logging configuration
@@ -36,21 +37,20 @@ symbol_to_lot = {
 
 class IndexFutureStratergy:
     def __init__(self, accounts):
-        """Initialize IndexFutureStrategy with accounts and execution tracking"""
         if not accounts:
             raise ValueError("Accounts list cannot be empty")
 
+        # Initialize logger first
+        self.logger = logging.getLogger(__name__)
         self.accounts = accounts
         self.last_executed_time = None
-        self.last_processed_symbol = None  # Remove redundant initialization
+        self.last_processed_symbol = None
 
         # Load saved state
         loaded_time, loaded_symbol = self._load_execution_state()
         if loaded_time and loaded_symbol:
             self.last_executed_time = loaded_time
             self.last_processed_symbol = loaded_symbol
-
-        self.logger = logging.getLogger(__name__)
 
     def _load_execution_state(self):
         """Load last execution time and symbol from file
@@ -59,19 +59,24 @@ class IndexFutureStratergy:
             tuple: (datetime | None, str | None) - Last execution time and symbol
         """
         filepath = 'last_processed_symbol_index.txt'
+
+        # Create file if it doesn't exist
+        if not os.path.exists(filepath):
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('')  # Create empty file
+            self.logger.info(f"Created new state file at {filepath}")
+            return None, None
+
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 line = f.read().strip()
                 if line:
                     time_str, symbol_par = line.split(',')
                     return datetime.fromisoformat(time_str), symbol_par
-        except FileNotFoundError:
-            self.logger.info(f"No previous state found at {filepath}")
-        except ValueError as e:
-            self.logger.error(f"Invalid format in {filepath}: {e}")
+                return None, None
         except Exception as e:
-            self.logger.error(f"Unexpected error reading {filepath}: {e}")
-        return None, None
+            self.logger.error(f"Error reading state file: {e}")
+            return None, None
 
     def _save_execution_state(self, execution_time, symbol_par):
         """Save execution time and symbol to file
@@ -113,19 +118,46 @@ class IndexFutureStratergy:
 
         return same_block
 
-    def datetotimestamp(self, date):
-        time_tuple = date.timetuple()
-        timestamp = round(time.mktime(time_tuple))
-        return timestamp
+    def datetotimestamp(self, date_obj):
+        """Convert datetime/date object to Unix timestamp
+        
+        Args:
+            date_obj (Union[datetime, date]): Date object to convert
+            
+        Returns:
+            int: Unix timestamp
+        """
+        try:
+            if isinstance(date_obj, datetime):
+                return int(date_obj.timestamp())
+            elif isinstance(date_obj, date):
+                return int(datetime.combine(date_obj, datetime.min.time()).timestamp())
+            else:
+                raise ValueError(f"Expected datetime/date object, got {type(date_obj)}")
+        except Exception as e:
+            self.logger.error(f"Error converting date to timestamp: {e}")
+            raise
 
     def timestamptodate(self, timestamp):
-        return datetime.fromtimestamp(timestamp)
+        """Convert Unix timestamp to datetime
+        
+        Args:
+            timestamp (int): Unix timestamp
+            
+        Returns:
+            datetime: Datetime object
+        """
+        try:
+            return datetime.fromtimestamp(int(timestamp))
+        except Exception as e:
+            self.logger.error(f"Error converting timestamp to date: {e}")
+            raise
 
     def convert15m_to_75m(self, data):
         data = data.set_index('Date')
         data = data.groupby(data.index.date) \
             .apply(lambda d: d.resample(rule='75T', closed='left', label='left', origin=d.index.min())
-                   .agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna())
+                   .agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna())
         data.reset_index(inplace=True)
         data = data.drop(['level_0'], axis=1)
         return data
@@ -135,8 +167,8 @@ class IndexFutureStratergy:
         fdate = datetime.now()
         todate = fdate - timedelta(days=70)
 
-        end = self.datetotimestamp(todate)
-        start = self.datetotimestamp(fdate)
+        start = self.datetotimestamp(todate)
+        end = self.datetotimestamp(fdate)
         if symbol_parse == "NIFTY":
             url = 'https://priceapi.moneycontrol.com/techCharts/history?symbol=9&resolution=15&from=' + str(
                 start) + '&to=' + str(end) + ''
@@ -153,11 +185,11 @@ class IndexFutureStratergy:
         resp = requests.get(url, timeout=5, headers=hdr).json()
         data = pd.DataFrame(resp)
 
-        date = []
+        date_time = []
         for dt in data['t']:
-            date.append({'Date': self.timestamptodate(dt)})
+            date_time.append({'Date': self.timestamptodate(dt)})
 
-        dt = pd.DataFrame(date)
+        dt = pd.DataFrame(date_time)
         intraday_data = pd.concat([dt, data['o'], data['h'], data['l'], data['c'], data['v']], axis=1). \
             rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume'})
 
@@ -276,7 +308,7 @@ class IndexFutureStratergy:
             self.check_trade_executed(accounts, place_order, account_details)
 
             # If last_executed_hour is same as current hour, then return
-            if self.last_executed_time and self.is_same_time_block(self.last_executed_time, current_time_dt):
+            if self.last_executed_time and self.is_same_time_block(current_time_dt, self.last_processed_symbol):
                 return
 
             start_loop_time = datetime.now()
@@ -456,6 +488,8 @@ class IndexFutureStratergy:
                 if s == symbol[-1]:
                     self.last_executed_time, self.last_processed_symbol = self._load_execution_state()
 
+                    self.last_executed_time = after_loop_time
+
                     # Save to file
                     self._save_execution_state(self.last_executed_time, self.last_processed_symbol)
 
@@ -525,13 +559,16 @@ if __name__ == '__main__':
     coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSt9M_2rCWQqiDtbBY4hn7oCfRLpWpbdHonYbqiQmDznXWSK_0DTgtV3q2TtK1fnslRDjd0NpccSDZU/pub?output=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
 
+    print(commodity_account_details)
+
     # add deepti GOLD and 1 to commodity_account_details
     #commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
 
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
     place_order.init_account("deepti")
     place_order.init_account("leelu")
-    
+    place_order.init_account("avanthi")
+
     # Get home directory
     cur_dir = Path.home()
     # Add /temp/data_collection to the home directory
@@ -544,28 +581,20 @@ if __name__ == '__main__':
 
     commodity_stratergy = IndexFutureStratergy(['dummy', 'deepti', 'leelu'])
     print("Starting")
-    commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy', 'deepti', 'leelu'], place_order, commodity_account_details)
     print("Exiting 1    ")
-    commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy', 'deepti', 'leelu'], place_order, commodity_account_details)
     print("Exiting 2    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy', 'deepti', 'leelu'], place_order, commodity_account_details)
     print("Exiting 3    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy', 'deepti', 'leelu'], place_order, commodity_account_details)
     print("Exiting 4    ")
-    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['deepti'], place_order, commodity_account_details)
     print("Exiting 5    ")
-    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
+    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 6    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-    print("Exiting 7    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-    print("Exiting 8    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-    print("Exiting 9    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-    print("Exiting 10    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-    print("Exiting 11    ")
-    commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-
+    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
+    print("Exiting 7    ")    
+    commodity_stratergy.execute_strategy(['leelu'], place_order, commodity_account_details)
+    print("Exiting 8    ")    
 """

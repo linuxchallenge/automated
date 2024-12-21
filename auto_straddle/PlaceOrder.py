@@ -62,14 +62,14 @@ class PlaceOrder:
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'leelu'):
-            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry)
+            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
             if (order_id == -1):
-                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry)
+                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'avanthi'):
-            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry)
+            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
             if (order_id == -1):
-                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry)
+                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
         return order_id, expiry_ret
@@ -90,14 +90,14 @@ class PlaceOrder:
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'leelu'):
-            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry)
+            order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
             if (order_id == -1):
-                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry)
+                order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'avanthi'):
-            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry)
+            order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
             if (order_id == -1):
-                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry)
+                order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
         return order_id, expiry_ret

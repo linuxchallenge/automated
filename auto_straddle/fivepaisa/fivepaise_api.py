@@ -34,6 +34,9 @@ commodity_to_symbol = {
     'SILVER': 'SILVERM',
     'ZINC': 'ZINCMINI',
     'ALUMINIUM': 'ALUMINI',
+    'NIFTY': 'NIFTY',
+    'BANKNIFTY': 'BANKNIFTY',
+    'FINNIFTY': 'FINNIFTY'
 }
 
 
@@ -153,7 +156,7 @@ class fivepaise_api(object):
             return df.iloc[1]  # Return the next expiry
         return df.iloc[0]  # Return the first expiry
 
-    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None):
+    def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, isCommodity=True):
         tokenInfo = self.get_commodity_symbol(commodity_to_symbol[symbol], expiry)
 
         print("five paise place order")
@@ -171,8 +174,13 @@ class fivepaise_api(object):
         else:
             buy_sell = 'S'
         try:
-            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
-                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+            if isCommodity:
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
+                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+            else:
+                qty = qty * lot
+                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
+                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
