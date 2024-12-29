@@ -53,7 +53,7 @@ class AutoStraddleStrategy:
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
-            return -750
+            return -2000
         if symbol == "BANKNIFTY":
             return -1500
         if symbol == "FINNIFTY":
@@ -533,7 +533,7 @@ class AutoStraddleStrategy:
         try:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
-                'NIFTY': 50,
+                'NIFTY': 75,
                 'BANKNIFTY': 15,
                 'FINNIFTY': 25,
                 'MIDCPNIFTY': 50
@@ -613,7 +613,7 @@ class AutoStraddleStrategy:
             return 0
 
         multiplication_factor = {
-            'NIFTY': 50,
+            'NIFTY': 75,
             'BANKNIFTY': 15,
             'FINNIFTY': 25,
             'MIDCPNIFTY': 50

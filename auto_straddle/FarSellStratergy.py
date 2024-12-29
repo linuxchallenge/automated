@@ -44,7 +44,7 @@ class FarSellStratergy:
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
-            return -250
+            return -700
         if symbol == "BANKNIFTY":
             return -500
         if symbol == "FINNIFTY":
@@ -506,7 +506,7 @@ class FarSellStratergy:
         try:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
-                'NIFTY': 50,
+                'NIFTY': 75,
                 'BANKNIFTY': 15,
                 'FINNIFTY': 25,
                 'MIDCPNIFTY': 50
@@ -570,7 +570,7 @@ class FarSellStratergy:
         # Example: Close the trade if NIFTY spot_price has moved by 60, FINNIFTY by 60, and BANKNIFTY by 120
 
         multiplication_factor = {
-            'NIFTY': 50,
+            'NIFTY': 75,
             'BANKNIFTY': 15,
             'FINNIFTY': 25,
             'MIDCPNIFTY': 50
