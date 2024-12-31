@@ -24,6 +24,7 @@ from FarSellStratergy import FarSellStratergy
 import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
+from IndexFutureStratergy import IndexFutureStratergy
 import logging_config  # This sets up the logging
 
 # Set up logging
@@ -34,6 +35,7 @@ def main():
     # Replace these lists with your desired accounts and symbols
     accounts = []
     accounts_commodity = []
+    accounts_index = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
 
     current_time_dt = datetime.now().time()
@@ -101,9 +103,16 @@ def main():
 
     print(commodity_account_details)
 
+    index_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSt9M_2rCWQqiDtbBY4hn7oCfRLpWpbdHonYbqiQmDznXWSK_0DTgtV3q2TtK1fnslRDjd0NpccSDZU/pub?output=csv'
+    index_account_details = pd.read_csv(index_path)
+    print(index_account_details)
+
     # Append accounts with data from google sheet
     for _, row in commodity_account_details.iterrows():
         accounts_commodity.append(row['Account'])
+
+    for _, row in index_account_details.iterrows():
+        accounts_index.append(row['Account'])
 
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
@@ -112,8 +121,10 @@ def main():
 
     accounts_commodity = list(dict.fromkeys(accounts_commodity))
 
+    accounts_index = list(dict.fromkeys(accounts_index))
+
     #merge accounts and accounts_commodity
-    accounts_merged = accounts + accounts_commodity
+    accounts_merged = accounts + accounts_commodity + accounts_index
 
     # remove duplicates of accounts_merged
     accounts_merged = list(dict.fromkeys(accounts_merged))
@@ -151,6 +162,13 @@ def main():
 
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+
+                try:
+                    index_future_stratergy = IndexFutureStratergy(accounts_index)
+                    index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                     print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
