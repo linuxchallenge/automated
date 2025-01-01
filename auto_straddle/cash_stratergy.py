@@ -148,6 +148,7 @@ class cash_stratergy:
                     data.loc[idx, 'buy_price'] = last_price
                     data.loc[idx, 'open_order_status'] = 'open_pending'
                     data.loc[idx, 'status'] = 'open_pending'
+                    data.loc[idx, 'quantity'] = quantity
                 else:
                     print(f"Skipping row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
                     data.loc[idx, 'open_order_status'] = 'rejected'

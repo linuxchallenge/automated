@@ -72,7 +72,14 @@ class IndexFutureStratergy:
                 line = f.read().strip()
                 if line:
                     time_str, symbol_par = line.split(',')
-                    return datetime.fromisoformat(time_str), symbol_par
+                    try:
+                        # Try parsing as complete ISO format first
+                        dt = datetime.fromisoformat(time_str)
+                    except ValueError:
+                        # If it's just a time string, combine with today's date
+                        current_date = datetime.now().date()
+                        dt = datetime.combine(current_date, datetime.strptime(time_str, '%H:%M:%S.%f').time())
+                    return dt, symbol_par
                 return None, None
         except Exception as e:
             self.logger.error(f"Error reading state file: {e}")
@@ -110,6 +117,16 @@ class IndexFutureStratergy:
             self.last_executed_time.hour == current_time.hour and
             (self.last_executed_time.minute // 15) == (current_time.minute // 15)
         )
+
+        # if same_block, continue only if current symbol is next in sequence after last_processed_symbol
+        if same_block:
+            try:
+                last_symbol_index = symbol.index(self.last_processed_symbol)
+                if last_symbol_index == 0:
+                    return False  # If we processed last symbol, start new block
+                return True  # Continue with next symbol in same block
+            except ValueError:
+                return False  # If symbol not found in list, start new block
 
         if not same_block:
             self._save_execution_state(current_time, symbol_par)
@@ -318,7 +335,7 @@ class IndexFutureStratergy:
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:
-                if self.last_processed_symbol is not None and s != self.last_processed_symbol:
+                if self.last_processed_symbol != 'None' and self.last_processed_symbol is not None and s != self.last_processed_symbol:
                     continue
 
                 print(f"Processing symbol: {s}")
@@ -484,15 +501,6 @@ class IndexFutureStratergy:
 
                 after_loop_time = datetime.now()
 
-                # If symbol is last assign self.last_processed_symbol to first symbol
-                if s == symbol[-1]:
-                    self.last_executed_time, self.last_processed_symbol = self._load_execution_state()
-
-                    self.last_executed_time = after_loop_time
-
-                    # Save to file
-                    self._save_execution_state(self.last_executed_time, self.last_processed_symbol)
-
                 # Assign next symbol to self.last_processed_symbol
                 for i in range(len(symbol)):
                     if symbol[i] == s:
@@ -500,6 +508,11 @@ class IndexFutureStratergy:
                             self.last_processed_symbol = symbol[0]
                         else:
                             self.last_processed_symbol = symbol[i+1]
+                
+                self.last_executed_time = after_loop_time
+
+                # Save to file
+                self._save_execution_state(self.last_executed_time, self.last_processed_symbol)                            
 
                 time_difference = (after_loop_time - start_loop_time).total_seconds()
 
