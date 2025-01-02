@@ -123,8 +123,8 @@ class IndexFutureStratergy:
             try:
                 last_symbol_index = symbol.index(self.last_processed_symbol)
                 if last_symbol_index == 0:
-                    return False  # If we processed last symbol, start new block
-                return True  # Continue with next symbol in same block
+                    return True  # If we processed last symbol, start new block
+                return False  # Continue with next symbol in same block
             except ValueError:
                 return False  # If symbol not found in list, start new block
 
