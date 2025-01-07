@@ -86,6 +86,8 @@ def main():
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
+    index_future_stratergy = IndexFutureStratergy(accounts_index)
+
     path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQt7b9qZSCk8Un-5nTeOKyiaCNZPjeRLQHv41f8J2JVrXCvNPhaXtuoZEXEz7o3O4NG_ltFCjimld8Y/pub?output=csv'
     #path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTbpF19Et4qAM5OECrRCEMyb2s5x6R6Im9XXwxrTbLi097-QpLMc3aPcpWO7OF6QTOwUHce91zQPkU8/pub?output=csv'
     account_details = pd.read_csv(path)
@@ -158,7 +160,9 @@ def main():
                 # Get current time
                 current_time = datetime.now().second
 
-                execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details)
+                execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
+                                         accounts, symbols, place_order, account_details, \
+                                            index_future_stratergy)
 
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
@@ -167,7 +171,6 @@ def main():
                     print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
 
                 try:
-                    index_future_stratergy = IndexFutureStratergy(accounts_index)
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
@@ -195,7 +198,7 @@ def main():
     except KeyboardInterrupt:
         print("Exiting the program.")
 
-def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details):
+def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details, index_future_stratergy):
 
     # return if time is greater than 3:29 PM
     current_time_dt = datetime.now().time()
@@ -235,7 +238,7 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
                     if quantity > 0:
                         #print("==== Executing auto straddle strategy for account: " + account + " " + symbol)
                         auto_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
-                                                                quantity, place_order)
+                                                                quantity, place_order, index_future_stratergy)
                         #print("==== Exit auto straddle strategy for account: " + account + " " + symbol)
 
                 if account_details.loc[

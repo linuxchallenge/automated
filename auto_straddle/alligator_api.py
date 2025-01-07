@@ -1,12 +1,22 @@
-import pandas as pd
+# pylint: disable=W1203
+# pylint: disable=W0718
+# pylint: disable=C0301
+# pylint: disable=C0116
+# pylint: disable=C0115
+# pylint: disable=C0103
+# pylint: disable=W0105
+# pylint: disable=C0202
+# pylint: disable=C0114
 
 import warnings
+import pandas as pd
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 class alligator_api(object):
     def __init__(self):
-        self.smma_list = []        
+        self.smma_list = []
 
     def smma(self, src, length, future):
         smma = 0.0
@@ -26,7 +36,7 @@ class alligator_api(object):
         self.smma_list.append(smma)
 
         lookbackPeriod = length  # calculate smma for the other values
-        while (lookbackPeriod < dataLength):
+        while lookbackPeriod < dataLength:
             smma = (smma * (length - 1) + float(src[lookbackPeriod])) / length
             lookbackPeriod = lookbackPeriod + 1
             self.smma_list.append(smma)
@@ -47,7 +57,7 @@ class alligator_api(object):
             smma_list = self.smma(median_list, 5, 3)
             my_df['lips'] = smma_list
         except Exception as e:
-            print("compute_alligator API failed: {}".format(e))
+            print(f"compute_alligator API failed: {e}")
 
         return my_df
 
@@ -70,7 +80,7 @@ class alligator_api(object):
             if (last_df.iloc[-2]['jaw'] < last_df.iloc[-2]['lips']) and (last_df.iloc[-1]['jaw'] > last_df.iloc[-1]['lips']):
                 cross_over = "bearish"
         except Exception as e:
-            print("compute_trend API failed: {}".format(e))
+            print(f"compute_trend API failed: {e}")
             trend = "excpetion"
             cross_over = "exception"
 

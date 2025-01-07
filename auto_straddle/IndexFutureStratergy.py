@@ -45,6 +45,7 @@ class IndexFutureStratergy:
         self.accounts = accounts
         self.last_executed_time = None
         self.last_processed_symbol = None
+        self.alligator_trends = {}
 
         # Load saved state
         loaded_time, loaded_symbol = self._load_execution_state()
@@ -310,6 +311,32 @@ class IndexFutureStratergy:
                         self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
                         current_trade.loc[row_number, 'exit_order_state'] = 'error'
 
+
+    def get_alligator_trend(self, symbol_name):
+        """Get alligator trend for given symbol
+        
+        Args:
+            symbol_name (str): Symbol name to get trend for
+            
+        Returns:
+            str: Alligator trend (uptrend/downtrend)
+        """
+        return self.alligator_trends.get(symbol_name)
+
+    def get_index_trend(self, symbol):
+        """Get the current trend for the given index symbol
+        
+        Args:
+            symbol (str): The index symbol to check (e.g., 'NIFTY', 'BANKNIFTY')
+            
+        Returns:
+            str: The trend direction ('UP', 'DOWN', or 'SIDEWAYS')
+        """
+        if (symbol not in self.alligator_trends):
+            return 'sideways'  # Default if no trend data available
+        
+        return self.alligator_trends[symbol]
+
     def execute_strategy(self, accounts, place_order, account_details):
         try:
 
@@ -368,6 +395,10 @@ class IndexFutureStratergy:
 
                 # Get alligator and fractal
                 alligator, bullish, bearish = self.get_alligator_fractal(historic_data)
+                # Save alligator trend with symbol
+                if not hasattr(self, 'alligator_trends'):
+                    self.alligator_trends = {}
+                self.alligator_trends[s] = alligator[0]
 
                 alligator_daily, _, _ = self.get_alligator_fractal(historic_data_daily)
 

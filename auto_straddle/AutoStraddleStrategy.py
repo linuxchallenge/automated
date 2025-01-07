@@ -173,7 +173,7 @@ class AutoStraddleStrategy:
 
         return True
 
-    def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj):
+    def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj, index_future_stratergy):
         try:
             if account not in self.accounts:
                 raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
@@ -361,7 +361,7 @@ class AutoStraddleStrategy:
                                 {option_chain_analyzer['spot_price']} {option_chain_analyzer['pe_to_ce_ratio']}")
                     elif existing_sold_options_info.iloc[-1]['trade_state'] == 'closed':
                         # Check if the conditions to re-enter the trade are met
-                        if self.should_reenter_trade(existing_sold_options_info):
+                        if self.should_reenter_trade(existing_sold_options_info, index_future_stratergy, option_chain_analyzer):
                             # Re-enter the trade
                             sold_options_info = {
                                 'account': account,
@@ -704,27 +704,64 @@ class AutoStraddleStrategy:
                         return existing_sold_options_info.iloc[-1]['atm_ce_strike']
         return 0
 
-    def should_reenter_trade(self, sold_options_info):
-
-        profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
-        if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
-            #print(f"Profit amount: {profit_amount} is greater than 2000")
-            #logging.info(f"Profit amount: {profit_amount} is greater than 2000")
+    def should_reenter_trade(self, sold_options_info, index_future_stratergy, option_chain_analyzer):
+        """
+        Determines if a new trade should be entered based on certain conditions.
+        
+        Args:
+            sold_options_info (pd.DataFrame): DataFrame containing trade history
+            
+        Returns:
+            bool: True if conditions for re-entering trade are met, False otherwise
+        """
+        # Get the symbol and check if loss limit is exceeded
+        symbol = sold_options_info.iloc[-1]['symbol']
+        profit_amount = self.compute_profit_loss(sold_options_info, symbol)
+        if profit_amount < self.loss_limit(symbol):
             return False
 
-        # sold_options_info has more than 1 row
-        if sold_options_info.shape[0] >= 5:
+        # Check maximum number of trades limit
+        MAX_TRADES = 5
+        if sold_options_info.shape[0] >= MAX_TRADES:
             return False
 
-        # Check if the required 5-minute interval has passed since the trade close time
-        if (
-                sold_options_info.iloc[-1]['close_time'] and sold_options_info.iloc[-1]['trade_state'] == 'closed'
-                and (
-                datetime.now() - datetime.strptime(sold_options_info.iloc[-1]['close_time'], '%Y-%m-%d %H:%M:%S.%f'))
-                >= timedelta(minutes=10)
-        ):
-            return True
-        return False
+        # Check if enough time has passed since last trade
+        WAIT_MINUTES = 10
+        last_trade = sold_options_info.iloc[-1]
+
+        if not (last_trade['close_time'] and last_trade['trade_state'] == 'closed'):
+            return False
+
+        time_since_close = datetime.now() - datetime.strptime(last_trade['close_time'], '%Y-%m-%d %H:%M:%S.%f')
+        # Check wait time between trades
+        if time_since_close < timedelta(minutes=WAIT_MINUTES):
+            return False
+
+
+        if self.check_bullish_option_chain(option_chain_analyzer, symbol):
+            option_chain_trend = "uptrend"
+        elif self.check_bearish_option_chain(option_chain_analyzer, symbol):
+            option_chain_trend = "downtrend"
+        else:
+            option_chain_trend = "sideways"
+
+        index_trend = index_future_stratergy.get_index_trend(symbol)
+
+        # If sold_options_info.shape[0] is 1 and loss greater than 0.2 times of self.loss_limit(symbol)
+        # then reenter only if index_trend is in the same direction as option_chain_trend
+        if sold_options_info.shape[0] == 1 and profit_amount < 0.2 * self.loss_limit(symbol):
+            if index_trend == option_chain_trend:
+                return True
+            return False
+
+        # If sold_options_info.shape[0] is 2 or more and loss greater than 0.4 times of self.loss_limit(symbol)
+        # then reenter only if index_trend is in the same direction as option_chain_trend
+        if sold_options_info.shape[0] >= 2 and profit_amount < 0.4 * self.loss_limit(symbol):
+            if index_trend == option_chain_trend:
+                return True
+            return False
+
+        return True
 
 
     def get_option_price(self, option_chain_analyzer, option_type, symbol):
@@ -813,6 +850,7 @@ class AutoStraddleStrategy:
 from pathlib import Path
 from PlaceOrder import PlaceOrder
 from OptionChainData import OptionChainData
+from IndexFutureStratergy   import IndexFutureStratergy
 
 
 import logging_config  # This sets up the logging
@@ -833,6 +871,12 @@ dir.mkdir(parents=True, exist_ok=True)
 #Change the current working directory to the directory
 os.chdir(dir)
 
+index_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSt9M_2rCWQqiDtbBY4hn7oCfRLpWpbdHonYbqiQmDznXWSK_0DTgtV3q2TtK1fnslRDjd0NpccSDZU/pub?output=csv'
+index_account_details = pd.read_csv(index_path)
+
+index_future_stratergy = IndexFutureStratergy(accounts)
+index_future_stratergy.execute_strategy(accounts, place_order, index_account_details)
+
 
 # Initalize all accounts
 for account in accounts:
@@ -852,7 +896,7 @@ for symbol in symbols:
         option_chain_info['pe_to_ce_ratio'] = 1.5
         print(f"pe_to_ce_ratio: {option_chain_info['pe_to_ce_ratio']}")        
         #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "deepti", 1, place_order)
-        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order)
+        auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "dummy", 1, place_order, index_future_stratergy)
         #auto_straddle_strategy.execute_strategy(option_chain_info, symbol, "leelu", 1, place_order)
     else:
         print(f"Option chain information not available for symbol {symbol}")
