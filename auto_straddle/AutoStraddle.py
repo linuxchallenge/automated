@@ -86,8 +86,6 @@ def main():
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
-    index_future_stratergy = IndexFutureStratergy(accounts_index)
-
     path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQt7b9qZSCk8Un-5nTeOKyiaCNZPjeRLQHv41f8J2JVrXCvNPhaXtuoZEXEz7o3O4NG_ltFCjimld8Y/pub?output=csv'
     #path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTbpF19Et4qAM5OECrRCEMyb2s5x6R6Im9XXwxrTbLi097-QpLMc3aPcpWO7OF6QTOwUHce91zQPkU8/pub?output=csv'
     account_details = pd.read_csv(path)
@@ -146,6 +144,8 @@ def main():
         place_order.init_account(account)
 
     logging.info("After initializing all accounts")
+
+    index_future_stratergy = IndexFutureStratergy(accounts_index)
 
     try:
         while True:

@@ -323,7 +323,7 @@ class IndexFutureStratergy:
         """
         return self.alligator_trends.get(symbol_name)
 
-    def get_index_trend(self, symbol):
+    def get_index_trend(self, symbol_name):
         """Get the current trend for the given index symbol
         
         Args:
@@ -332,10 +332,10 @@ class IndexFutureStratergy:
         Returns:
             str: The trend direction ('UP', 'DOWN', or 'SIDEWAYS')
         """
-        if (symbol not in self.alligator_trends):
+        if symbol_name not in self.alligator_trends:
             return 'sideways'  # Default if no trend data available
-        
-        return self.alligator_trends[symbol]
+
+        return self.alligator_trends[symbol_name]
 
     def execute_strategy(self, accounts, place_order, account_details):
         try:
@@ -539,11 +539,11 @@ class IndexFutureStratergy:
                             self.last_processed_symbol = symbol[0]
                         else:
                             self.last_processed_symbol = symbol[i+1]
-                
+
                 self.last_executed_time = after_loop_time
 
                 # Save to file
-                self._save_execution_state(self.last_executed_time, self.last_processed_symbol)                            
+                self._save_execution_state(self.last_executed_time, self.last_processed_symbol)
 
                 time_difference = (after_loop_time - start_loop_time).total_seconds()
 
