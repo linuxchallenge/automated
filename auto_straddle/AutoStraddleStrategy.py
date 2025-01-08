@@ -751,18 +751,14 @@ class AutoStraddleStrategy:
         # then reenter only if index_trend is in the same direction as option_chain_trend
         if sold_options_info.shape[0] == 1 and profit_amount < 0.2 * self.loss_limit(symbol):
             if index_trend == option_chain_trend:
-                logging.info(f"Re-entering trade for account {sold_options_info.iloc[-1]['account']} {symbol}")
                 return True
-            logging.info(f"Not re-entering trade for account {sold_options_info.iloc[-1]['account']} {symbol}")
             return False
 
         # If sold_options_info.shape[0] is 2 or more and loss greater than 0.4 times of self.loss_limit(symbol)
         # then reenter only if index_trend is in the same direction as option_chain_trend
         if sold_options_info.shape[0] >= 2 and profit_amount < 0.4 * self.loss_limit(symbol):
             if index_trend == option_chain_trend:
-                logging.info(f"Re-entering trade for account {sold_options_info.iloc[-1]['account']} {symbol}")
                 return True
-            logging.info(f"Not re-entering trade for account {sold_options_info.iloc[-1]['account']} {symbol}")
             return False
 
         return True

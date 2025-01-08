@@ -386,6 +386,13 @@ class OptionChainData:
             reminder = pe_strangle_strike % 100
             pe_strangle_strike = pe_strangle_strike - reminder
 
+        if symbolData == "BANKNIFTY":
+            reminder = ce_strangle_strike % 500
+            ce_strangle_strike = ce_strangle_strike - reminder
+
+            reminder = pe_strangle_strike % 500
+            pe_strangle_strike = pe_strangle_strike - reminder
+
         #print(ce_strangle_strike, pe_strangle_strike)
 
         if prev_strangle_ce_strike == 0:
@@ -521,7 +528,7 @@ print(option_chain_info)
 symbol = "BANKNIFTY"
 option_chain_analyzer = OptionChainData(symbol)
 option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
-
+print("Bank Nifty data \n")
 # You can then access the information using option_chain_info
 print(option_chain_info)
 
