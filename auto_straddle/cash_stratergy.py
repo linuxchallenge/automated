@@ -206,7 +206,7 @@ class cash_stratergy:
                         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                         x = TelegramSend.telegram_send_api()
                         # Send error over telegramsend send_message
-                        x.send_message(id1, f"Cash startergy p/l {row['account']} {symbol} {profit_loss}")
+                        x.send_message(id1, f"Cash startergy p/l {row['account']} {row['symbol']} {row['stratergy']} {profit_loss}")
 
                     if row['status'] == 'open_pending':
                         data.loc[idx, 'buy_price'] = final_price
