@@ -627,7 +627,7 @@ class AutoStraddleStrategy:
 
             if (((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) + \
             (sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price'])) * multiplication_factor.get(symbol)) \
-                  < (self.loss_limit(symbol) / 2):
+                  < (self.loss_limit(symbol) / 3):
                 return True
 
         if sold_options_info['atm_ce_price'] == -1:
@@ -637,7 +637,7 @@ class AutoStraddleStrategy:
                 return True
 
             if ((sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price']) * multiplication_factor.get(symbol)) \
-                  < (self.loss_limit(symbol) / 2):
+                  < (self.loss_limit(symbol) / 3):
                 return True
 
             return False
@@ -649,7 +649,7 @@ class AutoStraddleStrategy:
                 return True
 
             if ((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) * multiplication_factor.get(symbol)) \
-                  < (self.loss_limit(symbol) / 2):
+                  < (self.loss_limit(symbol) / 3):
                 return True
 
         return False
