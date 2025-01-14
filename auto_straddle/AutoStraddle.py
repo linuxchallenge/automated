@@ -36,7 +36,7 @@ def main():
     accounts = []
     accounts_commodity = []
     accounts_index = []
-    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
+    symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
     current_time_dt = datetime.now().time()
     if current_time_dt > time_dt(23, 45):
