@@ -197,7 +197,7 @@ class angelone_api(object):
                     "transactiontype": buy_sell,
                     "exchange": "NFO",
                     "ordertype": "MARKET",
-                    "producttype": "INTRADAY",
+                    "producttype": "CARRYFORWARD",
                     "duration": "DAY",
                     "quantity": qty
                 }
