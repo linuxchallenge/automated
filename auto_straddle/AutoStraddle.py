@@ -25,17 +25,19 @@ import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
 from IndexFutureStratergy import IndexFutureStratergy
+from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # This sets up the logging
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
+strike = {'NIFTY': 23000, 'BANKNIFTY': 49000, 'FINNIFTY': 15000}
 
 def main():
     # Replace these lists with your desired accounts and symbols
     accounts = []
     accounts_commodity = []
     accounts_index = []
+    accounts_optionbuy = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
     current_time_dt = datetime.now().time()
@@ -107,12 +109,19 @@ def main():
     index_account_details = pd.read_csv(index_path)
     print(index_account_details)
 
+    optionbuy_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    optionbuy_account_details = pd.read_csv(optionbuy_path)
+    print(optionbuy_account_details)
+
     # Append accounts with data from google sheet
     for _, row in commodity_account_details.iterrows():
         accounts_commodity.append(row['Account'])
 
     for _, row in index_account_details.iterrows():
         accounts_index.append(row['Account'])
+
+    for _, row in optionbuy_account_details.iterrows():
+        accounts_optionbuy.append(row['Account'])
 
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
@@ -123,8 +132,10 @@ def main():
 
     accounts_index = list(dict.fromkeys(accounts_index))
 
+    accounts_optionbuy = list(dict.fromkeys(accounts_optionbuy))
+
     #merge accounts and accounts_commodity
-    accounts_merged = accounts + accounts_commodity + accounts_index
+    accounts_merged = accounts + accounts_commodity + accounts_index + accounts_optionbuy
 
     # remove duplicates of accounts_merged
     accounts_merged = list(dict.fromkeys(accounts_merged))
@@ -146,6 +157,8 @@ def main():
     logging.info("After initializing all accounts")
 
     index_future_stratergy = IndexFutureStratergy(accounts_index)
+
+    optionbuy_stratergy = OptionBuyStrategy()
 
     try:
         while True:
@@ -172,6 +185,12 @@ def main():
 
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+
+                try:
+                    optionbuy_stratergy.execute_strategy(accounts_optionbuy, place_order, optionbuy_account_details, strike)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
                     print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
@@ -220,6 +239,8 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
 
         # Get option chain data for the specified symbol
         option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
+
+        strike[symbol] = option_chain_info['atm_strike']
 
         # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
         dump_option_chain_data_to_csv(option_chain_info, symbol)
