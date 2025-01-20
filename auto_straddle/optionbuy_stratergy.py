@@ -22,7 +22,7 @@ from TelegramSend import telegram_send_api
 from exchange_state import ExchangeData
 
 
-symbol = ['NIFTY', 'BANKNIFTY']
+symbol_list = ['NIFTY', 'BANKNIFTY']
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,29 @@ class OptionBuyStrategy:
         else:
             df = pd.DataFrame([pl_dict])
             df.to_csv(file_name, index=False)
+
+    # Wanted function to convert 1m to 3m
+    def convert1m_to_3m(self, historic_data):
+        # Ensure historic_data is not None
+        if historic_data is None:
+            return None
+
+        # Set the datetime as index
+        historic_data = historic_data.set_index('date')
+
+        # Resample to 3-minute intervals, starting at market open (9:15)
+        offset = pd.Timedelta(minutes=3)
+
+        resampled_data = historic_data.resample('3T', offset=offset).agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last'
+        }).dropna()
+
+        # Reset index to make date a column again
+        resampled_data = resampled_data.reset_index()
+        return resampled_data
 
     def get_option_data(self, symbol_get, ce_pe, strike):
         # Get current date and last day of current month
@@ -197,7 +220,7 @@ class OptionBuyStrategy:
         else:
             print('No intraday data', candleResIntra)
 
-        return candleData
+        return self.convert1m_to_3m(candleData)
 
     # Write function which accepts data frame and retuen alligator and fractal
     def get_alligator_fractal(self, data):
@@ -401,7 +424,7 @@ class OptionBuyStrategy:
                 return
 
             # Check if all symbols have been executed in this 3-minute block
-            for symbol_name in symbol:
+            for symbol_name in symbol_list:
                 file_name = f'csv/OptionBuy-last_execution_{symbol_name}.txt'
 
                 # If file exists, check last execution time
@@ -495,13 +518,14 @@ class OptionBuyStrategy:
                         if current_trade is None or row_number == -1:
                             # Convert Series to scalar value before comparison
                             close_price = historic_data.iloc[-1]['close'].item()
-                            if close_price > bullish and alligator[0] == "uptrend":
+                            if close_price > bullish and alligator[0] == "uptrend" \
+                                and alligator_daily[0] == "uptrend":
                                 print(f"Enter long trade {option_type}")
                                 self.logger.info(f"Enter long trade {option_type}")
                                 #order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
                                 order_id = 0
                                 expiry = datetime.now().date()
-                                new_row = {'Symbol': symbol_name, 
+                                new_row = {'Symbol': symbol_name,
                                            'option-type': option_type,
                                            'strike': strike_process,
                                            'expiry': expiry,
@@ -590,27 +614,63 @@ class OptionBuyStrategy:
 
 
 
+"""
+import PlaceOrder
 
-'''
-# Test the class
+import os
+from pathlib import Path
+import logging_config  # This sets up the logging
+from OptionChainData import OptionChainData
+
+strike = {"NIFTY": 23000, "BANKNIFTY": 49000, "FINNIFTY": 15000}
+
+# Test code
 if __name__ == '__main__':
-    obj = OptionBuyStrategy()
-    data = obj.get_option_data('NIFTY', 'CE', 23000)
-    print(data)
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    commodity_account_details = pd.read_csv(coomodity_path)
 
-    data = obj.get_option_data('NIFTY', 'PE', 23000)
-    print(data)
+    print(commodity_account_details)
 
-    data = obj.get_option_data('BANKNIFTY', 'CE', 49000)
-    print(data)
+    symbol = "NIFTY"
 
-    data = obj.get_option_data('BANKNIFTY', 'PE', 49000)
-    print(data)
+    # add deepti GOLD and 1 to commodity_account_details
+    #commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
 
-    # call execute_strategy
-    accounts = ['account1', 'account2']
-    place_order = None
-    account_details = pd.DataFrame({'Account': ['account1', 'account2'], 'Symbol': ['NIFTY', 'BANKNIFTY'], 'quantity': [1, 1]})
-    strike = {'NIFTY': 23000, 'BANKNIFTY': 49000}
-    obj.execute_strategy(accounts, place_order, account_details, strike)
-'''
+    place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
+    #place_order.init_account("deepti")
+    #place_order.init_account("leelu")
+    #place_order.init_account("avanthi")
+
+    # Get home directory
+    cur_dir = Path.home()
+    # Add /temp/data_collection to the home directory
+    cur_dir = cur_dir / 'temp' / 'data_collection'
+    # Create the directory if it does not exist
+    cur_dir.mkdir(parents=True, exist_ok=True)
+
+    #Change the current working directory to the directory
+    os.chdir(cur_dir)
+
+    commodity_stratergy = OptionBuyStrategy()
+    print("Starting")
+
+    option_chain_analyzer = OptionChainData(symbol)
+
+    #print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
+
+    # Get option chain data for the specified symbol
+    option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
+
+    strike[symbol] = option_chain_info['atm_strike']
+
+    symbol = "BANKNIFTY"
+
+    # Get option chain data for the specified symbol
+    option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
+
+    strike[symbol] = option_chain_info['atm_strike']
+
+    print("After calling get_option_chain_info", strike)
+
+    commodity_stratergy.execute_strategy(commodity_account_details['Account'].unique(), place_order, commodity_account_details, strike)
+"""
