@@ -269,7 +269,9 @@ class OptionBuyStrategy:
                     order_id = current_trade.loc[row_number, 'enter_orderid']
                     old_price = current_trade.loc[row_number, 'entry_price']
 
-                    status, price = place_order.order_status(account, order_id, old_price)
+                    #status, price = place_order.order_status(account, order_id, old_price)
+                    status = "Complete"
+                    price = old_price
 
                     if status == "Complete":
                         current_trade.loc[row_number, 'enter_order_state'] = 'open'
@@ -288,7 +290,9 @@ class OptionBuyStrategy:
                     order_id = current_trade.loc[row_number, 'exit_orderid']
                     old_price = current_trade.loc[row_number, 'exit_price']
 
-                    status, price = place_order.order_status(account, order_id, old_price)
+                    #status, price = place_order.order_status(account, order_id, old_price)
+                    status = "Complete"
+                    price = old_price
 
                     quantity = account_details.loc[(account_details['Account'] == account) \
                                                    & (account_details['Symbol'] == current_trade.loc[row_number, 'Symbol'])]['quantity'].values[0]
@@ -349,7 +353,8 @@ class OptionBuyStrategy:
                             quantity = account_details.loc[(account_details['Account'] == account) &
                                                         (account_details['Symbol'] == symbol_name)]['quantity'].values[0]
 
-                            order_id, _ = place_order.place_sell_orders_commodity(account, symbol_name, quantity, trade['expiry'], False)
+                            #order_id, _ = place_order.place_sell_orders_commodity(account, symbol_name, quantity, trade['expiry'], False)
+                            order_id = 0
 
                             current_trade.loc[idx, 'profit'] = (current_trade.loc[idx, 'exit_price'] -
                                                               current_trade.loc[idx, 'entry_price']) * symbol_to_lot[symbol_name]
@@ -491,7 +496,9 @@ class OptionBuyStrategy:
                                 if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
                                     print(f"Enter long trade {option_type}")
                                     self.logger.info(f"Enter long trade {option_type}")
-                                    order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
+                                    #order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
+                                    order_id = 0
+                                    expiry = datetime.now().date()
                                     new_row = {'Symbol': symbol_name, 'option-type' : option_type, 'strike' : strike_process, 'expiry': expiry, 'trade_type': ['long'],
                                                'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], 
                                                'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', 
@@ -509,7 +516,9 @@ class OptionBuyStrategy:
 
                                 print(f"Exit long trade {option_type} " + str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 self.logger.info(f"Exit long trade {option_type}")
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
+                                #order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
+                                order_id = 0
+                                expiry = datetime.now().date()
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
@@ -522,7 +531,9 @@ class OptionBuyStrategy:
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
+                                #order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
+                                order_id = 0
+                                expiry = datetime.now().date()
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
