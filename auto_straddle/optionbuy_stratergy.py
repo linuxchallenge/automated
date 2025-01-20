@@ -491,20 +491,34 @@ class OptionBuyStrategy:
 
                         quantity = account_details.loc[(account_details['Account'] == account) & (account_details['Symbol'] == symbol_name)]['quantity'].values[0]
 
-                        if alligator_daily[0] == "uptrend":
-                            if current_trade is None or row_number == -1:
-                                if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
-                                    print(f"Enter long trade {option_type}")
-                                    self.logger.info(f"Enter long trade {option_type}")
-                                    #order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
-                                    order_id = 0
-                                    expiry = datetime.now().date()
-                                    new_row = {'Symbol': symbol_name, 'option-type' : option_type, 'strike' : strike_process, 'expiry': expiry, 'trade_type': ['long'],
-                                               'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], 
-                                               'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', 
-                                               'exit_order_id': 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
-                                    current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
-                                    trade_entered = True
+                        # Replace the problematic comparison with:
+                        if current_trade is None or row_number == -1:
+                            # Convert Series to scalar value before comparison
+                            close_price = historic_data.iloc[-1]['close'].item()
+                            if close_price > bullish and alligator[0] == "uptrend":
+                                print(f"Enter long trade {option_type}")
+                                self.logger.info(f"Enter long trade {option_type}")
+                                #order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
+                                order_id = 0
+                                expiry = datetime.now().date()
+                                new_row = {'Symbol': symbol_name, 
+                                           'option-type': option_type,
+                                           'strike': strike_process,
+                                           'expiry': expiry,
+                                           'trade_type': ['long'],
+                                           'entry_time': datetime.now(),
+                                           'entry_price': close_price,  # Use scalar value here too
+                                           'enter_orderid': order_id,
+                                           'enter_order_state': 'open_pending',
+                                           'exit_orderid': 0,
+                                           'exit_order_state': 'none',
+                                           'exit_order_id': 0,
+                                           'exit_time': '',
+                                           'exit_price': '',
+                                           'state': 'open',
+                                           'profit': ''}
+                                current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
+                                trade_entered = True
 
                         # Exit the trade
                         if trade_entered is False and alligator[0] == "downtrend":
