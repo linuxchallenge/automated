@@ -70,6 +70,8 @@ class OptionBuyStrategy:
                self.yesterday.weekday() in [5, 6]):  # 5 is Saturday, 6 is Sunday
             self.yesterday = self.yesterday - timedelta(days=1)
 
+        self.nso_open = None
+
     def send_message(self, account, symbol_msg, error_message, compute_profit_loss):
         x = telegram_send_api()
 
@@ -414,11 +416,17 @@ class OptionBuyStrategy:
                 return
 
             # Check if NSE is open
-            exchange_data = ExchangeData()
-            exchange_data_var = exchange_data.is_nfo_open()
-            if exchange_data_var is False:
-                logger.info("NSE is closed")
-                print("NSE is closed")
+            if self.nso_open is None:
+                exchange_data = ExchangeData()
+                exchange_data_var = exchange_data.is_nfo_open()
+                if exchange_data_var is False:
+                    print("NFO market is closed")
+                    self.nso_open = False
+                    return
+                else:
+                    self.nso_open = True
+
+            elif self.nso_open is False:
                 return
 
             self.check_trade_executed(accounts, place_order, account_details)

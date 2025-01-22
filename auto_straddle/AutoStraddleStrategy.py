@@ -437,6 +437,23 @@ class AutoStraddleStrategy:
                                 [existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
 
                 else:
+                    try:
+                        index_trend = index_future_stratergy.get_index_trend(symbol)
+                        if self.check_bullish_option_chain(option_chain_analyzer, symbol):
+                            option_chain_trend = "uptrend"
+                        elif self.check_bearish_option_chain(option_chain_analyzer, symbol):
+                            option_chain_trend = "downtrend"
+                        else:
+                            option_chain_trend = "sideways"
+
+                        if index_trend == "uptrend" and option_chain_trend == "downtrend":
+                            return
+                        if index_trend == "downtrend" and option_chain_trend == "uptrend":
+                            return
+                    except Exception as e:
+                        print(f"Error in getting index trend: {e}")
+                        logging.error(f"Error in getting index trend: {e}")
+
                     # If the file doesn't exist, create a new sold_options_info
                     existing_sold_options_info = pd.DataFrame()
                     sold_options_info = {
