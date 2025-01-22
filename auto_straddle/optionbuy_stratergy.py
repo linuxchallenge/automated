@@ -328,9 +328,14 @@ class OptionBuyStrategy:
                             current_trade.loc[row_number, 'entry_price']
                         current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                 * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
-                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                            f"option buy p/l is {current_trade.loc[row_number, 'profit']}", \
-                                        current_trade.loc[row_number, 'profit'])
+                        self.send_message(
+                            account,
+                            current_trade.loc[row_number, 'Symbol'],
+                            f"option buy p/l is {current_trade.loc[row_number, 'option-type']}, \
+                                {current_trade.loc[row_number, 'strike']}, \
+                                    {current_trade.loc[row_number, 'profit']}",
+                            current_trade.loc[row_number, 'profit']
+                        )
 
                         current_trade.to_csv(file_path, index=False)
                     else:
