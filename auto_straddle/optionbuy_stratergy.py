@@ -547,8 +547,8 @@ class OptionBuyStrategy:
                         # Exit the trade
                         if trade_entered is False and alligator[0] == "downtrend":
                             if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
-                                print(historic_data.iloc[-1]['Date'])
-                                current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
+                                print(historic_data.iloc[-1]['date'])
+                                current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['date']
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
@@ -565,8 +565,8 @@ class OptionBuyStrategy:
                                 current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                         else:
                             if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
-                                print(historic_data.iloc[-1]['Date'])
-                                current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
+                                print(historic_data.iloc[-1]['date'])
+                                current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['date']
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
                                 #order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
