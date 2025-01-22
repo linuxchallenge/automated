@@ -414,7 +414,7 @@ class OptionBuyStrategy:
             if exchange_data_var is False:
                 logger.info("NSE is closed")
                 print("NSE is closed")
-                #return
+                return
 
             self.check_trade_executed(accounts, place_order, account_details)
 
@@ -482,6 +482,7 @@ class OptionBuyStrategy:
                     print(f"Symbol: {symbol_name} {option_type}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
                     self.logger.info(f"Symbol: {symbol_name} {option_type} {strike_process}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
 
+                    print(f"Symbol: {symbol_name} {option_type}, close: {historic_data.iloc[-1]['close']}")
                     self.logger.info(f"Symbol: {symbol_name} {option_type}, close: {historic_data.iloc[-1]['close']}")
 
                     # Loop for all accounts
@@ -545,7 +546,7 @@ class OptionBuyStrategy:
                                 trade_entered = True
 
                         # Exit the trade
-                        if trade_entered is False and alligator[0] == "downtrend":
+                        if trade_entered is False and alligator[0] != "uptrend":
                             if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                                 print(historic_data.iloc[-1]['date'])
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['date']
@@ -563,23 +564,6 @@ class OptionBuyStrategy:
                                     * symbol_to_lot[symbol_name]
                                 current_trade.loc[row_number, 'exit_orderid'] = order_id
                                 current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                        else:
-                            if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
-                                print(historic_data.iloc[-1]['date'])
-                                current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['date']
-                                current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
-                                current_trade.loc[row_number, 'state'] = 'closed'
-                                #order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
-                                order_id = 0
-                                expiry = datetime.now().date()
-                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
-                                    current_trade.loc[row_number, 'entry_price']
-                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
-                                        * symbol_to_lot[symbol_name]
-                                current_trade.loc[row_number, 'exit_orderid'] = order_id
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                                print(f"Exit long trade {option_type} " + str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                self.logger.info(f"Exit long trade {option_type}")
 
                         if current_trade is not None:
                             current_trade.to_csv(file_path, index=False)
