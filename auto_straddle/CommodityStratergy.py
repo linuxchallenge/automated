@@ -106,6 +106,8 @@ class CommodityStratergy:
 
                     status, price = place_order.order_status(account, order_id, old_price)
 
+                    logging.info(f"Order status for order id {order_id} is {status} and price is {price}")
+
                     if status == "Complete":
                         current_trade.loc[row_number, 'enter_order_state'] = 'open'
                         current_trade.loc[row_number, 'entry_price'] = price
@@ -124,6 +126,7 @@ class CommodityStratergy:
                     old_price = current_trade.loc[row_number, 'exit_price']
 
                     status, price = place_order.order_status(account, order_id, old_price)
+                    logging.info(f"Order status for order id {order_id} is {status} and price is {price}")
 
                     quantity = account_details.loc[(account_details['Account'] == account) \
                                                    & (account_details['Symbol'] == current_trade.loc[row_number, 'Symbol'])]['quantity'].values[0]
