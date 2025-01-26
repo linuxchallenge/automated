@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, time
 import os
 import logging
 from pathlib import Path
+import traceback
 import pandas as pd
 import requests
 import configuration
@@ -142,8 +143,18 @@ class OptionBuyStrategy:
             (self.symboldf.expiry <= last_day)
         ]
 
-        # Get the last expiry date's instrument key
-        instrument_key = current_month_expiries.sort_values('expiry', ascending=True).iloc[-1]['instrument_key']
+        # Check if current month expiry is available, if not get next month's last expiry
+        if current_month_expiries.empty:
+            next_month_expiries = self.symboldf[
+                (self.symboldf.name == symbol_get) &
+                (self.symboldf.strike == strike) &
+                (self.symboldf.option_type == ce_pe) &
+                (self.symboldf.expiry > last_day)
+            ]
+            instrument_key = next_month_expiries.sort_values('expiry', ascending=True).iloc[-1]['instrument_key']
+        else:
+            # Get the last expiry date's instrument key
+            instrument_key = current_month_expiries.sort_values('expiry', ascending=True).iloc[-1]['instrument_key']
 
         # need to generate url like https://api.upstox.com/v2/historical-candle/NSE_FO%7C45676/1minute/2025-01-14/2025-01-13
         # where NSE_FO%7C45676 is instrument_key
@@ -294,9 +305,7 @@ class OptionBuyStrategy:
                     order_id = current_trade.loc[row_number, 'enter_orderid']
                     old_price = current_trade.loc[row_number, 'entry_price']
 
-                    #status, price = place_order.order_status(account, order_id, old_price)
-                    status = "Complete"
-                    price = old_price
+                    status, price = place_order.order_status(account, order_id, old_price)
 
                     if status == "Complete":
                         current_trade.loc[row_number, 'enter_order_state'] = 'open'
@@ -315,9 +324,7 @@ class OptionBuyStrategy:
                     order_id = current_trade.loc[row_number, 'exit_orderid']
                     old_price = current_trade.loc[row_number, 'exit_price']
 
-                    #status, price = place_order.order_status(account, order_id, old_price)
-                    status = "Complete"
-                    price = old_price
+                    status, price = place_order.order_status(account, order_id, old_price)
 
                     quantity = account_details.loc[(account_details['Account'] == account) \
                                                    & (account_details['Symbol'] == current_trade.loc[row_number, 'Symbol'])]['quantity'].values[0]
@@ -383,8 +390,8 @@ class OptionBuyStrategy:
                             quantity = account_details.loc[(account_details['Account'] == account) &
                                                         (account_details['Symbol'] == symbol_name)]['quantity'].values[0]
 
-                            #order_id, _ = place_order.place_sell_orders_commodity(account, symbol_name, quantity, trade['expiry'], False)
-                            order_id = 0
+                            # def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
+                            order_id = place_order.place_order_option_buy(account, strike_price, option_type, symbol_name, quantity, "SELL")
 
                             current_trade.loc[idx, 'profit'] = (current_trade.loc[idx, 'exit_price'] -
                                                               current_trade.loc[idx, 'entry_price']) * symbol_to_lot[symbol_name]
@@ -536,8 +543,7 @@ class OptionBuyStrategy:
                                 and alligator_daily[0] == "uptrend":
                                 print(f"Enter long trade {option_type}")
                                 self.logger.info(f"Enter long trade {option_type}")
-                                #order_id, expiry = place_order.close_orders(account, strike_process, option_type, symbol_name, quantity)
-                                order_id = 0
+                                order_id = place_order.place_order_option_buy(account, strike_process, option_type, symbol_name, quantity, "BUY")
                                 expiry = datetime.now().date()
                                 new_row = {'Symbol': symbol_name,
                                            'option-type': option_type,
@@ -568,8 +574,7 @@ class OptionBuyStrategy:
 
                                 print(f"Exit long trade {option_type} " + str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 self.logger.info(f"Exit long trade {option_type}")
-                                #order_id, expiry = place_order.place_sell_orders_commodity(account, symbol_name, quantity, current_trade.loc[row_number, 'expiry'], False)
-                                order_id = 0
+                                order_id = place_order.place_order_option_buy(account, strike_process, option_type, symbol_name, quantity, "SELL")
                                 expiry = datetime.now().date()
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
@@ -605,7 +610,6 @@ class OptionBuyStrategy:
             logger.error(f"Error in execute_strategy: {e}")
 
             #print trace back
-            import traceback
             print(traceback.format_exc())
             return
 

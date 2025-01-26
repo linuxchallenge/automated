@@ -137,6 +137,41 @@ class PlaceOrder:
         logging.info(f"Order id for account: {order_id}")
         return order_id
 
+    def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
+        multiplication_factor = {
+            'NIFTY': 75,
+            'BANKNIFTY': 15,
+            'FINNIFTY': 25,
+            'MIDCPNIFTY': 50
+        }
+        qty = qty * multiplication_factor[symbol]
+
+        # Convert qty to integer
+        qty = int(qty)
+
+        print(f"Placing Sell order for account {account}: option with strike price {atm_ce_strike}")
+        logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
+        order_id = 0
+
+        if account == 'deepti':
+            order_id = self.obj_1.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_1.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+
+        if (account == 'leelu'):
+            order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+
+        if (account == 'avanthi'):
+            order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+            if (order_id == -1):
+                order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+
+        logging.info(f"Order id for account: {order_id}")
+        return order_id
+
+
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
             'NIFTY': 75,

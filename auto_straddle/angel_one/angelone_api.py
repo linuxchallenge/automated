@@ -14,7 +14,7 @@
 import traceback
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import requests
 from SmartApi import SmartConnect  # or
@@ -219,17 +219,16 @@ class angelone_api(object):
                     time.sleep(2)
                     orderid = self.obj.placeOrder(orderparams)
                 except Exception as e1:
-                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(f"Error executing place_order: {e1}")
                     logging.error(f"Error executing place_order: {e1}")
                     return -1, -1
 
             return orderid, tokenInfo['expiry']
         except Exception as e:
-            #print("Order placement failed: {}".format(e.message))
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-            print(f"Error executing place_order: {e}")
             logging.error(f"Error executing place_order: {e}")
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(f"Error executing place_order: {e}")
             return -1, -1
 
 
@@ -288,18 +287,100 @@ class angelone_api(object):
                     time.sleep(2)
                     orderid = self.obj.placeOrder(orderparams)
                 except Exception as e1:
-                    print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(f"Error executing place_order: {e1}")
                     logging.error(f"Error executing place_order: {e1}")
                     return -1
 
             return orderid
         except Exception as e:
+            logger.error(f"Error executing place_order: {e}")
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(f"Error executing place_order: {e}")
+            return -1
+
+    def place_order_option_buy(self, symbol, qty, buy_sell, strike_price, pe_ce):
+        try:
+            df_org = self.l.token_map
+            strike_price = strike_price * 100
+            df =  df_org[(df_org['exch_seg'] == 'NFO') & (df_org['instrumenttype'] == 'OPTIDX') & (df_org['name'] == symbol) & (
+                        df_org['strike'] == strike_price) & (df_org['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+
+            if df.empty:
+                print("Token info not found")
+                return -1
+
+            try:
+                today = datetime.now().date()
+                next_month = today.replace(day=28) + timedelta(days=4)
+                last_day = next_month - timedelta(days=next_month.day)
+
+                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                current_month_expiries = df[df['expiry'] <= last_day]
+
+                if not current_month_expiries.empty:
+                    tokenInfo = current_month_expiries.iloc[-1]
+                else:
+                    next_month_expiries = df[df['expiry'] > last_day]
+                    if not next_month_expiries.empty:
+                        tokenInfo = next_month_expiries.iloc[-1]
+                    else:
+                        tokenInfo = df.iloc[-1]
+            except Exception as e:
+                logging.error(f"Error executing place_order: {e}")
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                print(f"Error executing place_order: {e}")
+                tokenInfo = df.iloc[-1]
+
+            symbol = tokenInfo['symbol']
+            token = tokenInfo['token']
+            lot = int(tokenInfo['lotsize'])
+
+            if qty % lot != 0:
+                return -1
+
+            orderparams = {
+                "variety": "NORMAL",
+                "tradingsymbol": symbol,
+                "symboltoken": token,
+                "transactiontype": buy_sell,
+                "exchange": "NFO",
+                "ordertype": "MARKET",
+                "producttype": "CARRYFORWARD",
+                "duration": "DAY",
+                "quantity": qty
+            }
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+            try :
+                orderparams["price"] = 0
+                orderid = self.obj.placeOrder(orderparams)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            except Exception as e:
+                try:
+                    print("Error placing order, trying again")
+                    print(f"Error: {e}")
+                    logger.error(f"Error executing place_order again: {e}")
+                    x = TelegramSend.telegram_send_api()
+
+                    # Send profit loss over telegramsend send_message
+                    x.send_message("-4008545231", f"Warning angel one {symbol} option buy order Pls check")
+                    time.sleep(2)
+                    orderid = self.obj.placeOrder(orderparams)
+                except Exception as e1:
+                    logging.error(f"Error executing place_order: {e1}")
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(f"Error executing place_order: {e1}")
+                    return -1
+
+            return orderid
+        except Exception as e:
             #print("Order placement failed: {}".format(e.message))
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error executing place_order: {e}")
             logger.error(f"Error executing place_order: {e}")
             return -1
+
 
     def get_order_status(self, order_id):
         try:
@@ -336,7 +417,7 @@ class angelone_api(object):
             print("Order Status", order_ret)
             return order_ret, averageprice
         except Exception as e:
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(e)))
             print(f"Error executing get_order_status: {e}")
             logger.error(f"Error executing get_order_status: {e}")
             return -1, -1
@@ -344,14 +425,18 @@ class angelone_api(object):
 
 
 
-
 '''
+
 print("Starting")
 angel_obj = angelone_api()
 print(angel_obj)
 print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
+orderid = angel_obj.place_order_option_buy('NIFTY', 50, 'BUY', 23100, 'PE')
+#orderid = angel_obj.place_order('NIFTY', 50, 'BUY', 23100, 'PE')
+print(f"Order id: {orderid}")
+
 
 orderid = angel_obj.place_order_cash('SBIN', 1, 'BUY')
 
