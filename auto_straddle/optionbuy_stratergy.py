@@ -391,7 +391,7 @@ class OptionBuyStrategy:
                                                         (account_details['Symbol'] == symbol_name)]['quantity'].values[0]
 
                             # def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
-                            order_id = place_order.place_order_option_buy(account, strike_price, option_type, symbol_name, quantity, "SELL")
+                            order_id = place_order.place_orders_option_buy(account, strike_price, option_type, symbol_name, quantity, "SELL")
 
                             current_trade.loc[idx, 'profit'] = (current_trade.loc[idx, 'exit_price'] -
                                                               current_trade.loc[idx, 'entry_price']) * symbol_to_lot[symbol_name]
@@ -543,7 +543,7 @@ class OptionBuyStrategy:
                                 and alligator_daily[0] == "uptrend":
                                 print(f"Enter long trade {option_type}")
                                 self.logger.info(f"Enter long trade {option_type}")
-                                order_id = place_order.place_order_option_buy(account, strike_process, option_type, symbol_name, quantity, "BUY")
+                                order_id = place_order.place_orders_option_buy(account, strike_process, option_type, symbol_name, quantity, "BUY")
                                 expiry = datetime.now().date()
                                 new_row = {'Symbol': symbol_name,
                                            'option-type': option_type,
@@ -574,7 +574,7 @@ class OptionBuyStrategy:
 
                                 print(f"Exit long trade {option_type} " + str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
                                 self.logger.info(f"Exit long trade {option_type}")
-                                order_id = place_order.place_order_option_buy(account, strike_process, option_type, symbol_name, quantity, "SELL")
+                                order_id = place_order.place_orders_option_buy(account, strike_process, option_type, symbol_name, quantity, "SELL")
                                 expiry = datetime.now().date()
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
