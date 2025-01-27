@@ -154,9 +154,9 @@ class PlaceOrder:
         order_id = 0
 
         if account == 'deepti':
-            order_id = self.obj_1.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+            order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
             if (order_id == -1):
-                order_id = self.obj_1.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
+                order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
             order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
