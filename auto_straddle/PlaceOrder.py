@@ -106,8 +106,8 @@ class PlaceOrder:
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 15,
-            'FINNIFTY': 25,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
         qty = qty * multiplication_factor[symbol]
@@ -140,8 +140,8 @@ class PlaceOrder:
     def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 15,
-            'FINNIFTY': 25,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
         qty = qty * multiplication_factor[symbol]
@@ -175,8 +175,8 @@ class PlaceOrder:
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 15,
-            'FINNIFTY': 25,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
         qty = qty * multiplication_factor[symbol]

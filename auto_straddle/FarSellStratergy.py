@@ -485,9 +485,9 @@ class FarSellStratergy:
                 self.store_sold_options_info(existing_sold_options_info, account, symbol)
 
         except Exception as e:
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             logging.error("Error executing Auto Straddle Strategy: %s", e)
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
     def get_sold_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
@@ -507,8 +507,8 @@ class FarSellStratergy:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
                 'NIFTY': 75,
-                'BANKNIFTY': 15,
-                'FINNIFTY': 25,
+                'BANKNIFTY': 30,
+                'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
             total_profit_loss = 0
@@ -571,8 +571,8 @@ class FarSellStratergy:
 
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 15,
-            'FINNIFTY': 25,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
         nifty_movement = 120

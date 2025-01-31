@@ -32,7 +32,7 @@ symbol = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
 symbol_to_lot = {
     'NIFTY': 75,
     'BANKNIFTY': 30,
-    'FINNIFTY': 25
+    'FINNIFTY': 65
 }
 
 class IndexFutureStratergy:

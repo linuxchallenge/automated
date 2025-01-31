@@ -529,8 +529,8 @@ class AutoStraddleStrategy:
                 self.store_sold_options_info(existing_sold_options_info, account, symbol)
 
         except Exception as e:
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(e)))
+            logging.error(''.join(traceback.format_exception(e)))
             print(f"Error executing Auto Straddle Strategy: {e}")
             logging.error(f"Error executing Auto Straddle Strategy: {e}")
 
@@ -551,8 +551,8 @@ class AutoStraddleStrategy:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
                 'NIFTY': 75,
-                'BANKNIFTY': 15,
-                'FINNIFTY': 25,
+                'BANKNIFTY': 30,
+                'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
             total_profit_loss = 0
@@ -631,8 +631,8 @@ class AutoStraddleStrategy:
 
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 15,
-            'FINNIFTY': 25,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
 
