@@ -55,9 +55,9 @@ class AutoStraddleStrategy:
         if symbol == "NIFTY":
             return -2000
         if symbol == "BANKNIFTY":
-            return -1500
+            return -2000
         if symbol == "FINNIFTY":
-            return -1000
+            return -2000
         if symbol == "MIDCPNIFTY":
             return -750
         logging.error(f"Symbol {symbol} not found in loss limit")

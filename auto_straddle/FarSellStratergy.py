@@ -46,9 +46,9 @@ class FarSellStratergy:
         if symbol == "NIFTY":
             return -700
         if symbol == "BANKNIFTY":
-            return -500
+            return -700
         if symbol == "FINNIFTY":
-            return -350
+            return -700
         if symbol == "MIDCPNIFTY":
             return -250
         logging.error(f"Symbol {symbol} not found in loss limit")
