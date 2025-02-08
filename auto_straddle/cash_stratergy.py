@@ -172,12 +172,23 @@ class cash_stratergy:
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
                 last_price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
-                    order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
+                    if row['account'] == "deepti":
+                        order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
 
-                    # Update the row in the DataFrame
-                    data.loc[idx, 'close_order_id'] = order_id
-                    data.loc[idx, 'close_order_status'] = 'close_pending'
-                    data.loc[idx, 'status'] = 'close_pending'
+                        # Update the row in the DataFrame
+                        data.loc[idx, 'close_order_id'] = order_id
+                        data.loc[idx, 'close_order_status'] = 'close_pending'
+                        data.loc[idx, 'status'] = 'close_pending'
+                    else:
+                        if row['account'] == "sharekhan" or row['account'] == "anvitha" or row['account'] == "adithya":
+                            telegram_group = "deepti" + "_telegram"
+                        else:
+                            telegram_group = row['account'] + "_telegram"
+                        id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                        x = TelegramSend.telegram_send_api()
+
+                        # Send error over telegramsend send_message
+                        x.send_message(id1, f"Cash startergy please close  {row['account']} {row['symbol']}")
             except Exception as e:
                 print(f"Error processing 'open' row {row['sl_no']}: {e}")
                 data.loc[idx, 'open_order_status'] = 'rejected'
@@ -187,7 +198,7 @@ class cash_stratergy:
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
                 # Send error over telegramsend send_message
-                x.send_message(id1, f"Cash startergy close error {row['account']} {symbol}")
+                x.send_message(id1, f"Cash startergy close error {row['account']} {row['symbol']}")
 
         # Step 2.6: Process rows with status 'open_pending' or 'close_pending'
         for idx, row in data[data['status'].isin(['open_pending', 'close_pending'])].iterrows():
