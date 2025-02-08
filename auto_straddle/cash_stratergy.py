@@ -221,7 +221,7 @@ class cash_stratergy:
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
                 # Send error over telegramsend send_message
-                x.send_message(id1, f"Cash startergy pending error {row['account']} {symbol}")
+                x.send_message(id1, f"Cash startergy pending error {row['account']} {row['symbol']}")
 
         # Save the updated CSV
         data.to_csv(self.csv_path, index=False)
