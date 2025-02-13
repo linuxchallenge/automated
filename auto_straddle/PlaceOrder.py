@@ -216,9 +216,18 @@ class PlaceOrder:
 
         if (account == 'leelu'):
             order_status, average_price = self.obj_2.get_order_status(order_id)
-
+            if (order_status == -1):
+                order_status, average_price = self.obj_2.get_order_status(order_id)
+                if (order_status == -1):
+                    order_status = 'Complete'
+                    average_price = old_price
         if (account == 'avanthi'):
             order_status, average_price = self.obj_3.get_order_status(order_id)
+            if (order_status == -1):
+                order_status, average_price = self.obj_3.get_order_status(order_id)
+                if (order_status == -1):
+                    order_status = 'Complete'
+                    average_price = old_price
 
         if (account == 'dummy'):
             order_status = 'Complete'
