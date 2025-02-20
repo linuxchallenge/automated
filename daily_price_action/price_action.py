@@ -220,7 +220,7 @@ for index, row in nifty500.iterrows():
 
     # Fetch data
     #ohlc_data = data_fetcher.fetch_data(symbol, '1D')
-    ohlc_data = data_fetcher.OHLCHistoricData(symbol)
+    ohlc_data = data_fetcher.OHLCHistricData_nseweb(symbol)
 
     print(ohlc_data.head())
     try:
