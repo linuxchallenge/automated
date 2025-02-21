@@ -28,10 +28,16 @@ headers = {
 # define class for fetching data
 class DataFetcher:
     def __init__(self):
-        self.datafeed = TvDatafeed()
+        fileUrl ='https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz'
+        self.symboldf = pd.read_csv(fileUrl)
+        self.symboldf = self.symboldf[self.symboldf.instrument_type == 'EQUITY']
+        self.symboldf = self.symboldf[self.symboldf.exchange == 'NSE_EQ']
 
     def fetch_data(self, symbol, interval):
         """Fetch historical data from TradingView."""
+
+        if not hasattr(self, 'datafeed'):
+            self.datafeed = TvDatafeed()
 
         try:
             tv_data = self.datafeed.get_hist(symbol=symbol, exchange='NSE', interval=Interval.in_daily, n_bars=5000)
@@ -90,6 +96,7 @@ class DataFetcher:
     def equity_history_virgin(self, symbol,series,start_date,end_date):
         #url="https://www.nseindia.com/api/historical/cm/equity?symbol="+symbol+"&series=[%22"+series+"%22]&from="+str(start_date)+"&to="+str(end_date)+""
         url = 'https://www.nseindia.com/api/historical/cm/equity?symbol=' + symbol + '&series=["' + series + '"]&from=' + start_date + '&to=' + end_date
+        print(url)
 
         payload = self.nsefetch(url)
         return pd.DataFrame.from_records(payload["data"])
@@ -132,20 +139,94 @@ class DataFetcher:
         end_date = datetime.datetime.now().strftime("%d-%m-%Y")
         end_date = str(end_date)
 
-        start_date = (datetime.datetime.now()- datetime.timedelta(days=200)).strftime("%d-%m-%Y")
+        start_date = (datetime.datetime.now()- datetime.timedelta(days=1500)).strftime("%d-%m-%Y")
         start_date = str(start_date)
 
         series = "EQ"
 
-        df = self.equity_history(symbol,series,start_date,end_date)
+        tries = 0
+        max_tries = 2
+        while tries < max_tries:
+            try:
+                df = self.equity_history(symbol, series, start_date, end_date)
+                break
+            except Exception as e:
+                tries += 1
+                if tries == max_tries:
+                    print(f"Failed to fetch data for {symbol} after {max_tries} attempts: {e}")
+                    return pd.DataFrame()  # Return empty DataFrame on failure
+                print(f"Attempt {tries} failed, retrying in 10 seconds...")
+                time.sleep(10)
 
-        #filter the columns 'CH_TIMESTAMP' as date, 'CH_OPENING_PRICE' as open, 'CH_TRADE_HIGH_PRICE' as high, 'CH_TRADE_LOW_PRICE' as low, 'CH_CLOSING_PRICE' as close
-        df = df[['CH_TIMESTAMP','CH_OPENING_PRICE','CH_TRADE_HIGH_PRICE','CH_TRADE_LOW_PRICE','CH_CLOSING_PRICE']]
-        df.columns = ['datetime','open','high','low','close']
-        df['datetime'] = pd.to_datetime(df['datetime'])
-        df = df.set_index('datetime')
-        df = df.sort_index()
+        #print(df)
+        if not df.empty:
+            #filter the columns 'CH_TIMESTAMP' as date, 'CH_OPENING_PRICE' as open, 'CH_TRADE_HIGH_PRICE' as high, 'CH_TRADE_LOW_PRICE' as low, 'CH_CLOSING_PRICE' as close
+            df = df[['CH_TIMESTAMP','CH_OPENING_PRICE','CH_TRADE_HIGH_PRICE','CH_TRADE_LOW_PRICE','CH_CLOSING_PRICE']]
+            df.columns = ['datetime','open','high','low','close']
+            df['datetime'] = pd.to_datetime(df['datetime'])
+            #df = df.set_index('datetime')
+            #df = df.sort_index()
         return df
+    
+    def OHLCHistricData_upstox(self, symbol):
+        token = self.symboldf[self.symboldf.tradingsymbol == symbol]
+
+        if not token.empty:
+            instrument_key = token['instrument_key'].values[0]
+            all_data = []
+            
+            # Get data for last 4 years
+            today = datetime.datetime.now()
+            
+            for year in range(8):
+                end_date = today - datetime.timedelta(days=365*year)
+                start_date = end_date - datetime.timedelta(days=365)
+                
+                # Format dates as YYYY-MM-DD
+                to_date = end_date.strftime('%Y-%m-%d')
+                from_date = start_date.strftime('%Y-%m-%d')
+                
+                url = f'https://api.upstox.com/v2/historical-candle/{instrument_key}/day/{to_date}/{from_date}'
+                
+                headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': 'https://api.upstox.com',
+                'Connection': 'keep-alive'
+                }
+
+                try:
+                    res = requests.get(url, headers=headers, timeout=5.0)
+                    candleRes = res.json()
+
+                    if 'data' in candleRes and 'candles' in candleRes['data'] and candleRes['data']['candles']:
+                        candleData = pd.DataFrame(candleRes['data']['candles'])
+                        candleData.columns = ['date','open','high','low', 'close','vol','oi']
+                        candleData['date'] = pd.to_datetime(candleData['date']).dt.tz_convert('Asia/Kolkata')
+                        candleData = candleData.drop(['vol','oi'], axis=1)
+                        candleData = candleData.assign(date=candleData['date'].dt.tz_localize(None))
+                        all_data.append(candleData)
+                    
+                except Exception as e:
+                    print(f"Error fetching data for period {from_date} to {to_date}: {e}")
+                    continue
+
+            if all_data:
+                final_df = pd.concat(all_data, ignore_index=True)
+                final_df = final_df.drop_duplicates(subset=['date'])
+                final_df = final_df.sort_values(by='date', ascending=True)
+                # Reverse the data to have the latest data at the end
+                final_df = final_df.iloc[::-1].reset_index(drop=True)
+
+                final_df.rename(columns={'date': 'datetime'}, inplace=True)
+                return final_df
+            
+            return None
+        else:
+            print("Token not found")
+            return None
+
 
 
 
@@ -159,6 +240,8 @@ x = DataFetcher()
 
 for index, row in nifty_200_df.iterrows():
     print(row["Symbol"])
-    df = x.OHLCHistricData_nseweb(row["Symbol"])
+    df = x.OHLCHistricData_upstox(row["Symbol"])
     print(df)
 """
+
+

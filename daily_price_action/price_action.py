@@ -220,9 +220,12 @@ for index, row in nifty500.iterrows():
 
     # Fetch data
     #ohlc_data = data_fetcher.fetch_data(symbol, '1D')
-    ohlc_data = data_fetcher.OHLCHistricData_nseweb(symbol)
+    ohlc_data = data_fetcher.OHLCHistricData_upstox(symbol)
+    if ohlc_data is None:
+        print(f"Data not found for symbol: {symbol}")
+        continue
 
-    print(ohlc_data.head())
+    print(ohlc_data)
     try:
         dz_low, dz_high, sz_low, sz_high = test_calculate_ranges_and_strength(ohlc_data)
     except Exception as e:
