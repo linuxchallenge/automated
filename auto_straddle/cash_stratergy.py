@@ -9,15 +9,31 @@
 # pylint: disable=W0105
 
 
-
 from datetime import datetime
 import logging
+import requests
 #from PlaceOrder import PlaceOrder
 import pandas as pd
-import yfinance as yf  # Install via `pip install yfinance
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
+
+
+headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "en-US,en;q=0.9,en-IN;q=0.8,en-GB;q=0.7",
+            "cache-control": "max-age=0",
+            "priority": "u=0, i",
+            "sec-ch-ua": '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "none",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0"
+        }
 
 #from OptionChainData import OptionChainData
 #from pathlib import Path
@@ -32,6 +48,39 @@ class cash_stratergy:
         self.remote_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSmdwtCAt2oAYnuJGBb3zp7L0Q-iYSZoCMLvy3cfLrz48kp9cHvBqPjRp_p7uRc0Muw_lE7kl0wOnNP/pub?output=csv"
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
+        self._cached_positions = None
+        self._last_fetch_time = None
+
+
+    def nsefetch(self, payload):
+        try:
+            output = requests.get(payload,headers=headers, timeout=10).json()
+            #print(output)
+        except ValueError:
+            s =requests.Session()
+            output = s.get("http://nseindia.com",headers=headers)
+            output = s.get(payload,headers=headers).json()
+        return output
+
+    def nse_custom_function_secfno(self, symbol,attribute="lastPrice"):
+        current_time = datetime.now()
+        print("Fetching data from NSE" + symbol)
+        try:
+            if not hasattr(self, '_last_fetch_time') or not hasattr(self, '_cached_positions') or \
+                self._last_fetch_time is None or (current_time - self._last_fetch_time).total_seconds() > 300:
+                positions = self.nsefetch('https://www.nseindia.com/api/equity-stockIndices?index=SECURITIES%20IN%20F%26O')
+                self._cached_positions = positions
+                self._last_fetch_time = current_time
+            else:
+                positions = self._cached_positions
+            endp = len(positions['data'])
+            for x in range(0, endp):
+                if positions['data'][x]['symbol']==symbol.upper():
+                    value = float(positions['data'][x][attribute])
+                    return value
+        except Exception as e:
+            print("Error fetching data from NSE")
+            print(e)
 
     def sync_cash_strategy(self):
         """
@@ -130,8 +179,8 @@ class cash_stratergy:
         for idx, row in data[data['status'] == 'new'].iterrows():
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
             try:
-                symbol = row['symbol'] + ".NS"
-                last_price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
+                symbol = row['symbol']
+                last_price = self.nse_custom_function_secfno(symbol, "lastPrice")
             except Exception as e:
                 print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
                 continue
@@ -168,9 +217,9 @@ class cash_stratergy:
         # Step 2.5: Process rows with status 'open'
         for idx, row in data[data['status'] == 'open'].iterrows():
             try:
-                symbol = row['symbol'] + ".NS"
+                symbol = row['symbol']
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                last_price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
+                last_price = self.nse_custom_function_secfno(symbol, "lastPrice")
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
