@@ -111,7 +111,8 @@ class CommodityStratergy:
 
                     if status == "Complete":
                         current_trade.loc[row_number, 'enter_order_state'] = 'open'
-                        current_trade.loc[row_number, 'entry_price'] = price
+                        if price != 0:
+                            current_trade.loc[row_number, 'entry_price'] = price
                         current_trade.to_csv(file_name, index=False)
                     else:
                         # Send telegram message
@@ -134,7 +135,8 @@ class CommodityStratergy:
 
                     if status == "Complete":
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
-                        current_trade.loc[row_number, 'exit_price'] = price
+                        if price != 0:
+                            current_trade.loc[row_number, 'exit_price'] = price
 
                         brokrage = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
                                                                                 , current_trade.loc[row_number, 'exit_price'],\
