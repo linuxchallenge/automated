@@ -23,6 +23,7 @@ import configuration
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
 from exchange_state import ExchangeData
+import brokrage_calculator
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,9 @@ class IndexFutureStratergy:
                     if status == "Complete":
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
                         current_trade.loc[row_number, 'exit_price'] = price
+                        brokarage = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price'],
+                                                                                 current_trade.loc[row_number, 'exit_price'],
+                                                                                 quantity * symbol_to_lot[current_trade.loc[row_number, 'Symbol']])
 
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
@@ -294,16 +298,16 @@ class IndexFutureStratergy:
                             current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
-                                            current_trade.loc[row_number, 'profit'])
+                                              f"Short p/l is {current_trade.loc[row_number, 'profit']} brokarage is {brokarage}", \
+                                            current_trade.loc[row_number, 'profit'], brokarage, quantity)
                         else:
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                 current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
-                                            current_trade.loc[row_number, 'profit'])
+                                              f"Long p/l is {current_trade.loc[row_number, 'profit']} brokarage is {brokarage}", \
+                                            current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                         current_trade.to_csv(file_name, index=False)
                     else:
@@ -557,7 +561,7 @@ class IndexFutureStratergy:
             self.logger.error(f"Error executing execute_strategy: {e}")
             traceback.print_exc()
 
-    def send_message(self, account, symbol_msg, error_message, compute_profit_loss):
+    def send_message(self, account, symbol_msg, error_message, compute_profit_loss, brokarage = 0 , quantity = 0):
         x = telegram_send_api()
 
         telegram_group = account + "_telegram"
@@ -571,13 +575,13 @@ class IndexFutureStratergy:
             'Date': datetime.now().strftime("%Y-%m-%d"),
             'Account': account,
             'Symbol': symbol_msg,
-            'Quantity': 1,
+            'Quantity': quantity,
             'NumberofTrade': 1,
             'TotalPNL': compute_profit_loss * 1,
-            'Brokarge': 60,
+            'Brokarge': brokarage,
             'CloseTime': datetime.now().strftime("%H:%M:%S"),
             'Stratergy': 'IndexFuture',
-            'NetPNL': compute_profit_loss - 60
+            'NetPNL': compute_profit_loss - brokarage
         }
 
         current_month = datetime.now().strftime("%m")

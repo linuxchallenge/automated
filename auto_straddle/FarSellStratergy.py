@@ -20,6 +20,7 @@ import pandas as pd
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
+import brokrage_calculator
 logger = logging.getLogger(__name__)
 
 
@@ -230,7 +231,8 @@ class FarSellStratergy:
                         id4 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
                         # Send profit loss over telegramsend send_message
-                        x.send_message(id4, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
+                        x.send_message(id4, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity} \
+                                       brokarge is {self.compute_brokarage(existing_sold_options_info, symbol, quantity)}")
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
@@ -247,10 +249,10 @@ class FarSellStratergy:
                             'Quantity': quantity,
                             'NumberofTrade': existing_sold_options_info.shape[0],
                             'TotalPNL': compute_profit_loss * quantity,
-                            'Brokarge': 60 * existing_sold_options_info.shape[0],
+                            'Brokarge': self.compute_brokarage(existing_sold_options_info, symbol, quantity),
                             'CloseTime': existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'],
                             'Stratergy': 'FarSell',
-                            'NetPNL': compute_profit_loss * quantity - 60 * existing_sold_options_info.shape[0]
+                            'NetPNL': compute_profit_loss * quantity - self.compute_brokarage(existing_sold_options_info, symbol, quantity)
                         }
 
                         current_month = datetime.now().strftime("%m")
@@ -548,6 +550,46 @@ class FarSellStratergy:
             print(f"Error computing profit or loss: {e}")
             logging.error(f"Error computing profit or loss: {e}")
             return None, None
+
+
+    # Function computes profit or loss of existing_sold_options_info by subtracting each row of
+    # strangle_ce_price and strangle_pe_price from strangle_ce_close_price and strangle_pe_close_price respectively
+    def compute_brokarage(self, existing_sold_options_info, symbol, quantity):
+        try:
+            total_brokarage = 0
+            price_dict = {
+                'NIFTY': 75,
+                'BANKNIFTY': 30, 
+                'FINNIFTY': 65,
+                'MIDCPNIFTY': 50
+            }
+
+            # Iterate over all rows and compute profit/loss for each row
+            for _, row in existing_sold_options_info.iterrows():
+                # Extract relevant columns from the current row
+                strangle_ce_price = row['strangle_ce_price']
+                strangle_pe_price = row['strangle_pe_price']
+                strangle_ce_close_price = row['strangle_ce_close_price']
+                strangle_pe_close_price = row['strangle_pe_close_price']
+
+                # Compute brokarage for CE and PE if they were traded
+                if strangle_ce_price != -1:
+                    # CE order was placed
+                    total_brokarage += brokrage_calculator.calculate_equity_options(strangle_ce_price,  strangle_ce_close_price,\
+                                                                                    quantity * price_dict.get(symbol, 1))
+
+                if strangle_pe_price != -1:
+                    # PE order was placed
+                    total_brokarage += brokrage_calculator.calculate_equity_options(strangle_pe_price, strangle_pe_close_price, \
+                                                                                     quantity * price_dict.get(symbol, 1))
+
+            return total_brokarage
+
+        except Exception as e:
+            print(f"Error computing brokerage: {e}")
+            logging.error(f"Error computing brokerage: {e}")
+            return None
+
 
     def read_existing_sold_options_info(self, file_path):
         try:

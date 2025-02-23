@@ -23,6 +23,7 @@ import commodity_data
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
 from exchange_state import ExchangeData
+import brokrage_calculator
 
 logger = logging.getLogger(__name__)
 
@@ -135,22 +136,26 @@ class CommodityStratergy:
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
                         current_trade.loc[row_number, 'exit_price'] = price
 
+                        brokrage = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
+                                                                                , current_trade.loc[row_number, 'exit_price'],\
+                                                                             symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity)
+
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                 current_trade.loc[row_number, 'exit_price']
                             current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Short p/l is {current_trade.loc[row_number, 'profit']}", \
-                                            current_trade.loc[row_number, 'profit'])
+                                              f"Short p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokrage}", \
+                                            current_trade.loc[row_number, 'profit'], brokrage, quantity)
                         else:
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                 current_trade.loc[row_number, 'entry_price']
                             current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Long p/l is {current_trade.loc[row_number, 'profit']}", \
-                                            current_trade.loc[row_number, 'profit'])
+                                              f"Long p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokrage}", \
+                                            current_trade.loc[row_number, 'profit'], brokrage, quantity)
 
                         current_trade.to_csv(file_name, index=False)
                     else:
@@ -377,7 +382,7 @@ class CommodityStratergy:
             logging.error(f"Error executing execute_strategy: {e}")
             traceback.print_exc()
 
-    def send_message(self, account, symbol_msg, error_message, compute_profit_loss):
+    def send_message(self, account, symbol_msg, error_message, compute_profit_loss, brokrage = 0, quantity = 0):
         x = telegram_send_api()
 
         telegram_group = account + "_telegram"
@@ -387,28 +392,29 @@ class CommodityStratergy:
         # Send profit loss over telegramsend send_message
         x.send_message(id3, f"{account} {symbol_msg} {error_message}")
 
-        pl_dict = {
-            'Date': datetime.now().strftime("%Y-%m-%d"),
-            'Account': account,
-            'Symbol': symbol_msg,
-            'Quantity': 1,
-            'NumberofTrade': 1,
-            'TotalPNL': compute_profit_loss * 1,
-            'Brokarge': 60,
-            'CloseTime': datetime.now().strftime("%H:%M:%S"),
-            'Stratergy': 'Commodity',
-            'NetPNL': compute_profit_loss - 60
-        }
+        if brokrage != 0:
+            pl_dict = {
+                'Date': datetime.now().strftime("%Y-%m-%d"),
+                'Account': account,
+                'Symbol': symbol_msg,
+                'Quantity': quantity,
+                'NumberofTrade': 1,
+                'TotalPNL': compute_profit_loss * 1,
+                'Brokarge': brokrage,
+                'CloseTime': datetime.now().strftime("%H:%M:%S"),
+                'Stratergy': 'Commodity',
+                'NetPNL': compute_profit_loss - 60 - brokrage
+            }
 
-        current_month = datetime.now().strftime("%m")
-        file_name = f"pnl/consolidated_pnl_{current_month}.csv"
-        if os.path.exists(file_name):
-            df = pd.read_csv(file_name)
-            df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
-            df.to_csv(file_name, index=False)
-        else:
-            df = pd.DataFrame([pl_dict])
-            df.to_csv(file_name, index=False)
+            current_month = datetime.now().strftime("%m")
+            file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+            if os.path.exists(file_name):
+                df = pd.read_csv(file_name)
+                df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+                df.to_csv(file_name, index=False)
+            else:
+                df = pd.DataFrame([pl_dict])
+                df.to_csv(file_name, index=False)
 
 """
 

@@ -20,6 +20,7 @@ import pandas as pd
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
+import brokrage_calculator
 
 #from OptionChainData import OptionChainData
 #from pathlib import Path
@@ -255,7 +256,8 @@ class AutoStraddleStrategy:
                         id2 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
                         # Send profit loss over telegramsend send_message
-                        x.send_message(id2, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity}")
+                        x.send_message(id2, f"Profit or loss for {account} {symbol} is {compute_profit_loss * quantity} \
+                                       and brokarage is {self.compute_brokrage(existing_sold_options_info, symbol, quantity)}")
 
                         # Store the information in a file with account and symbol in the name
                         self.store_sold_options_info(existing_sold_options_info, account, symbol)
@@ -272,10 +274,10 @@ class AutoStraddleStrategy:
                             'Quantity': quantity,
                             'NumberofTrade': existing_sold_options_info.shape[0],
                             'TotalPNL': compute_profit_loss * quantity,
-                            'Brokarge': 60 * existing_sold_options_info.shape[0],
+                            'Brokarge': self.compute_brokrage(existing_sold_options_info, symbol, quantity),
                             'CloseTime': existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'],
                             'Stratergy': 'AutoStraddle',
-                            'NetPNL': compute_profit_loss * quantity - 60 * existing_sold_options_info.shape[0]
+                            'NetPNL': compute_profit_loss * quantity - self.compute_brokrage(existing_sold_options_info, symbol, quantity)
                         }
 
                         current_month = datetime.now().strftime("%m")
@@ -592,6 +594,56 @@ class AutoStraddleStrategy:
             print(f"Error computing profit or loss: {e}")
             logging.error(f"Error computing profit or loss: {e}")
             return None, None
+
+    # Function computes profit or loss of existing_sold_options_info by subtracting each row of
+    # atm_ce_price and atm_pe_price from atm_ce_close_price and atm_pe_close_price respectively
+    def compute_brokrage(self, existing_sold_options_info, symbol, quantity):
+        try:
+            # Define multiplication factors based on the symbol
+            multiplication_factor = {
+                'NIFTY': 75,
+                'BANKNIFTY': 30,
+                'FINNIFTY': 65,
+                'MIDCPNIFTY': 50
+            }
+            total_brokrage = 0
+
+            # Iterate over all rows and compute profit/loss for each row
+            for _, row in existing_sold_options_info.iterrows():
+                # Extract relevant columns from the current row
+                atm_ce_price = row['atm_ce_price']
+                atm_pe_price = row['atm_pe_price']
+                atm_ce_close_price = row['atm_ce_close_price']
+                atm_pe_close_price = row['atm_pe_close_price']
+                brokrage_ce = 0
+                brokrage_pe = 0
+
+                # Compute profit or loss for the current row
+                if atm_ce_price != -1:
+                    # CE order was not placed
+                    brokrage_ce = brokrage_calculator.calculate_equity_options(atm_ce_price, atm_ce_close_price, \
+                                                                               quantity * multiplication_factor.get(symbol, 1))
+
+                if atm_pe_price != -1:
+                    # PE order was not placed
+                    brokrage_pe = brokrage_calculator.calculate_equity_options(atm_pe_price, atm_pe_close_price, \
+                                                                               quantity * multiplication_factor.get(symbol, 1))
+
+                # Sum up the profit or loss for the current row
+                total_brokrage = total_brokrage + brokrage_pe + brokrage_ce
+
+
+            #print(f"Total profit or loss: {total_profit_loss}")
+            #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
+
+            # Check if the total loss is more than 2500
+            return total_brokrage
+
+        except Exception as e:
+            print(f"Error computing profit or loss: {e}")
+            logging.error(f"Error computing profit or loss: {e}")
+            return None, None
+
 
     def read_existing_sold_options_info(self, file_path):
         try:
