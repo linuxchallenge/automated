@@ -138,9 +138,10 @@ class CommodityStratergy:
                         if price != 0:
                             current_trade.loc[row_number, 'exit_price'] = price
 
-                        brokrage = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
+                        brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
                                                                                 , current_trade.loc[row_number, 'exit_price'],\
                                                                              symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity)
+                        brokrage = brokarage_dict['total_charges']
 
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \

@@ -288,9 +288,10 @@ class IndexFutureStratergy:
                     if status == "Complete":
                         current_trade.loc[row_number, 'exit_order_state'] = 'close'
                         current_trade.loc[row_number, 'exit_price'] = price
-                        brokarage = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price'],
+                        brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price'],
                                                                                  current_trade.loc[row_number, 'exit_price'],
                                                                                  quantity * symbol_to_lot[current_trade.loc[row_number, 'Symbol']])
+                        brokarage = brokarage_dict['total_charges']
 
                         if current_trade.loc[row_number, 'trade_type'] == 'short':
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
