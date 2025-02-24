@@ -117,7 +117,7 @@ def calculate_equity_futures(buy_price, sell_price, quantity):
     brokerage = brokerage_buy + brokerage_sell
 
     # STT on sell side only, 0.01%
-    stt = 0.0001 * sell_price * quantity
+    stt = 0.0002 * sell_price * quantity
 
     # Exchange Transaction Charges
     etc_rate = 0.00002  # 0.002%
@@ -168,10 +168,10 @@ def calculate_equity_options(buy_price, sell_price, quantity):
     brokerage = 20 + 20  # Flat Rs. 20 per order per side
 
     # STT on sell side only, 0.05% of sell premium
-    stt = 0.0005 * sell_price * quantity
+    stt = 0.001 * sell_price * quantity
 
     # Exchange Transaction Charges
-    etc_rate = 0.00053  # 0.053%
+    etc_rate = 0.0004  # 0.053%
     etc = etc_rate * turnover
 
     # SEBI Charges
@@ -418,3 +418,4 @@ def calculate_commodity_options(buy_price, sell_price, quantity, multiplier):
     }
 
     return result
+
