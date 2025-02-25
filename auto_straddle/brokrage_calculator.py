@@ -376,10 +376,10 @@ def calculate_commodity_options(buy_price, sell_price, quantity, multiplier):
     brokerage = 20 + 20  # Flat Rs. 20 per order per side
 
     # CTT on sell side only, 0.05% of sell premium
-    ctt = 0.0005 * sell_price * quantity * multiplier
+    ctt = 0.0001 * sell_price * quantity * multiplier
 
     # Exchange Transaction Charges
-    etc_rate = 0.00053  # 0.053%
+    etc_rate = 0.000021  # 0.053%
     etc = etc_rate * turnover
 
     # SEBI Charges
@@ -389,7 +389,7 @@ def calculate_commodity_options(buy_price, sell_price, quantity, multiplier):
     gst = 0.18 * (brokerage + etc)
 
     # Stamp Duty on buy side only
-    stamp_duty = 0.00003 * buy_price * quantity * multiplier
+    stamp_duty = 0.000020 * buy_price * quantity * multiplier
 
     # Total Charges
     total_charges = brokerage + ctt + etc + gst + sebi_charges + stamp_duty
