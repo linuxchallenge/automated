@@ -137,6 +137,30 @@ class PlaceOrder:
         logging.info(f"Order id for account: {order_id}")
         return order_id
 
+    def place_order_sythetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+        multiplication_factor = {
+            'NIFTY': 75,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
+            'MIDCPNIFTY': 50
+        }
+        qty = qty * multiplication_factor[symbol]
+
+        # Convert qty to integer
+        qty = int(qty)
+
+        print(f"Placing Sell order for account {account}: option with strike price {strike_price}")
+        logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {strike_price}")
+        order_id = 0
+        expiry_ret = None
+
+        if account == 'deepti':
+            order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+            if (order_id == -1):
+                order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+
+        return order_id, expiry_ret
+
     def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
         multiplication_factor = {
             'NIFTY': 75,

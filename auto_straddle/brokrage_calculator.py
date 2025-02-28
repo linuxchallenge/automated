@@ -418,4 +418,3 @@ def calculate_commodity_options(buy_price, sell_price, quantity, multiplier):
     }
 
     return result
-

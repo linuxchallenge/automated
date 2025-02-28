@@ -621,12 +621,12 @@ class AutoStraddleStrategy:
                 # Compute profit or loss for the current row
                 if atm_ce_price != -1:
                     # CE order was not placed
-                    brokrage_ce = brokrage_calculator.calculate_equity_options(atm_ce_price, atm_ce_close_price, \
+                    brokrage_ce = brokrage_calculator.calculate_equity_options(atm_ce_close_price, atm_ce_price,\
                                                                                quantity * multiplication_factor.get(symbol, 1))['total_charges']
 
                 if atm_pe_price != -1:
                     # PE order was not placed
-                    brokrage_pe = brokrage_calculator.calculate_equity_options(atm_pe_price, atm_pe_close_price, \
+                    brokrage_pe = brokrage_calculator.calculate_equity_options(atm_pe_close_price, atm_pe_price,\
                                                                                quantity * multiplication_factor.get(symbol, 1))['total_charges']
 
                 # Sum up the profit or loss for the current row

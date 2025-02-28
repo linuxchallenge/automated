@@ -575,12 +575,12 @@ class FarSellStratergy:
                 # Compute brokarage for CE and PE if they were traded
                 if strangle_ce_price != -1:
                     # CE order was placed
-                    total_brokarage = total_brokarage +  brokrage_calculator.calculate_equity_options(strangle_ce_price,  strangle_ce_close_price,\
+                    total_brokarage = total_brokarage +  brokrage_calculator.calculate_equity_options(strangle_ce_close_price, strangle_ce_price,\
                                                                                     quantity * price_dict.get(symbol, 1))['total_charges']
 
                 if strangle_pe_price != -1:
                     # PE order was placed
-                    total_brokarage = total_brokarage + brokrage_calculator.calculate_equity_options(strangle_pe_price, strangle_pe_close_price, \
+                    total_brokarage = total_brokarage + brokrage_calculator.calculate_equity_options(strangle_pe_close_price, strangle_pe_price, \
                                                                                      quantity * price_dict.get(symbol, 1))['total_charges']
 
             return total_brokarage

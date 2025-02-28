@@ -382,6 +382,110 @@ class angelone_api(object):
             return -1
 
 
+    def place_order_sythetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+        try:
+            df_org = self.l.token_map
+            strike_price = strike_price * 100
+            df =  df_org[(df_org['exch_seg'] == 'NFO') & (df_org['instrumenttype'] == 'OPTIDX') & (df_org['name'] == symbol) & (
+                        df_org['strike'] == strike_price) & (df_org['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+
+            if df.empty:
+                print("Token info not found")
+                return -1
+
+            try:
+                if expiry is None:
+                    today = datetime.now().date()
+                    print(today)
+                    next_month = today.replace(day=28) + timedelta(days=4)
+                    last_day = next_month - timedelta(days=next_month.day)
+
+                    df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                    current_month_expiries = df[df['expiry'] <= last_day]
+
+                    print(f"Current month expiries: {current_month_expiries}")
+
+                    if not current_month_expiries.empty:
+                        # Get days difference between current date and expiry
+                        today = datetime.now().date()
+                        last_expiry = current_month_expiries.iloc[-1]['expiry']
+                        days_to_expiry = (last_expiry - today).days
+
+                        if days_to_expiry < 7:
+                            # Get next month expiries
+                            next_month_expiries = df[df['expiry'] > last_day]
+                            if not next_month_expiries.empty:
+                                tokenInfo = next_month_expiries.iloc[-1]  # Get last expiry of next month
+                            else:
+                                tokenInfo = df.iloc[-1]  # Fallback to last available expiry
+                        else:
+                            tokenInfo = current_month_expiries.iloc[-1]  # Use current month expiry
+                    else:
+                        next_month_expiries = df[df['expiry'] > last_day]
+                        if not next_month_expiries.empty:
+                            tokenInfo = next_month_expiries.iloc[-1]
+                        else:
+                            tokenInfo = df.iloc[-1]
+                else:
+                    tokenInfo = df[df['expiry'] == expiry].iloc[0]
+
+            except Exception as e:
+                logging.error(f"Error executing place_order: {e}")
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                print(f"Error executing place_order: {e}")
+                tokenInfo = df.iloc[-1]
+
+            symbol = tokenInfo['symbol']
+            token = tokenInfo['token']
+            lot = int(tokenInfo['lotsize'])
+
+            if qty % lot != 0:
+                return -1
+
+            orderparams = {
+                "variety": "NORMAL",
+                "tradingsymbol": symbol,
+                "symboltoken": token,
+                "transactiontype": buy_sell,
+                "exchange": "NFO",
+                "ordertype": "MARKET",
+                "producttype": "CARRYFORWARD",
+                "duration": "DAY",
+                "quantity": qty
+            }
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+            try :
+                orderparams["price"] = 0
+                orderid = self.obj.placeOrder(orderparams)
+                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            except Exception as e:
+                try:
+                    print("Error placing order, trying again")
+                    print(f"Error: {e}")
+                    logger.error(f"Error executing place_order again: {e}")
+                    x = TelegramSend.telegram_send_api()
+
+                    # Send profit loss over telegramsend send_message
+                    x.send_message("-4008545231", f"Warning angel one {symbol} option buy order Pls check")
+                    time.sleep(2)
+                    orderid = self.obj.placeOrder(orderparams)
+                except Exception as e1:
+                    logging.error(f"Error executing place_order: {e1}")
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(f"Error executing place_order: {e1}")
+                    return -1 -1
+
+            return orderid, tokenInfo['expiry']
+        except Exception as e:
+            #print("Order placement failed: {}".format(e.message))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(f"Error executing place_order: {e}")
+            logger.error(f"Error executing place_order: {e}")
+            return -1 -1
+
+
+
     def get_order_status(self, order_id):
         try:
             # Convert orderid which is <class 'numpy.float64'> to int
@@ -422,6 +526,18 @@ class angelone_api(object):
             logger.error(f"Error executing get_order_status: {e}")
             return -1, -1
 
+
+
+"""
+print("Starting")
+angel_obj = angelone_api()
+print(angel_obj)
+print("Object created")
+angel_obj.intializeSymbolTokenMap()
+print("Initialized")
+orderid = angel_obj.place_order_sythetic_future('NIFTY', 75, 'BUY', 23100, 'PE')
+print(orderid)
+"""
 
 
 
