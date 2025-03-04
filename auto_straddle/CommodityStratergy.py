@@ -228,6 +228,7 @@ class CommodityStratergy:
 
                 print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
                 logger.info(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
+                logger.info(f"Symbol: {s}, Alligator Daily: {alligator_daily}")
 
                 print(f"Symbol: {s}, close: {historic_data.iloc[-1]['close']}")
 
