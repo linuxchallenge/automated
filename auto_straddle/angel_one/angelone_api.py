@@ -427,13 +427,17 @@ class angelone_api(object):
                         else:
                             tokenInfo = df.iloc[-1]
                 else:
-                    tokenInfo = df[df['expiry'] == expiry].iloc[0]
+                    print(f"Expiry: {expiry}")
+                    df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                    date_obj = pd.to_datetime(expiry).date()
+                    tokenInfo = df[df['expiry'] == date_obj].iloc[0]
 
             except Exception as e:
                 logging.error(f"Error executing place_order: {e}")
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 print(f"Error executing place_order: {e}")
                 tokenInfo = df.iloc[-1]
+                return -1 -1
 
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
