@@ -435,7 +435,7 @@ class IndexFutureStratergy:
                 historic_data_daily = self.convert15m_to_75m(historic_data)
 
                 # drop last row
-                historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
+                #historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
 
                 if historic_data is None:
                     print(f"Error getting historic data for symbol: {s}")
@@ -456,6 +456,7 @@ class IndexFutureStratergy:
 
                 print(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
                 self.logger.info(f"Symbol: {s}, Alligator: {alligator}, Bullish: {bullish}, Bearish: {bearish}")
+                self.logger.info(f"Symbol: {s}, Alligator 75m: {alligator_daily}")
 
                 print(f"Symbol: {s}, close: {historic_data.iloc[-1]['close']}")
 
