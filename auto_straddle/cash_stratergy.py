@@ -11,9 +11,9 @@
 
 from datetime import datetime
 import os
+import traceback
 import logging
 import requests
-import traceback
 #from PlaceOrder import PlaceOrder
 import pandas as pd
 import TelegramSend
