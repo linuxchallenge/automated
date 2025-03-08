@@ -10,14 +10,16 @@
 
 
 from datetime import datetime
+import os
 import logging
 import requests
+import traceback
 #from PlaceOrder import PlaceOrder
 import pandas as pd
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
-
+import brokrage_calculator
 
 headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -46,6 +48,7 @@ class cash_stratergy:
     def __init__(self):
         self.csv_path = "cash_stratergy.csv"
         self.remote_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSmdwtCAt2oAYnuJGBb3zp7L0Q-iYSZoCMLvy3cfLrz48kp9cHvBqPjRp_p7uRc0Muw_lE7kl0wOnNP/pub?output=csv"
+        self.correct_rejected_orders_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpaSDfm5rZ8LbTKKA4hnKw7qtTR70epicX2g5u9CfkfDtzyW9pgNJ79icW0yumKQ3z7vnzJlcrcTpb/pub?output=csv"
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
         self._cached_positions = None
@@ -81,6 +84,135 @@ class cash_stratergy:
         except Exception as e:
             print("Error fetching data from NSE")
             print(e)
+
+    def correct_rejected_orders(self):
+        """
+        Corrects rejected orders by re-executing them based on remote CSV data.
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Download and validate remote CSV
+            remote_data = pd.read_csv(self.correct_rejected_orders_url)
+            required_columns = ['sl_no', 'leg', 'account', 'symbol']
+            if not all(col in remote_data.columns for col in required_columns):
+                logger.error("Remote CSV missing required columns")
+                return False
+
+            # Load or create local CSV
+            try:
+                local_data = pd.read_csv(self.csv_path)
+            except FileNotFoundError:
+                logger.warning("Local CSV not found. Creating new file")
+                local_data = pd.DataFrame(columns=remote_data.columns)
+                local_data.to_csv(self.csv_path, index=False)
+                return True
+
+            # Process each row in remote data
+            for _, row in remote_data.iterrows():
+                try:
+                    local_row = local_data[local_data['sl_no'] == row['sl_no']]
+                    if local_row.empty:
+                        logger.warning(f"Row {row['sl_no']} not found in local CSV")
+                        continue
+
+                    if row['leg'] == 'open':
+                        self._handle_open_correction(local_data, row)
+                    elif row['leg'] == 'close':
+                        self._handle_close_correction(local_data, row)
+                    else:
+                        logger.warning(f"Invalid leg value: {row['leg']} for sl_no {row['sl_no']}")
+
+                except Exception as e:
+                    logger.error(f"Error processing row {row['sl_no']}: {str(e)}")
+                    continue
+
+            # Save updates
+            local_data.to_csv(self.csv_path, index=False)
+            logger.info("Rejected orders corrected successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to correct rejected orders: {str(e)}")
+            return False
+
+    def _handle_open_correction(self, local_data, row):
+        """Handle open leg corrections"""
+        logger.info(f"Correcting open order for row {row['sl_no']}")
+        mask = local_data['sl_no'] == row['sl_no']
+        local_data.loc[mask, 'status'] = 'open'
+        local_data.loc[mask, 'open_order_status'] = 'Complete'
+        local_data.loc[mask, 'buy_order_id'] = None
+        local_data.loc[mask, 'buy_price'] = row['price']
+        local_data.loc[mask, 'open_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _handle_close_correction(self, local_data, row):
+        """Handle close leg corrections"""
+        try:
+            logger.info(f"Correcting close order for row {row['sl_no']}")
+            mask = local_data['sl_no'] == row['sl_no']
+            local_data.loc[mask, 'status'] = 'close'
+            local_data.loc[mask, 'close_order_status'] = 'Complete'
+            local_data.loc[mask, 'close_order_id'] = None
+            local_data.loc[mask, 'sell_price'] = row['price']
+            local_data.loc[mask, 'close_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            self._calculate_and_record_pnl(local_data.loc[mask].iloc[0], row)
+
+        except Exception as e:
+            logger.error(f"Error in close correction: {str(e)}")
+            raise
+
+    def _calculate_and_record_pnl(self, local_row, remote_row):
+        """Calculate and record P&L for closed trades"""
+        try:
+            # Ensure numeric values
+            buy_price = float(local_row['buy_price'])
+            quantity = float(local_row['quantity'])
+            sell_price = float(remote_row['price'])
+
+            profit_loss = (sell_price - buy_price) * quantity
+
+            # Calculate brokerage
+            brokerage_dict = brokrage_calculator.calculate_equity_delivery(
+                buy_price, sell_price, quantity)
+            brokerage = brokerage_dict['total_charges']
+
+            # Record PnL to CSV file
+            pl_dict = {
+                'Date': datetime.now().strftime("%Y-%m-%d"),
+                'Account': remote_row['account'],
+                'Symbol': remote_row['symbol'],
+                'Quantity': quantity,
+                'NumberofTrade': 1,
+                'TotalPNL': profit_loss,
+                'Brokarge': brokerage,
+                'CloseTime': datetime.now().strftime("%H:%M:%S"),
+                'Stratergy': 'cash_short',
+                'NetPNL': profit_loss - brokerage
+            }
+
+            current_month = datetime.now().strftime("%m")
+            file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+            if os.path.exists(file_name):
+                df = pd.read_csv(file_name)
+                df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+                df.to_csv(file_name, index=False)
+            else:
+                df = pd.DataFrame([pl_dict])
+                df.to_csv(file_name, index=False)
+
+            # Send notification to Telegram
+            telegram_group = remote_row['account'] + "_telegram"
+            id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+            x = TelegramSend.telegram_send_api()
+            x.send_message(id1, f"Cash strategy P/L {remote_row['account']} {remote_row['symbol']} {profit_loss}")
+
+        except Exception as e:
+            print(''.join(traceback.format_exception(e)))
+            logger.error(f"Error calculating PnL: {str(e)}")
+            raise
 
     def sync_cash_strategy(self):
         """
@@ -260,6 +392,7 @@ class cash_stratergy:
                     if row['status'] == 'close_pending':
                         # Calulate profilr/loss
                         data.loc[idx, 'sell_price'] = final_price
+                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
 
                         telegram_group = row['account'] + "_telegram"
@@ -268,8 +401,37 @@ class cash_stratergy:
                         # Send error over telegramsend send_message
                         x.send_message(id1, f"Cash startergy p/l {row['account']} {row['symbol']} {row['strategy']} {profit_loss}")
 
+                        brokarage_dict = brokrage_calculator.calculate_equity_delivery(row['buy_price']\
+                                                                                , row['sell_price'],\
+                                                                             row['quantity'])
+                        brokrage = brokarage_dict['total_charges']
+
+                        pl_dict = {
+                            'Date': datetime.now().strftime("%Y-%m-%d"),
+                            'Account': row['account'],
+                            'Symbol': row['symbol'],
+                            'Quantity': quantity,
+                            'NumberofTrade': 1,
+                            'TotalPNL': profit_loss * 1,
+                            'Brokarge': brokrage,
+                            'CloseTime': datetime.now().strftime("%H:%M:%S"),
+                            'Stratergy': 'cash_short',
+                            'NetPNL': profit_loss - brokrage
+                        }
+
+                        current_month = datetime.now().strftime("%m")
+                        file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+                        if os.path.exists(file_name):
+                            df = pd.read_csv(file_name)
+                            df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+                            df.to_csv(file_name, index=False)
+                        else:
+                            df = pd.DataFrame([pl_dict])
+                            df.to_csv(file_name, index=False)
+
                     if row['status'] == 'open_pending':
                         data.loc[idx, 'buy_price'] = final_price
+                        data.loc[idx, 'open_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                     data.loc[idx, 'status'] = 'open' if row['status'] == 'open_pending' else 'close'
                     data.loc[idx, 'open_order_status' if row['status'] == 'open_pending' else 'close_order_status'] = 'Complete'
