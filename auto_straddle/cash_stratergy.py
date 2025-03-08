@@ -365,6 +365,8 @@ class cash_stratergy:
                             telegram_group = "deepti" + "_telegram"
                         else:
                             telegram_group = row['account'] + "_telegram"
+                        data.loc[idx, 'close_order_status'] = 'close_pending'
+                        data.loc[idx, 'status'] = 'close_pending'                            
                         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                         x = TelegramSend.telegram_send_api()
 
