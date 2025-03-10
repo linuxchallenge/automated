@@ -202,7 +202,7 @@ class fivepaise_api(object):
                 print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
                 logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             except Exception as e2:
-                print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
+                print(''.join(traceback.format_exception(e1, value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1, -1
@@ -249,7 +249,7 @@ class fivepaise_api(object):
                 print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
                 logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             except Exception as e2:
-                print(''.join(traceback.format_exception(etype=type(e1), value=e1, tb=e2.__traceback__)))
+                print(''.join(traceback.format_exception(e1, value=e1, tb=e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1
@@ -288,7 +288,7 @@ class fivepaise_api(object):
 
             return order_ret, average_price
         except Exception as e:
-            print(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(e, value=e, tb=e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
             logger.error("Error executing get_order_status: %s", e)
             return -1, -1
