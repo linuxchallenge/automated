@@ -186,14 +186,14 @@ def main():
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
                 except Exception as e:
-                    logging.error(''.join(traceback.format_exception(e)))
-                    print(''.join(traceback.format_exception(e)))
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 try:
                     optionbuy_stratergy.execute_strategy(accounts_optionbuy, place_order, optionbuy_account_details, strike)
                 except Exception as e:
-                    logging.error(''.join(traceback.format_exception(e)))
-                    print(''.join(traceback.format_exception(e)))
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 cash_stratergy_obj.execute_strategy(place_order)
 
@@ -209,7 +209,7 @@ def main():
                     exit(1)
 
             except Exception as e:
-                logging.error(''.join(traceback.format_exception(e)))
+                logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 time.sleep(55)
                 continue

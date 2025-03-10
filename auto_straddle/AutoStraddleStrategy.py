@@ -531,8 +531,8 @@ class AutoStraddleStrategy:
                 self.store_sold_options_info(existing_sold_options_info, account, symbol)
 
         except Exception as e:
-            print(''.join(traceback.format_exception(e)))
-            logging.error(''.join(traceback.format_exception(e)))
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error executing Auto Straddle Strategy: {e}")
             logging.error(f"Error executing Auto Straddle Strategy: {e}")
 
