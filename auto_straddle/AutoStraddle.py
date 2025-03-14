@@ -10,6 +10,7 @@
 # pylint: disable=C0103
 
 import time
+import signal
 from datetime import datetime
 from datetime import time as time_dt
 import logging
@@ -27,10 +28,28 @@ from cash_stratergy import cash_stratergy
 from IndexFutureStratergy import IndexFutureStratergy
 from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # This sets up the logging
+from TelegramSend import telegram_send_api
 
 # Set up logging
 logger = logging.getLogger(__name__)
 strike = {'NIFTY': 23000, 'BANKNIFTY': 49000, 'FINNIFTY': 15000}
+
+# Define the timeout handler
+def timeout_handler(_signum, _frame):
+    print("Timeout! The operation took too long.")
+    logger.error("Timeout! The operation took too long.")
+    # Throw exception to exit the program
+
+    x = telegram_send_api()
+
+    telegram_group = "deepti" + "_telegram"
+
+    id3 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
+    x.send_message(id3, "Timeout! The operation took too long restart the program.")
+
+    raise TimeoutError("Operation took too long to complete")
+
 
 def main():
     # Replace these lists with your desired accounts and symbols
@@ -160,6 +179,12 @@ def main():
 
     optionbuy_stratergy = OptionBuyStrategy()
 
+    # Set the signal handler
+    signal.signal(signal.SIGALRM, timeout_handler)
+
+    # Set an alarm to trigger SIGALRM after 300 seconds
+    signal.alarm(300)
+
     try:
         while True:
             try:
@@ -172,6 +197,8 @@ def main():
 
                 # Get current time
                 current_time = datetime.now().second
+
+                signal.alarm(300)
 
                 execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
                                          accounts, symbols, place_order, account_details, \

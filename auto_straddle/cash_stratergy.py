@@ -16,11 +16,12 @@ import logging
 import requests
 #from PlaceOrder import PlaceOrder
 import pandas as pd
+from nsetools import Nse
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
-from nsetools import Nse
+
 
 headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
