@@ -20,6 +20,7 @@ import TelegramSend
 import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
+from nsetools import Nse
 
 headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -312,7 +313,8 @@ class cash_stratergy:
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
             try:
                 symbol = row['symbol']
-                last_price = self.nse_custom_function_secfno(symbol, "lastPrice")
+                nse = Nse()
+                last_price = nse.get_quote(symbol)['lastPrice']
             except Exception as e:
                 print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
                 continue
@@ -351,7 +353,8 @@ class cash_stratergy:
             try:
                 symbol = row['symbol']
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                last_price = self.nse_custom_function_secfno(symbol, "lastPrice")
+                nse = Nse()
+                last_price = nse.get_quote(symbol)['lastPrice']
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
