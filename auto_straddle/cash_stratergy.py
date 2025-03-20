@@ -305,6 +305,8 @@ class cash_stratergy:
         else:
             return
 
+        self.correct_rejected_orders()
+
         # Load the CSV
         logger.info("Executing cash strategy.")
         data = pd.read_csv(self.csv_path)
