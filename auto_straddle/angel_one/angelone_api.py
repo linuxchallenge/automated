@@ -412,12 +412,29 @@ class angelone_api(object):
                         days_to_expiry = (last_expiry - today).days
 
                         if days_to_expiry < 7:
-                            # Get next month expiries
-                            next_month_expiries = df[df['expiry'] > last_day]
+                            # Get today's date and calculate next month's first and last day
+                            today = datetime.now().date()
+                            next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+                            next_month_last = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+                            
+                            print(f"Looking for expiry between {next_month_first} and {next_month_last}")
+                            
+                            # Filter for next month's expiries only
+                            next_month_expiries = df[
+                                (df['expiry'] > last_day) & 
+                                (df['expiry'] <= next_month_last)
+                            ]
+
+                            print(f"Next month expiries: {next_month_expiries}")
                             if not next_month_expiries.empty:
                                 tokenInfo = next_month_expiries.iloc[-1]  # Get last expiry of next month
                             else:
-                                tokenInfo = df.iloc[-1]  # Fallback to last available expiry
+                                # If no next month expiry found, try getting the nearest available expiry
+                                future_expiries = df[df['expiry'] > last_day]
+                                if not future_expiries.empty:
+                                    tokenInfo = future_expiries.iloc[0]  # Get the nearest future expiry
+                                else:
+                                    tokenInfo = df.iloc[-1]  # Fallback to last available expiry
                         else:
                             tokenInfo = current_month_expiries.iloc[-1]  # Use current month expiry
                     else:
