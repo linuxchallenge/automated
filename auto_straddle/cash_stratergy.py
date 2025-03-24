@@ -341,6 +341,7 @@ class cash_stratergy:
                     data.loc[idx, 'status'] = 'rejected'
 
             except Exception as e:
+                print(''.join(traceback.format_exception(e)))
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
                 print(f"Error processing 'new' row {row['sl_no']}: {e}")
@@ -379,10 +380,10 @@ class cash_stratergy:
                         # Send error over telegramsend send_message
                         x.send_message(id1, f"Cash startergy please close  {row['account']} {row['symbol']}")
             except Exception as e:
+                print(''.join(traceback.format_exception(e)))
                 print(f"Error processing 'open' row {row['sl_no']}: {e}")
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
-                print(f"Error processing 'new' row {row['sl_no']}: {e}")
                 telegram_group = row['account'] + "_telegram"
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()

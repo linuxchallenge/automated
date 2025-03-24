@@ -499,9 +499,9 @@ class IndexFutureStratergy:
                     price = historic_data.iloc[-1]['close']
                     strike_price = price
                     if s == 'NIFTY':
-                        strike_price = round(price / 50) * 50
-                    elif s == 'BANKNIFTY':
                         strike_price = round(price / 100) * 100
+                    elif s == 'BANKNIFTY':
+                        strike_price = round(price / 500) * 500
 
                     if alligator_daily[0] == "uptrend":
                         if current_trade is None or row_number == -1:

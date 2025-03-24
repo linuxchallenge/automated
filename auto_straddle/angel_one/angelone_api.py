@@ -416,12 +416,12 @@ class angelone_api(object):
                             today = datetime.now().date()
                             next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
                             next_month_last = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-                            
+
                             print(f"Looking for expiry between {next_month_first} and {next_month_last}")
-                            
+
                             # Filter for next month's expiries only
                             next_month_expiries = df[
-                                (df['expiry'] > last_day) & 
+                                (df['expiry'] > last_day) &
                                 (df['expiry'] <= next_month_last)
                             ]
 
