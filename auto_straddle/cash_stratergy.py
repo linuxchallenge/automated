@@ -16,7 +16,6 @@ import logging
 import requests
 #from PlaceOrder import PlaceOrder
 import pandas as pd
-from nsetools import Nse
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
@@ -55,6 +54,24 @@ class cash_stratergy:
         self.nso_open = None
         self._cached_positions = None
         self._last_fetch_time = None
+
+    def get_nse_ltp(self, symbol):
+        session = requests.Session()
+        
+        # Step 1: First request to NSE main page (sets cookies)
+        main_url = f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"
+        session.get(main_url, headers=headers)
+
+        # Step 2: Fetch the actual API using the same session
+        api_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        headers_with_referer = headers.copy()
+        headers_with_referer["Referer"] = main_url
+        response = session.get(api_url, headers=headers_with_referer)
+
+        if response.status_code == 200:
+            return response.json()["priceInfo"]["lastPrice"]
+        else:
+            return f"Error: {response.status_code}"
 
 
     def nsefetch(self, payload):
@@ -316,8 +333,7 @@ class cash_stratergy:
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
             try:
                 symbol = row['symbol']
-                nse = Nse()
-                last_price = nse.get_quote(symbol)['lastPrice']
+                last_price = self.get_nse_ltp(symbol)
             except Exception as e:
                 print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
                 continue
@@ -357,8 +373,7 @@ class cash_stratergy:
             try:
                 symbol = row['symbol']
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                nse = Nse()
-                last_price = nse.get_quote(symbol)['lastPrice']
+                last_price = self.get_nse_ltp(symbol)
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
