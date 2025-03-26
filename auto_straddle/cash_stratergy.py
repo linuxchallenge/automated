@@ -13,6 +13,7 @@ from datetime import datetime
 import os
 import traceback
 import logging
+from time import sleep
 import requests
 #from PlaceOrder import PlaceOrder
 import pandas as pd
@@ -334,6 +335,7 @@ class cash_stratergy:
             try:
                 symbol = row['symbol']
                 last_price = self.get_nse_ltp(symbol)
+                sleep(2)
             except Exception as e:
                 print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
                 continue
@@ -373,7 +375,17 @@ class cash_stratergy:
             try:
                 symbol = row['symbol']
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                last_price = self.get_nse_ltp(symbol)
+                sleep(2)
+                try:
+                    last_price = self.get_nse_ltp(symbol)
+                except Exception as e:
+                    print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
+                    telegram_group = "dummy" + "_telegram"
+                    id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                    x = TelegramSend.telegram_send_api()
+                    # Send error over telegramsend send_message
+                    x.send_message(id1, f"Cash startergy open error {row['account']} {symbol}")
+                    continue
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
