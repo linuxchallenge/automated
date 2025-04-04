@@ -58,7 +58,7 @@ class cash_stratergy:
 
     def get_nse_ltp(self, symbol):
         session = requests.Session()
-        
+
         # Step 1: First request to NSE main page (sets cookies)
         main_url = f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"
         session.get(main_url, headers=headers)
@@ -426,7 +426,7 @@ class cash_stratergy:
 
                 if status == "Complete":
                     if row['status'] == 'close_pending':
-                        # Calulate profilr/loss
+                        # Calculate profit/loss
                         data.loc[idx, 'sell_price'] = final_price
                         data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
@@ -434,19 +434,18 @@ class cash_stratergy:
                         telegram_group = row['account'] + "_telegram"
                         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                         x = TelegramSend.telegram_send_api()
-                        # Send error over telegramsend send_message
+                        # Send success message (not error)
                         x.send_message(id1, f"Cash startergy p/l {row['account']} {row['symbol']} {row['strategy']} {profit_loss}")
 
-                        brokarage_dict = brokrage_calculator.calculate_equity_delivery(row['buy_price']\
-                                                                                , row['sell_price'],\
-                                                                             row['quantity'])
+                        brokarage_dict = brokrage_calculator.calculate_equity_delivery(
+                            row['buy_price'], row['sell_price'], row['quantity'])
                         brokrage = brokarage_dict['total_charges']
 
                         pl_dict = {
                             'Date': datetime.now().strftime("%Y-%m-%d"),
                             'Account': row['account'],
                             'Symbol': row['symbol'],
-                            'Quantity': quantity,
+                            'Quantity': row['quantity'],  # FIXED: Use row['quantity'] not quantity
                             'NumberofTrade': 1,
                             'TotalPNL': profit_loss * 1,
                             'Brokarge': brokrage,
@@ -457,13 +456,15 @@ class cash_stratergy:
 
                         current_month = datetime.now().strftime("%m")
                         file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+                        os.makedirs("pnl", exist_ok=True)  # Ensure directory exists
+
                         if os.path.exists(file_name):
                             df = pd.read_csv(file_name)
                             df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
-                            df.to_csv(file_name, index=False)
                         else:
                             df = pd.DataFrame([pl_dict])
-                            df.to_csv(file_name, index=False)
+
+                        df.to_csv(file_name, index=False)
 
                     if row['status'] == 'open_pending':
                         data.loc[idx, 'buy_price'] = final_price
@@ -471,15 +472,17 @@ class cash_stratergy:
 
                     data.loc[idx, 'status'] = 'open' if row['status'] == 'open_pending' else 'close'
                     data.loc[idx, 'open_order_status' if row['status'] == 'open_pending' else 'close_order_status'] = 'Complete'
+
             except Exception as e:
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 print(f"Error processing 'pending' row {row['sl_no']}: {e}")
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
                 telegram_group = row['account'] + "_telegram"
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
-                # Send error over telegramsend send_message
-                x.send_message(id1, f"Cash startergy pending error {row['account']} {row['symbol']}")
+                # Send error message only when actually failing
+                x.send_message(id1, f"Cash startergy pending error {row['account']} {row['symbol']}: {str(e)[:50]}")
 
         # Save the updated CSV
         data.to_csv(self.csv_path, index=False)
