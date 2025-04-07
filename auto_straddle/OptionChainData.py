@@ -84,7 +84,11 @@ class OptionChainData:
             df_ce = pd.DataFrame(ce_values)
             df_pe = pd.DataFrame(pe_values)
 
-            spot_price = df_ce['underlyingValue'].iloc[0]
+            if df_ce.empty:
+                print(f"No CE options data found for {self.symbol}")
+                return None
+
+            spot_price = df_ce['underlyingValue'].iloc[0] if 'underlyingValue' in df_ce.columns and not df_ce.empty else 0
 
             # Find the ATM strike (nearest to spot price) for CE and PE
             atm_ce_strike = df_ce.loc[(df_ce['strikePrice'] - spot_price).abs().idxmin()]['strikePrice']
@@ -166,7 +170,11 @@ class OptionChainData:
             total_open_interest_ce = df_ce['openInterest'].sum()
             total_open_interest_pe = df_pe['openInterest'].sum()
 
-            pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
+            if total_open_interest_ce > 0:
+                pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
+            else:
+                print("Warning: CE open interest is zero, using default ratio value")
+                pe_to_ce_ratio = 0  # or some other default value
 
             # Find the last prices for ATM CE and ATM PE
             atm_ce_last_price = df_ce[df_ce['strikePrice'] == atm_ce_strike]['lastPrice'].values[0]
@@ -177,7 +185,12 @@ class OptionChainData:
                 prev_atm_next_ce_price = 0
                 prev_atm_pe_strike_price = 0
             else:
-                prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
+                prev_atm_ce_price = self.safe_get_dataframe_value(
+                    df_ce,
+                    df_ce['strikePrice'] == prev_atm_strike,
+                    'lastPrice', 
+                    default_value=0
+                )
                 prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
                 prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
                 prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
@@ -199,7 +212,7 @@ class OptionChainData:
                 'prev_atm_next_pe_price': float(prev_atm_pe_strike_price),
                 'ce_strangle_strike': float(ce_strangle_strike),
                 'pe_strangle_strike': float(pe_strangle_strike),
-                'ce_strangle_price': float(df_ce[df_ce['strikePrice'] == ce_strangle_strike]['lastPrice'].values[0]),
+                'ce_strangle_price': float(df_ce[df_ce['strikePrice'] == ce_strangle_strike]['lastPrice'].values[0]) if not df_ce[df_ce['strikePrice'] == ce_strangle_strike].empty else 0,
                 'pe_strangle_price': float(df_pe[df_pe['strikePrice'] == pe_strangle_strike]['lastPrice'].values[0]),
                 'prev_strangle_ce_strike': prev_strangle_ce_strike,
                 'prev_strangle_pe_strike': prev_strangle_pe_strike,
@@ -238,28 +251,27 @@ class OptionChainData:
 
         baseurl = "https://www.nseindia.com/"
 
-        session = requests.Session()
-        request = session.get(baseurl, headers=headers, timeout=5)
-        cookies = dict(request.cookies)
+        with requests.Session() as session:
+            request = session.get(baseurl, headers=headers, timeout=5)
+            cookies = dict(request.cookies)
 
-        for retry in range(max_retries + 1):
-            try:
-                response = requests.get(url, headers=headers, cookies=cookies, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data
-                else:
-                    response.raise_for_status()  # Raise exception for non-200 status codes
-            except requests.exceptions.RequestException as e:
-                print(f"Request failed on retry {retry + 1}. Error: {e}")
-                print(f"Request failed on retry {retry + 1}. Error: {url}")
-                logging.error(f"Request failed on retry {retry + 1}. Error: {url}")
-                if retry < max_retries:
-                    print(f"Retrying after {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                else:
-                    logging.error("Max retries exceeded. Unable to fetch data.")
-                    raise requests.exceptions.RequestException("Max retries exceeded. Unable to fetch data.") from e
+            for retry in range(max_retries + 1):
+                try:
+                    response = requests.get(url, headers=headers, cookies=cookies, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return data
+                    else:
+                        response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    print(f"Request failed on retry {retry + 1}. Error: {e}")
+                    logging.error(f"Request failed on retry {retry + 1}. Error: {url}")
+                    if retry < max_retries:
+                        print(f"Retrying after {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                    else:
+                        logging.error("Max retries exceeded. Unable to fetch data.")
+                        raise requests.exceptions.RequestException("Max retries exceeded.") from e
 
     def extract_top_open_interest_values(self, df, top_n=3):
         df_with_open_interest = df[df['openInterest'] > 0]
@@ -514,6 +526,13 @@ class OptionChainData:
                 else:
                     logging.error("Max retries exceeded. Unable to fetch data.")
                     return None
+
+    def safe_get_dataframe_value(self, df, condition, column, default_value=0):
+        """Safely access DataFrame values with validation"""
+        matching_rows = df[condition]
+        if not matching_rows.empty and column in matching_rows.columns:
+            return matching_rows[column].values[0]
+        return default_value
 
 
 """

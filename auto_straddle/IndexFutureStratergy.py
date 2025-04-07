@@ -11,7 +11,7 @@
 
 import os
 import traceback
-import time
+import time as time_module
 from datetime import datetime, time, timedelta, date
 
 
@@ -182,37 +182,62 @@ class IndexFutureStratergy:
         return data
 
     def OHLCHistoricData(self, symbol_parse):
+        try:
+            fdate = datetime.now()
+            todate = fdate - timedelta(days=70)
 
-        fdate = datetime.now()
-        todate = fdate - timedelta(days=70)
+            start = self.datetotimestamp(todate)
+            end = self.datetotimestamp(fdate)
 
-        start = self.datetotimestamp(todate)
-        end = self.datetotimestamp(fdate)
-        if symbol_parse == "NIFTY":
-            url = 'https://priceapi.moneycontrol.com/techCharts/history?symbol=9&resolution=15&from=' + str(
-                start) + '&to=' + str(end) + ''
-        elif symbol_parse == "BANKNIFTY":
-            url = 'https://priceapi.moneycontrol.com/techCharts/history?symbol=23&resolution=15&from=' + str(
-                start) + '&to=' + str(end) + ''
-        elif symbol_parse == "FINNIFTY":
-            url = 'https://priceapi.moneycontrol.com/techCharts/history?symbol=47&resolution=15&from=' + str(
-                start) + '&to=' + str(end) + ''
-        else:
+            # URL mapping based on symbol
+            if symbol_parse == "NIFTY":
+                url = f'https://priceapi.moneycontrol.com/techCharts/history?symbol=9&resolution=15&from={start}&to={end}'
+            elif symbol_parse == "BANKNIFTY":
+                url = f'https://priceapi.moneycontrol.com/techCharts/history?symbol=23&resolution=15&from={start}&to={end}'
+            elif symbol_parse == "FINNIFTY":
+                url = f'https://priceapi.moneycontrol.com/techCharts/history?symbol=47&resolution=15&from={start}&to={end}'
+            else:
+                self.logger.error(f"Invalid symbol: {symbol_parse}")
+                return None
+
+            hdr = {'User-Agent': 'Mozilla/5.0'}
+
+            # Add retry mechanism
+            max_retries = 3
+            retry_count = 0
+            while retry_count < max_retries:
+                try:
+                    response = requests.get(url, timeout=10, headers=hdr)
+                    response.raise_for_status()  # Raise exception for HTTP errors
+                    resp = response.json()
+                    break
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    retry_count += 1
+                    self.logger.warning(f"API request failed (attempt {retry_count}): {e}")
+                    if retry_count >= max_retries:
+                        self.logger.error(f"Failed to get data after {max_retries} attempts")
+                        return None
+                    time_module.sleep(2)  # Wait before retrying
+
+            # Process data
+            data = pd.DataFrame(resp)
+            if data.empty:
+                self.logger.warning(f"Empty data received for {symbol_parse}")
+                return None
+
+            # Rest of processing code...
+            date_time = []
+            for dt in data['t']:
+                date_time.append({'Date': self.timestamptodate(dt)})
+
+            dt = pd.DataFrame(date_time)
+            intraday_data = pd.concat([dt, data['o'], data['h'], data['l'], data['c'], data['v']], axis=1). \
+                rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume'})
+
+            return intraday_data
+        except Exception as e:
+            self.logger.error(f"Error in OHLCHistoricData: {e}")
             return None
-
-        hdr = {'User-Agent': 'Mozilla/5.0'}
-        resp = requests.get(url, timeout=5, headers=hdr).json()
-        data = pd.DataFrame(resp)
-
-        date_time = []
-        for dt in data['t']:
-            date_time.append({'Date': self.timestamptodate(dt)})
-
-        dt = pd.DataFrame(date_time)
-        intraday_data = pd.concat([dt, data['o'], data['h'], data['l'], data['c'], data['v']], axis=1). \
-            rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume'})
-
-        return intraday_data
 
     # Write function which accepts data frame and retuen alligator and fractal
     def get_alligator_fractal(self, data):
@@ -477,9 +502,13 @@ class IndexFutureStratergy:
                     if os.path.exists(file_name):
                         current_trade = pd.read_csv(file_name)
                         try:
-                            row_number = current_trade.index.get_loc(current_trade[(current_trade['Symbol'] == s) & \
-                                                                            (current_trade['state'] == 'open')].index[0])
-                        except Exception:
+                            matches = current_trade[(current_trade['Symbol'] == s) & (current_trade['state'] == 'open')]
+                            if matches.empty:
+                                row_number = -1
+                            else:
+                                row_number = current_trade.index.get_loc(matches.index[0])
+                        except Exception as e:
+                            self.logger.error(f"Error finding matching trade: {e}")
                             row_number = -1
                     else:
                         # If current_trade is None, initialize it as empty DataFrame with correct columns
@@ -496,6 +525,17 @@ class IndexFutureStratergy:
                     quantity = account_details.loc[(account_details['Account'] == account) & (account_details['Symbol'] == s)]['quantity'].values[0]
 
                     # Round off strike price based on symbol
+                    # Line ~495 - Add validation before accessing DataFrame
+                    if historic_data is None or historic_data.empty:
+                        self.logger.error(f"No historic data available for {s}")
+                        return
+
+                    # Check if we have the latest data point
+                    if len(historic_data) < 1:
+                        self.logger.error(f"Not enough data points for {s}")
+                        return
+
+                    # Now safe to access
                     price = historic_data.iloc[-1]['close']
                     strike_price = price
                     if s == 'NIFTY':
@@ -576,9 +616,10 @@ class IndexFutureStratergy:
                                 print(historic_data.iloc[-1]['Date'])
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'state'] = 'closed'
-                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']))
+                                print("Exit long trade " + str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit long trade")
 
+                                # Set the price once
                                 current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
 
                                 order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])

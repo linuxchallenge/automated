@@ -58,21 +58,23 @@ class cash_stratergy:
 
     def get_nse_ltp(self, symbol):
         session = requests.Session()
+        try:
+            # Step 1: First request to NSE main page (sets cookies)
+            main_url = f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"
+            session.get(main_url, headers=headers)
 
-        # Step 1: First request to NSE main page (sets cookies)
-        main_url = f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"
-        session.get(main_url, headers=headers)
+            # Step 2: Fetch the actual API using the same session
+            api_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+            headers_with_referer = headers.copy()
+            headers_with_referer["Referer"] = main_url
+            response = session.get(api_url, headers=headers_with_referer)
 
-        # Step 2: Fetch the actual API using the same session
-        api_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
-        headers_with_referer = headers.copy()
-        headers_with_referer["Referer"] = main_url
-        response = session.get(api_url, headers=headers_with_referer)
-
-        if response.status_code == 200:
-            return response.json()["priceInfo"]["lastPrice"]
-        else:
-            return f"Error: {response.status_code}"
+            if response.status_code == 200:
+                return response.json()["priceInfo"]["lastPrice"]
+            else:
+                return f"Error: {response.status_code}"
+        finally:
+            session.close()
 
 
     def nsefetch(self, payload):
@@ -359,7 +361,7 @@ class cash_stratergy:
                     data.loc[idx, 'status'] = 'rejected'
 
             except Exception as e:
-                print(''.join(traceback.format_exception(e)))
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
                 print(f"Error processing 'new' row {row['sl_no']}: {e}")
@@ -368,7 +370,7 @@ class cash_stratergy:
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
                 # Send error over telegramsend send_message
-                x.send_message(id1, f"Cash startergy open error {row['account']} {symbol}")
+                x.send_message(id1, f"Cash strategy open error {row['account']} {symbol}")
 
         # Step 2.5: Process rows with status 'open'
         for idx, row in data[data['status'] == 'open'].iterrows():
@@ -384,7 +386,7 @@ class cash_stratergy:
                     id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                     x = TelegramSend.telegram_send_api()
                     # Send error over telegramsend send_message
-                    x.send_message(id1, f"Cash startergy open error {row['account']} {symbol}")
+                    x.send_message(id1, f"Cash strategy open error {row['account']} {symbol}")
                     continue
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
@@ -405,7 +407,7 @@ class cash_stratergy:
                         x = TelegramSend.telegram_send_api()
 
                         # Send error over telegramsend send_message
-                        x.send_message(id1, f"Cash startergy please close  {row['account']} {row['symbol']}")
+                        x.send_message(id1, f"Cash strategy please close  {row['account']} {row['symbol']}")
             except Exception as e:
                 print(''.join(traceback.format_exception(e)))
                 print(f"Error processing 'open' row {row['sl_no']}: {e}")
@@ -415,7 +417,7 @@ class cash_stratergy:
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
                 # Send error over telegramsend send_message
-                x.send_message(id1, f"Cash startergy close error {row['account']} {row['symbol']}")
+                x.send_message(id1, f"Cash strategy close error {row['account']} {row['symbol']}")
 
         # Step 2.6: Process rows with status 'open_pending' or 'close_pending'
         for idx, row in data[data['status'].isin(['open_pending', 'close_pending'])].iterrows():
@@ -435,7 +437,7 @@ class cash_stratergy:
                         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                         x = TelegramSend.telegram_send_api()
                         # Send success message (not error)
-                        x.send_message(id1, f"Cash startergy p/l {row['account']} {row['symbol']} {row['strategy']} {profit_loss}")
+                        x.send_message(id1, f"Cash strategy p/l {row['account']} {row['symbol']} {row['strategy']} {profit_loss}")
 
                         brokarage_dict = brokrage_calculator.calculate_equity_delivery(
                             row['buy_price'], row['sell_price'], row['quantity'])
@@ -482,7 +484,7 @@ class cash_stratergy:
                 id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                 x = TelegramSend.telegram_send_api()
                 # Send error message only when actually failing
-                x.send_message(id1, f"Cash startergy pending error {row['account']} {row['symbol']}: {str(e)[:50]}")
+                x.send_message(id1, f"Cash strategy pending error {row['account']} {row['symbol']}: {str(e)[:50]}")
 
         # Save the updated CSV
         data.to_csv(self.csv_path, index=False)

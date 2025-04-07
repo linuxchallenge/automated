@@ -98,10 +98,11 @@ class CommodityStratergy:
                     return
 
                 # check if any enter_order_state is open_pending
-                if current_trade.loc[current_trade['enter_order_state'] == 'open_pending'].shape[0] != 0:
-                    row_number = current_trade.index.get_loc(current_trade[(current_trade['enter_order_state'] == 'open_pending')].index[0])
+                open_pending_rows = current_trade[current_trade['enter_order_state'] == 'open_pending']
+                if not open_pending_rows.empty:
+                    row_number = current_trade.index.get_loc(open_pending_rows.index[0])
 
-                    # Check order status
+                    # Now safe to access row_number
                     order_id = current_trade.loc[row_number, 'enter_orderid']
                     old_price = current_trade.loc[row_number, 'entry_price']
 
@@ -127,44 +128,49 @@ class CommodityStratergy:
                     order_id = current_trade.loc[row_number, 'exit_orderid']
                     old_price = current_trade.loc[row_number, 'exit_price']
 
-                    status, price = place_order.order_status(account, order_id, old_price)
-                    logging.info(f"Order status for order id {order_id} is {status} and price is {price}")
+                    try:
+                        status, price = place_order.order_status(account, order_id, old_price)
+                        logging.info(f"Order status for order id {order_id} is {status} and price is {price}")
 
-                    quantity = account_details.loc[(account_details['Account'] == account) \
+                        quantity = account_details.loc[(account_details['Account'] == account) \
                                                    & (account_details['Symbol'] == current_trade.loc[row_number, 'Symbol'])]['quantity'].values[0]
 
-                    if status == "Complete":
-                        current_trade.loc[row_number, 'exit_order_state'] = 'close'
-                        if price != 0:
-                            current_trade.loc[row_number, 'exit_price'] = price
+                        if status == "Complete":
+                            current_trade.loc[row_number, 'exit_order_state'] = 'close'
+                            current_trade.loc[row_number, 'state'] = 'closed'  # Add this line
+                            if price != 0:
+                                current_trade.loc[row_number, 'exit_price'] = price
 
-                        brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
-                                                                                , current_trade.loc[row_number, 'exit_price'],\
-                                                                             symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity)
-                        brokrage = brokarage_dict['total_charges']
+                            brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
+                                                                                    , current_trade.loc[row_number, 'exit_price'],\
+                                                                                 symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity)
+                            brokarage = brokarage_dict['total_charges']
 
-                        if current_trade.loc[row_number, 'trade_type'] == 'short':
-                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
-                                current_trade.loc[row_number, 'exit_price']
-                            current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
-                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
-                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Short p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokrage}", \
-                                            current_trade.loc[row_number, 'profit'], brokrage, quantity)
+                            if current_trade.loc[row_number, 'trade_type'] == 'short':
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                    current_trade.loc[row_number, 'exit_price']
+                                current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
+                                        * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
+                                self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
+                                                  f"Short p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokarage}", \
+                                                current_trade.loc[row_number, 'profit'], brokarage, quantity)
+                            else:
+                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
+                                    current_trade.loc[row_number, 'entry_price']
+                                current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
+                                        * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
+                                self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
+                                                  f"Long p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokarage}", \
+                                                current_trade.loc[row_number, 'profit'], brokarage, quantity)
+
+                            current_trade.to_csv(file_name, index=False)
                         else:
-                            current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
-                                current_trade.loc[row_number, 'entry_price']
-                            current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
-                                    * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
-                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Long p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokrage}", \
-                                            current_trade.loc[row_number, 'profit'], brokrage, quantity)
-
-                        current_trade.to_csv(file_name, index=False)
-                    else:
-                        # Send telegram message
-                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
-                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                            # Send telegram message
+                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
+                            current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                            current_trade.to_csv(file_name, index=False)
+                    except Exception as e:
+                        logging.error(f"Exception in check_trade_executed: {str(e)}")
 
 
 
@@ -267,10 +273,10 @@ class CommodityStratergy:
                                 print("Enter long trade")
                                 logging.info("Enter long trade")
                                 order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, None)
-                                new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': ['long'],
+                                new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': 'long',
                                            'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], 
                                            'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', 
-                                           'exit_order_id': 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
+                                           'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
                                 trade_entered = True
                     elif alligator_daily[0] == "downtrend":
@@ -279,10 +285,10 @@ class CommodityStratergy:
                                 print ("Enter short trade")
                                 logging.info("Enter short trade")
                                 order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, None)
-                                new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': ['short'], \
+                                new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': 'short', \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
-                                            'exit_order_id' : 0, 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
+                                            'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
                                 trade_entered = True
 
@@ -475,5 +481,4 @@ if __name__ == '__main__':
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
     print("Exiting 11    ")
     commodity_stratergy.execute_strategy(['dummy'], place_order, commodity_account_details)
-
 """

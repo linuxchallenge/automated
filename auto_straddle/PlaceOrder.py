@@ -110,29 +110,36 @@ class PlaceOrder:
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
-        qty = qty * multiplication_factor[symbol]
+        # Use .get() with default value of 1
+        multiplier = multiplication_factor.get(symbol, 1)
+        qty = qty * multiplier
 
-        # Convert qty to integer
-        qty = int(qty)
+        # Add try/except for type conversion
+        try:
+            qty = int(qty)
+        except (ValueError, TypeError) as e:
+            logging.error(f"Invalid quantity value: {qty}. Error: {e}")
+            return -1
 
         print(f"Placing Sell order for account {account}: option with strike price {atm_ce_strike}")
         logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
         order_id = 0
 
-        if account == 'deepti':
+        if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
-
-        if (account == 'leelu'):
+        elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
             order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
-
-        if (account == 'avanthi'):
+        elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
             order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+        else:
+            logging.error(f"Invalid account or API object not initialized: {account}")
+            return -1
 
         logging.info(f"Order id for account: {order_id}")
         return order_id
@@ -227,7 +234,6 @@ class PlaceOrder:
                 order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         logging.info(f"Order id for close account: {order_id}")
-
         return order_id
 
     def order_status(self, account, order_id, old_price):
@@ -244,7 +250,11 @@ class PlaceOrder:
                 order_status, average_price = self.obj_2.get_order_status(order_id)
                 if (order_status == -1):
                     order_status = 'Complete'
-                    average_price = old_price
+                    if old_price is not None and isinstance(old_price, (int, float)):
+                        average_price = old_price
+                    else:
+                        logging.warning(f"Invalid old_price value: {old_price}, using 0")
+                        average_price = 0
         if (account == 'avanthi'):
             order_status, average_price = self.obj_3.get_order_status(order_id)
             if (order_status == -1):

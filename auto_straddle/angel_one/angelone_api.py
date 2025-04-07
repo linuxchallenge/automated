@@ -203,10 +203,23 @@ class angelone_api(object):
                 }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-            try :
-                orderparams["price"] = 0
-                orderid = self.obj.placeOrder(orderparams)
-                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            try:
+                # Add timeout to API calls
+                try:
+                    orderparams["price"] = 0
+                    orderid = self.obj.placeOrder(orderparams)  # Add timeout
+                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                except requests.exceptions.Timeout:
+                    print("Order placement timed out, retrying once")
+                    logger.warning("Order placement timed out, retrying once")
+                    time.sleep(2)
+                    try:
+                        orderid = self.obj.placeOrder(orderparams)
+                    except Exception as e2:
+                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                        print(f"Error executing place_order after timeout: {e2}")
+                        logger.error(f"Error executing place_order after timeout: {e2}")
+                        return -1, -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -271,10 +284,23 @@ class angelone_api(object):
             }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-            try :
-                orderparams["price"] = 0
-                orderid = self.obj.placeOrder(orderparams)
-                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            try:
+                # Add timeout to API calls
+                try:
+                    orderparams["price"] = 0
+                    orderid = self.obj.placeOrder(orderparams)  # Add timeout
+                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                except requests.exceptions.Timeout:
+                    print("Order placement timed out, retrying once")
+                    logger.warning("Order placement timed out, retrying once")
+                    time.sleep(2)
+                    try:
+                        orderid = self.obj.placeOrder(orderparams)
+                    except Exception as e2:
+                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                        print(f"Error executing place_order after timeout: {e2}")
+                        logger.error(f"Error executing place_order after timeout: {e2}")
+                        return -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -352,10 +378,23 @@ class angelone_api(object):
             }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-            try :
-                orderparams["price"] = 0
-                orderid = self.obj.placeOrder(orderparams)
-                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            try:
+                # Add timeout to API calls
+                try:
+                    orderparams["price"] = 0
+                    orderid = self.obj.placeOrder(orderparams)  # Add timeout
+                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                except requests.exceptions.Timeout:
+                    print("Order placement timed out, retrying once")
+                    logger.warning("Order placement timed out, retrying once")
+                    time.sleep(2)
+                    try:
+                        orderid = self.obj.placeOrder(orderparams)
+                    except Exception as e2:
+                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                        print(f"Error executing place_order after timeout: {e2}")
+                        logger.error(f"Error executing place_order after timeout: {e2}")
+                        return -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -454,7 +493,7 @@ class angelone_api(object):
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 print(f"Error executing place_order: {e}")
                 tokenInfo = df.iloc[-1]
-                return -1 -1
+                return -1, -1
 
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
@@ -476,10 +515,23 @@ class angelone_api(object):
             }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-            try :
-                orderparams["price"] = 0
-                orderid = self.obj.placeOrder(orderparams)
-                print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            try:
+                # Add timeout to API calls
+                try:
+                    orderparams["price"] = 0
+                    orderid = self.obj.placeOrder(orderparams)  # Add timeout
+                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                except requests.exceptions.Timeout:
+                    print("Order placement timed out, retrying once")
+                    logger.warning("Order placement timed out, retrying once")
+                    time.sleep(2)
+                    try:
+                        orderid = self.obj.placeOrder(orderparams)
+                    except Exception as e2:
+                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                        print(f"Error executing place_order after timeout: {e2}")
+                        logger.error(f"Error executing place_order after timeout: {e2}")
+                        return -1, -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -495,7 +547,7 @@ class angelone_api(object):
                     logging.error(f"Error executing place_order: {e1}")
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(f"Error executing place_order: {e1}")
-                    return -1 -1
+                    return -1, -1
 
             return orderid, tokenInfo['expiry']
         except Exception as e:
@@ -503,7 +555,7 @@ class angelone_api(object):
             print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error executing place_order: {e}")
             logger.error(f"Error executing place_order: {e}")
-            return -1 -1
+            return -1, -1
 
 
 
@@ -529,7 +581,25 @@ class angelone_api(object):
             # get orderbook for the order id
             orderbook = pd.DataFrame(orderbook)
 
-            order_status = orderbook.loc[orderbook.orderid == order_id, 'orderstatus'].values[0]
+            # Line 633 - add validation before DataFrame access
+            try:
+                # Check if order exists in orderbook
+                matching_orders = orderbook[orderbook.orderid == order_id]
+
+                if matching_orders.empty:
+                    print(f"Order ID {order_id} not found in orderbook")
+                    return "NotFound", -1
+
+                order_status = matching_orders['orderstatus'].values[0]
+                averageprice = matching_orders['averageprice'].values[0]
+
+                # Rest of the function logic...
+            except Exception as e:
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                print(f"Error executing get_order_status: {e}")
+                logger.error(f"Error executing get_order_status: {e}")
+                return -1, -1
+
             if order_status == "complete":
                 order_ret = "Complete"
             elif order_status == "Open":
@@ -542,7 +612,7 @@ class angelone_api(object):
             print("Order Status", order_ret)
             return order_ret, averageprice
         except Exception as e:
-            print(''.join(traceback.format_exception(e)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error executing get_order_status: {e}")
             logger.error(f"Error executing get_order_status: {e}")
             return -1, -1

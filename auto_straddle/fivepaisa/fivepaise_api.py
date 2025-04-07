@@ -133,28 +133,46 @@ class fivepaise_api(object):
         # Sort the df by expiry date and get the first row
         df = df.sort_values(by='Expiry')
 
-        # df.iloc[0]['expiry'] is befor current date retunr the next row
+        # Add validation before accessing
+        if df.empty:
+            print(f"No matching options found for {symbol} {strike_price} {pe_ce}")
+            return None
+
+        # df.iloc[0]['expiry'] is before current date return the next row
         if df.iloc[0]['Expiry'] < datetime.now().strftime('%Y-%m-%d'):
-            return df.iloc[1]
+            # Check if there's a next row before accessing
+            if len(df) > 1:
+                return df.iloc[1]
+            else:
+                print(f"No future expiry found for {symbol} {strike_price} {pe_ce}")
+                return None
         return df.iloc[0]
 
     def get_commodity_symbol(self, symbol, expiry=None):
         df = self.scrip_master_df
 
         df = df[(df['SymbolRoot'] == symbol) & (df['ScripType'] == 'XX')]
+        # Add validation for empty DataFrame
+        if df.empty:
+            print(f"No matching commodity found for {symbol}")
+            return None
+
         # Sort the df by expiry date and get the first row
         df = df.sort_values(by='Expiry')
 
         if expiry is not None:
             df = df[df['Expiry'] == expiry]
             if df.empty:
-                return -1
+                return None
             return df.iloc[0]
 
         # Check if the first expiry is within 10 days
-        if pd.to_datetime(df.iloc[0]['Expiry']) - pd.Timestamp.now() <= pd.Timedelta(days=10):
+        if len(df) > 1 and pd.to_datetime(df.iloc[0]['Expiry']) - pd.Timestamp.now() <= pd.Timedelta(days=10):
             return df.iloc[1]  # Return the next expiry
-        return df.iloc[0]  # Return the first expiry
+        elif len(df) > 0:
+            return df.iloc[0]  # Return the first expiry
+        else:
+            return None
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, isCommodity=True):
         tokenInfo = self.get_commodity_symbol(commodity_to_symbol[symbol], expiry)
@@ -202,7 +220,7 @@ class fivepaise_api(object):
                 print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
                 logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             except Exception as e2:
-                print(''.join(traceback.format_exception(e1, value=e1, tb=e2.__traceback__)))
+                print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1, -1
@@ -249,11 +267,11 @@ class fivepaise_api(object):
                 print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
                 logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             except Exception as e2:
-                print(''.join(traceback.format_exception(e1, value=e1, tb=e2.__traceback__)))
+                print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
-                return -1
-        return order_id['BrokerOrderID']
+                return -1, None  # Changed to return tuple for consistency
+        return order_id['BrokerOrderID'], tokenInfo['Expiry']  # Changed to return tuple
 
     def get_order_status(self, order_id):
         try:
@@ -275,16 +293,22 @@ class fivepaise_api(object):
 
             orderbook = pd.DataFrame(orderbook)
 
+            # Check if order exists
+            matching_orders = orderbook[orderbook.BrokerOrderId == order_id]
+            if matching_orders.empty:
+                print(f"Order {order_id} not found in orderbook")
+                logger.warning(f"Order {order_id} not found in orderbook")
+                return "NotFound", -1
+
             order_ret = "Rejected"
-            order_status = orderbook.loc[orderbook.BrokerOrderId == order_id, 'OrderStatus'].values[0]
+            order_status = matching_orders['OrderStatus'].values[0]
             if order_status == 'Fully Executed':
                 order_ret = "Complete"
             elif order_status == 'Open':
                 order_ret = "Open"
             elif order_status == 'Rejected By 5P':
                 order_ret = "Rejected"
-                #order_ret = "Complete"
-            average_price = orderbook.loc[orderbook.BrokerOrderId == order_id, 'AveragePrice'].values[0]
+            average_price = matching_orders['AveragePrice'].values[0]
 
             return order_ret, average_price
         except Exception as e:

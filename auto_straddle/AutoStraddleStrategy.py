@@ -557,6 +557,14 @@ class AutoStraddleStrategy:
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
+
+            # Add symbol validation
+            if symbol not in multiplication_factor:
+                error_msg = f"Invalid symbol: {symbol}. Must be one of {list(multiplication_factor.keys())}"
+                logging.error(error_msg)
+                print(error_msg)
+                return 0  # Return 0 instead of using default multiplier
+
             total_profit_loss = 0
 
             # Iterate over all rows and compute profit/loss for each row
@@ -571,29 +579,27 @@ class AutoStraddleStrategy:
 
                 # Compute profit or loss for the current row
                 if atm_ce_price != -1:
-                    # CE order was not placed
+                    # CE order was placed
                     profit_loss_ce = atm_ce_price - atm_ce_close_price
 
                 if atm_pe_price != -1:
-                    # PE order was not placed
+                    # PE order was placed
                     profit_loss_pe = atm_pe_price - atm_pe_close_price
 
                 # Sum up the profit or loss for the current row
                 total_profit_loss = total_profit_loss + profit_loss_ce + profit_loss_pe
 
             # Multiply the total profit or loss by the factor based on the symbol
-            total_profit_loss *= multiplication_factor.get(symbol, 1)
+            total_profit_loss *= multiplication_factor[symbol]  # Use direct lookup instead of .get()
 
-            #print(f"Total profit or loss: {total_profit_loss}")
-            #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
-
-            # Check if the total loss is more than 2500
             return total_profit_loss
 
         except Exception as e:
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error computing profit or loss: {e}")
             logging.error(f"Error computing profit or loss: {e}")
-            return None, None
+            return 0  # Return 0 on error
 
     # Function computes profit or loss of existing_sold_options_info by subtracting each row of
     # atm_ce_price and atm_pe_price from atm_ce_close_price and atm_pe_close_price respectively
@@ -606,6 +612,14 @@ class AutoStraddleStrategy:
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
+
+            # Add symbol validation
+            if symbol not in multiplication_factor:
+                error_msg = f"Invalid symbol: {symbol}. Must be one of {list(multiplication_factor.keys())}"
+                logging.error(error_msg)
+                print(error_msg)
+                return 0  # Return 0 instead of using default multiplier
+
             total_brokrage = 0
 
             # Iterate over all rows and compute profit/loss for each row
@@ -632,17 +646,15 @@ class AutoStraddleStrategy:
                 # Sum up the profit or loss for the current row
                 total_brokrage = total_brokrage + brokrage_pe + brokrage_ce
 
-
-            #print(f"Total profit or loss: {total_profit_loss}")
-            #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
-
-            # Check if the total loss is more than 2500
             return total_brokrage
 
         except Exception as e:
-            print(f"Error computing profit or loss: {e}")
-            logging.error(f"Error computing profit or loss: {e}")
-            return None, None
+            # Updated error handling with consistent traceback format
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(f"Error computing brokerage: {e}")
+            logging.error(f"Error computing brokerage: {e}")
+            return 0  # Return 0 on error
 
 
     def read_existing_sold_options_info(self, file_path):

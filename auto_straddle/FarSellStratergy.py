@@ -527,18 +527,22 @@ class FarSellStratergy:
 
                 # Compute profit or loss for the current row
                 if strangle_ce_price != -1:
-                    # CE order was not placed
+                    # CE order was placed - calculate profit/loss
                     profit_loss_ce = strangle_ce_price - strangle_ce_close_price
 
                 if strangle_pe_price != -1:
-                    # PE order was not placed
+                    # PE order was placed - calculate profit/loss
                     profit_loss_pe = strangle_pe_price - strangle_pe_close_price
 
                 # Sum up the profit or loss for the current row
                 total_profit_loss = total_profit_loss + profit_loss_ce + profit_loss_pe
 
             # Multiply the total profit or loss by the factor based on the symbol
-            total_profit_loss *= multiplication_factor.get(symbol, 1)
+            if symbol in multiplication_factor:
+                total_profit_loss *= multiplication_factor[symbol]
+            else:
+                logging.warning(f"Symbol {symbol} not found in multiplication factors, using default value 1")
+                total_profit_loss *= 1
 
             #print(f"Total profit or loss: {total_profit_loss}")
             #logging.info(f"{symbol} Current total profit or loss: {total_profit_loss}")
@@ -547,9 +551,10 @@ class FarSellStratergy:
             return total_profit_loss
 
         except Exception as e:
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error computing profit or loss: {e}")
             logging.error(f"Error computing profit or loss: {e}")
-            return None, None
+            return 0  # Return 0 on error, consistent with other error returns
 
 
     # Function computes profit or loss of existing_sold_options_info by subtracting each row of
@@ -586,9 +591,10 @@ class FarSellStratergy:
             return total_brokarage
 
         except Exception as e:
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             print(f"Error computing brokerage: {e}")
             logging.error(f"Error computing brokerage: {e}")
-            return None
+            return 0  # Return 0 on error, consistent with other error returns
 
 
     def read_existing_sold_options_info(self, file_path):
@@ -622,6 +628,12 @@ class FarSellStratergy:
         banknifty_movement = 240
         midcpnifty_movement = 70
 
+        if symbol_data not in multiplication_factor:
+            logging.warning(f"Symbol {symbol_data} not found in multiplication factors, using default value 1")
+            symbol_factor = 1
+        else:
+            symbol_factor = multiplication_factor[symbol_data]
+
         if (
                 symbol_data == "NIFTY"
                 and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= nifty_movement
@@ -635,10 +647,10 @@ class FarSellStratergy:
                 symbol_data == "MIDCPNIFTY"
                 and abs(option_chain_data['spot_price'] - sold_options_info['spot_price']) >= midcpnifty_movement
         ) or (
-            (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * multiplication_factor.get(symbol_data) \
+            (sold_options_info['strangle_ce_price'] - sold_options_info['strangle_ce_close_price']) * symbol_factor \
                 < (self.loss_limit(symbol_data) / 2) and (sold_options_info['strangle_ce_price'] != -1)
         ) or (
-            (sold_options_info['strangle_pe_price'] - sold_options_info['strangle_pe_close_price']) * multiplication_factor.get(symbol_data) \
+            (sold_options_info['strangle_pe_price'] - sold_options_info['strangle_pe_close_price']) * symbol_factor \
                 < (self.loss_limit(symbol_data) / 2) and (sold_options_info['strangle_pe_price'] != -1)
         ):
             logging.info(
@@ -682,21 +694,42 @@ class FarSellStratergy:
             logging.error(f"Error storing sold options information: {e}")
 
     def get_strangle_strike_price(self, accounts, symbol):
+        """
+        Get the strangle strike prices for the given accounts and symbol.
+        
+        Args:
+            accounts: Either a single account string or a list of account strings
+            symbol: The trading symbol
+            
+        Returns:
+            Tuple of (pe_strike, ce_strike) prices
+        """
+        # Convert single account to list if needed
+        account_list = [accounts] if isinstance(accounts, str) else accounts
 
-        for account in accounts:
-            # logging.info(f"Getting strike price for account {account} and symbol {symbol}")
+        for account in account_list:
             file_name = self.get_sold_options_file_path(account, symbol)
             if os.path.exists(file_name):
                 existing_sold_options_info = self.read_existing_sold_options_info(file_name)
-                if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
-                    if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-                        return 0, existing_sold_options_info.iloc[-1]['strangle_ce_strike']
-                    elif existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
-                        return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], 0
-                    else:
-                        return existing_sold_options_info.iloc[-1]['strangle_pe_strike'], \
-                            existing_sold_options_info.iloc[-1]['strangle_ce_strike']
-        return 0,0
+
+                # Check if DataFrame is not empty before accessing
+                if existing_sold_options_info is not None and not existing_sold_options_info.empty:
+                    # Safely access the last row
+                    try:
+                        last_row = existing_sold_options_info.iloc[-1]
+                        if last_row['trade_state'] == 'open':
+                            if last_row['strangle_pe_price'] == -1:
+                                return 0, last_row['strangle_ce_strike']
+                            elif last_row['strangle_ce_price'] == -1:
+                                return last_row['strangle_pe_strike'], 0
+                            else:
+                                return last_row['strangle_pe_strike'], last_row['strangle_ce_strike']
+                    except (IndexError, KeyError) as e:
+                        logging.error(f"Error accessing DataFrame row: {e}")
+                        continue
+
+        # Default return if no valid data found
+        return 0, 0
 
     def should_reenter_trade(self, sold_options_info):
 
