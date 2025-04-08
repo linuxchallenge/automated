@@ -492,12 +492,31 @@ class cash_stratergy:
 
     # Function to send csv file over telegram
     def send_csv(self):
-        logger.info("Sending CSV file over Telegram.")
-        telegram_group = "dummy" + "_telegram"
-        id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
-        x = TelegramSend.telegram_send_api()
-        # Send error over telegramsend send_message
-        x.send_file(id1, self.csv_path)
+        """Sends the strategy CSV file via Telegram."""
+        try:
+            logger.info("Sending CSV file over Telegram.")
+
+            # Verify file exists
+            if not os.path.exists(self.csv_path):
+                logger.error(f"CSV file not found at path: {self.csv_path}")
+                return False
+
+            # Get Telegram group ID
+            telegram_group = "dummy" + "_telegram"
+            id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
+            if not id1:
+                logger.error(f"Could not find Telegram ID for group: {telegram_group}")
+                return False
+
+            # Initialize Telegram API and send file
+            x = TelegramSend.telegram_send_api()
+            x.send_file(id1, self.csv_path)
+
+        except Exception as e:
+            logger.error(f"Error sending CSV file to Telegram: {str(e)}")
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            return False
 
 
 """

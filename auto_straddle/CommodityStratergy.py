@@ -275,9 +275,9 @@ class CommodityStratergy:
                                 order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, None)
                                 new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': 'long',
                                            'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], 
-                                           'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', 
-                                           'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
-                                current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
+                                           'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 
+                                           'exit_order_state': 'none', 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
+                                current_trade = pd.concat([current_trade, pd.DataFrame([new_row])], ignore_index=True)  # Note the square brackets
                                 trade_entered = True
                     elif alligator_daily[0] == "downtrend":
                         if current_trade is None or row_number == -1:
@@ -289,7 +289,7 @@ class CommodityStratergy:
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
                                         'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
                                             'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
-                                current_trade = pd.concat([current_trade, pd.DataFrame(new_row)], ignore_index=True)
+                                current_trade = pd.concat([current_trade, pd.DataFrame([new_row])], ignore_index=True)  # Note the square brackets
                                 trade_entered = True
 
                     # Exit the trade.
