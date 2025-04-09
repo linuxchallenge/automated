@@ -130,13 +130,13 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
-            order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
-                order_id = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+                order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
-            order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
-                order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+                order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
         else:
             logging.error(f"Invalid account or API object not initialized: {account}")
             return -1
