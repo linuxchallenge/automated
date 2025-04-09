@@ -224,14 +224,14 @@ class PlaceOrder:
                 order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
-            order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
             if (order_id == -1):
-                order_id = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+                order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         if (account == 'avanthi'):
-            order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
             if (order_id == -1):
-                order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
 
         logging.info(f"Order id for close account: {order_id}")
         return order_id
