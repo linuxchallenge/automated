@@ -27,7 +27,7 @@ import brokrage_calculator
 
 logger = logging.getLogger(__name__)
 
-symbol = ['CRUDEOIL', 'NATURALGAS', 'COPPER', 'GOLD', 'LEAD', 'ZINC', 'ALUMINIUM', 'SILVER']
+symbol = ['COPPER', 'GOLD', 'SILVER']
 
 # Map symbol to lot
 symbol_to_lot = {

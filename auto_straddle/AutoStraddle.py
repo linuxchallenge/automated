@@ -26,7 +26,7 @@ import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
 from IndexFutureStratergy import IndexFutureStratergy
-from optionbuy_stratergy import OptionBuyStrategy
+#from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # This sets up the logging
 from TelegramSend import telegram_send_api
 
@@ -177,7 +177,7 @@ def main():
 
     index_future_stratergy = IndexFutureStratergy(accounts_index)
 
-    optionbuy_stratergy = OptionBuyStrategy()
+    #optionbuy_stratergy = OptionBuyStrategy()
 
     # Set the signal handler
     signal.signal(signal.SIGALRM, timeout_handler)
@@ -216,11 +216,12 @@ def main():
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
-                try:
-                    optionbuy_stratergy.execute_strategy(accounts_optionbuy, place_order, optionbuy_account_details, strike)
-                except Exception as e:
-                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                # Commented out option buy strategy execution
+                # try:
+                #    optionbuy_stratergy.execute_strategy(accounts_optionbuy, place_order, optionbuy_account_details, strike)
+                # except Exception as e:
+                #    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                #    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 cash_stratergy_obj.execute_strategy(place_order)
 

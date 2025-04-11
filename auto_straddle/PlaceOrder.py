@@ -137,6 +137,8 @@ class PlaceOrder:
             order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):
                 order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+        elif (account == 'dummy'):
+            order_id = 123456789
         else:
             logging.error(f"Invalid account or API object not initialized: {account}")
             return -1

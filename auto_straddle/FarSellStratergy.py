@@ -496,7 +496,7 @@ class FarSellStratergy:
             telegram_group = account + "_telegram"
             id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
             # Send error message over telegramsend send_message
-            x.send_message(id1, f"Auto Straddle critical error {account} {symbol} {e}")            
+            x.send_message(id1, f"Auto Straddle critical error {account} {symbol} {e}")
 
     def get_sold_options_file_path(self, account, symbol):
         current_date = datetime.now().strftime("%Y-%m-%d")
