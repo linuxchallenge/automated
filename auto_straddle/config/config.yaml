@@ -1,0 +1,22 @@
+# config/config.yaml
+trading:
+  symbols:
+    NIFTY:
+      multiplier: 75
+      movement_threshold: 120
+      loss_limit: -700
+    BANKNIFTY:
+      multiplier: 30
+      movement_threshold: 240
+      loss_limit: -700
+  
+brokers:
+  angel_one:
+    api_key: ${ANGEL_ONE_API_KEY}
+    client_id: ${ANGEL_ONE_CLIENT_ID}
+  
+notifications:
+  telegram:
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_ids:
+      default: ${TELEGRAM_DEFAULT_CHAT_ID}
