@@ -311,7 +311,7 @@ class cash_stratergy:
                 logger.info("Maximum exceeded.")
                 return
             self.execution_tracker["morning"] += 1
-        elif datetime.strptime("15:15:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("15:20:00", "%H:%M:%S").time():
+        elif datetime.strptime("15:16:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("15:26:00", "%H:%M:%S").time():
             logger.info(f"Execution tracker evening count: {self.execution_tracker['afternoon']}")
             # Check afternoon executions limit:
             if self.execution_tracker["afternoon"] >= max_executions + 1:
@@ -336,8 +336,8 @@ class cash_stratergy:
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
             try:
                 symbol = row['symbol']
+                sleep(1)
                 last_price = self.get_nse_ltp(symbol)
-                sleep(2)
             except Exception as e:
                 print(f"Error fetching price for symbol {row['symbol']}: {e}. Ensure the symbol is correct for NSE.")
                 continue
@@ -348,6 +348,7 @@ class cash_stratergy:
                     logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
                     quantity = int(row['amount'] / last_price)
                     order_id = place_order.place_cash_order(row['account'], row['symbol'], quantity, "BUY")
+                    logger.info(f"Order ID: {order_id}")
 
                     # Update the row in the DataFrame
                     data.loc[idx, 'buy_order_id'] = order_id
@@ -377,7 +378,7 @@ class cash_stratergy:
             try:
                 symbol = row['symbol']
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                sleep(2)
+                sleep(1)
                 try:
                     last_price = self.get_nse_ltp(symbol)
                 except Exception as e:
@@ -391,6 +392,7 @@ class cash_stratergy:
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
+                        logger.info(f"Order ID: {order_id}")
 
                         # Update the row in the DataFrame
                         data.loc[idx, 'close_order_id'] = order_id
