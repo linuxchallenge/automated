@@ -359,6 +359,7 @@ class commodity_data:
                 # Remove all entires which has PETAL and GUINEA in tradingsymbol column
                 token = token[~token.tradingsymbol.str.contains('PETAL')]
                 token = token[~token.tradingsymbol.str.contains('GUINEA')]
+                token = token[~token.tradingsymbol.str.contains('GOLDTEN')]                
 
             if symbol == 'LEAD' or symbol == 'ZINC':
                 # Remove all entires which has MINI in tradingsymbol column
