@@ -411,7 +411,7 @@ class OptionBuyStrategy:
         try:
 
             # Get the configuration
-            configuration.ConfigurationLoader.load_configuration()
+            #configuration.ConfigurationLoader.load_configuration()
 
             current_time_dt = datetime.now().time()
 

@@ -435,7 +435,7 @@ class IndexFutureStratergy:
             start_loop_time = datetime.now()
 
             # Get the configuration
-            configuration.ConfigurationLoader.load_configuration()
+            #configuration.ConfigurationLoader.load_configuration()
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:
