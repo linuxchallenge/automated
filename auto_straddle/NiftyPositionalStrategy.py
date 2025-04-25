@@ -188,6 +188,40 @@ class NiftyPositionalStrategy:
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
             
+            # Check for expiry day closing time
+            if self.is_expiry_day_closing_time():
+                if not existing_sold_options_info.empty and existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
+                    logging.info(f"Closing positions at expiry day 3:27 PM for account {account}")
+                    
+                    # Set close prices to 0 for expiry day closing
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = 0
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = 0
+                    
+                    # Close the positions
+                    self._close_position(
+                        existing_sold_options_info,
+                        account,
+                        quantity,
+                        place_order_obj,
+                        option_chain_analyzer
+                    )
+                    
+                    # Compute and send P/L
+                    ce_pl = (existing_sold_options_info.iloc[-1]['strangle_ce_price'] - 0) * quantity
+                    pe_pl = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] - 0) * quantity
+                    total_pl = ce_pl + pe_pl
+                    
+                    # Send P/L information via Telegram
+                    pl_message = (
+                        f"Expiry Day Closing P/L for {account}:\n"
+                        f"CE P/L: {ce_pl:.2f}\n"
+                        f"PE P/L: {pe_pl:.2f}\n"
+                        f"Total P/L: {total_pl:.2f}"
+                    )
+                    TelegramSend.send_message(pl_message)
+                    
+                    return
+                
             # Check number of trades for current expiry
             current_expiry = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
             expiry_trades = existing_sold_options_info[
@@ -646,6 +680,9 @@ class NiftyPositionalStrategy:
                        place_order_obj, option_chain_analyzer):
         """Close open positions"""
         try:
+            # Check if it's expiry day closing
+            is_expiry_closing = self.is_expiry_day_closing_time()
+            
             ce_close_id, pe_close_id = self.close_trade(
                 account,
                 existing_sold_options_info.iloc[-1]['strangle_pe_strike'],
@@ -664,6 +701,11 @@ class NiftyPositionalStrategy:
                 'trade_state': 'closing',
                 'close_time': datetime.now()
             }
+            
+            # If it's expiry day closing, set close prices to 0
+            if is_expiry_closing:
+                updates['strangle_ce_close_price'] = 0
+                updates['strangle_pe_close_price'] = 0
 
             self.update_and_store(
                 existing_sold_options_info,
@@ -716,6 +758,18 @@ class NiftyPositionalStrategy:
         except Exception as e:
             logging.error(f"Error in sending error message: {str(e)}")
             logging.error(traceback.format_exc())
+
+    def is_expiry_day_closing_time(self) -> bool:
+        """Check if it's 3:27 PM on expiry day"""
+        current_time = datetime.now()
+        current_date = current_time.date()
+        expiry_date = self.get_next_nifty_expiry().date()
+        
+        # Check if today is expiry day
+        if current_date == expiry_date:
+            # Check if time is 3:27 PM
+            return current_time.time() >= time(15, 27)
+        return False
 
 def test_strategy_integration():
     """
