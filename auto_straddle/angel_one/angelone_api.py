@@ -422,145 +422,102 @@ class angelone_api(object):
 
 
     def place_order_sythetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+        """
+        Place an order for synthetic futures.
+        Returns: (order_id, expiry_date) tuple or (-1, None) on failure
+        """
         try:
-            # Get token info for the symbol
+            # 1. GET TOKEN INFO
             df = self.getTokenInfo("NFO", "OPTIDX", symbol, strike_price, pe_ce, expiry)
-            
-            if isinstance(df, int) and df == -1:
-                print("Failed to get token info")
+
+            if df is None or (isinstance(df, int) and df == -1) or df.empty:
+                logger.error(f"No valid contracts found for {symbol} {strike_price} {pe_ce}")
                 return -1, None
 
-            if df.empty:
-                print("Token info not found")
-                return -1, None
+            # 2. DETERMINE EXPIRY - Simplified logic
+            tokenInfo = None
 
-            try:
-                today = datetime.now().date()
-                print(f"Today's date: {today}")
-                
-                # Convert expiry dates to datetime
-                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
-                
-                if expiry is not None:
-                    # If expiry is provided, use it
-                    try:
-                        date_obj = pd.to_datetime(expiry).date()
-                        print(f"Looking for provided expiry: {date_obj}")
-                        matching_expiries = df[df['expiry'] == date_obj]
-                        if not matching_expiries.empty:
-                            tokenInfo = matching_expiries.iloc[0]
-                        else:
-                            print(f"No matching expiry found for {date_obj}")
-                            print("Available expiries:", df['expiry'].unique())
-                            return -1, None
-                    except Exception as e:
-                        print(f"Error parsing provided expiry date: {e}")
+            # Convert expiry column to datetime
+            df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+            today = datetime.now().date()
+
+            if expiry is not None:
+                # Use specified expiry
+                try:
+                    expiry_date = pd.to_datetime(expiry).date()
+                    matching_expiries = df[df['expiry'] == expiry_date]
+
+                    if matching_expiries.empty:
+                        logger.error(f"No contract found for specified expiry {expiry_date}")
                         return -1, None
-                else:
-                    # Get current month expiries
-                    current_month_last_day = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-                    current_month_expiries = df[df['expiry'] <= current_month_last_day]
-                    
-                    print(f"Today: {today}")
-                    print(f"Current month last day: {current_month_last_day}")
-                    print(f"Available expiries: {df['expiry'].unique()}")
-                    print(f"Current month expiries: {current_month_expiries}")
 
-                    if current_month_expiries.empty:
-                        # If no current month expiries, get the nearest available expiry
-                        future_expiries = df[df['expiry'] > today]
-                        if not future_expiries.empty:
-                            tokenInfo = future_expiries.iloc[0]  # Get the nearest future expiry
-                            print(f"Selected future expiry: {tokenInfo['expiry']}")
-                        else:
-                            print("No future expiries available")
-                            return -1, None
-                    else:
-                        # Get the nearest expiry that's not too close
-                        valid_expiries = current_month_expiries[
-                            current_month_expiries['expiry'] > (today + timedelta(days=1))
-                        ]
-                        if not valid_expiries.empty:
-                            tokenInfo = valid_expiries.iloc[0]
-                            print(f"Selected current month expiry: {tokenInfo['expiry']}")
-                        else:
-                            # Get next available expiry
-                            future_expiries = df[df['expiry'] > current_month_last_day]
-                            if not future_expiries.empty:
-                                tokenInfo = future_expiries.iloc[0]
-                                print(f"Selected next month expiry: {tokenInfo['expiry']}")
-                            else:
-                                print("No valid expiries found")
-                                return -1, None
+                    tokenInfo = matching_expiries.iloc[0]
+                except Exception as e:
+                    logger.error(f"Error parsing expiry date {expiry}: {e}")
+                    return -1, None
+            else:
+                # Find appropriate expiry - get the next available one at least 8 days out
+                future_expiries = df[df['expiry'] > (today + timedelta(days=8))]
 
-                # Rest of the order placement code...
-                symbol = tokenInfo['symbol']
-                token = tokenInfo['token']
-                lot = int(tokenInfo['lotsize'])
-                
-                print(f"Selected: Symbol={symbol}, Token={token}, Lot={lot}, Expiry={tokenInfo['expiry']}")
-                
-                if qty % lot != 0:
-                    print(f"Quantity {qty} is not a multiple of lot size {lot}")
+                if future_expiries.empty:
+                    logger.error(f"No valid future expiries found for {symbol}")
                     return -1, None
 
-                # Place the order...
-                orderparams = {
-                    "variety": "NORMAL",
-                    "tradingsymbol": symbol,
-                    "symboltoken": token,
-                    "transactiontype": buy_sell,
-                    "exchange": "NFO",
-                    "ordertype": "MARKET",
-                    "producttype": "CARRYFORWARD",
-                    "duration": "DAY",
-                    "quantity": qty
-                }
+                tokenInfo = future_expiries.iloc[0]  # Get earliest valid expiry
 
-                print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-                try:
-                    # Add timeout to API calls
-                    try:
-                        orderparams["price"] = 0
-                        orderid = self.obj.placeOrder(orderparams)  # Add timeout
-                        print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-                    except requests.exceptions.Timeout:
-                        print("Order placement timed out, retrying once")
-                        logger.warning("Order placement timed out, retrying once")
-                        time.sleep(2)
-                        try:
-                            orderid = self.obj.placeOrder(orderparams)
-                        except Exception as e2:
-                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                            print(f"Error executing place_order after timeout: {e2}")
-                            logger.error(f"Error executing place_order after timeout: {e2}")
-                            return -1, None
-                except Exception as e:
-                    try:
-                        print("Error placing order, trying again")
-                        print(f"Error: {e}")
-                        logger.error(f"Error executing place_order again: {e}")
-                        x = TelegramSend.telegram_send_api()
+            # 3. PREPARE ORDER PARAMETERS
+            symbol = tokenInfo['symbol']
+            token = tokenInfo['token']
+            lot = int(tokenInfo['lotsize'])
 
-                        # Send profit loss over telegramsend send_message
-                        x.send_message("-4008545231", f"Warning angel one {symbol} option buy order Pls check")
-                        time.sleep(2)
-                        orderid = self.obj.placeOrder(orderparams)
-                    except Exception as e1:
-                        logging.error(f"Error executing place_order: {e1}")
-                        print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                        print(f"Error executing place_order: {e1}")
-                        return -1, None
+            logger.info(f"Selected contract: {symbol}, token: {token}, expiry: {tokenInfo['expiry']}")
+            print(f"Selected contract: {symbol}, token: {token}, expiry: {tokenInfo['expiry']}")
 
-                return orderid, tokenInfo['expiry']
-
-            except Exception as e:
-                print(f"Error in expiry processing: {e}")
-                traceback.print_exc()
+            if qty % lot != 0:
+                logger.error(f"Quantity {qty} not multiple of lot size {lot}")
+                print(f"Quantity {qty} not multiple of lot size {lot}")
                 return -1, None
 
+            orderparams = {
+                "variety": "NORMAL",
+                "tradingsymbol": symbol,
+                "symboltoken": token,
+                "transactiontype": buy_sell,
+                "exchange": "NFO",
+                "ordertype": "MARKET",
+                "producttype": "CARRYFORWARD",
+                "duration": "DAY",
+                "quantity": qty,
+                "price": 0
+            }
+
+            # 4. PLACE ORDER - With retry
+            for attempt in range(2):  # Try twice
+                try:
+                    orderid = self.obj.placeOrder(orderparams)
+                    logger.info(f"Order placed successfully: {orderid}")
+                    return orderid, tokenInfo['expiry']
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Order placement timeout (attempt {attempt+1})")
+                    time.sleep(2)
+                except Exception as e:
+                    logger.error(f"Order placement error (attempt {attempt+1}): {e}")
+                    if attempt == 0:  # Only retry once
+                        time.sleep(2)
+                        # Send telegram alert on first failure
+                        try:
+                            TelegramSend.telegram_send_api().send_message(
+                                "-4008545231", 
+                                f"Warning angel one {symbol} order failed: {str(e)[:100]}"
+                            )
+                        except Exception as telegram_error:
+                            logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                            # Don't let telegram errors affect main flow
+
+            return -1, None
+
         except Exception as e:
-            print(f"Error in place_order_sythetic_future: {e}")
+            logger.error(f"Fatal error in place_order_sythetic_future: {e}")
             traceback.print_exc()
             return -1, None
 
@@ -626,16 +583,16 @@ class angelone_api(object):
 
 
 
-"""
+'''
 print("Starting")
 angel_obj = angelone_api()
 print(angel_obj)
 print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
-orderid = angel_obj.place_order_sythetic_future('NIFTY', 75, 'BUY', 23100, 'PE')
+orderid = angel_obj.place_order_sythetic_future('BANKNIFTY', 30, 'BUY', 54500, 'PE')
 print(orderid)
-"""
+'''
 
 
 
