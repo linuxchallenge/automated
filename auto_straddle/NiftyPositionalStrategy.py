@@ -14,6 +14,19 @@ import requests
 from typing import Optional
 logger = logging.getLogger(__name__)
 
+ORDER_STATES = {
+    'OPEN': {
+        'INITIAL': 'open_pending',
+        'COMPLETED': 'open',
+        'FAILED': 'closed'
+    },
+    'CLOSE': {
+        'INITIAL': 'close_pending',
+        'COMPLETED': 'closed',
+        'FAILED': 'open'  # Remains open if close fails
+    }
+}
+
 class NiftyPositionalStrategy:
     def __init__(self, accounts):
         self.accounts = accounts
@@ -21,6 +34,11 @@ class NiftyPositionalStrategy:
         self.nso_open = None
         self._cached_expiry: Optional[datetime] = None
         self._last_expiry_check: Optional[datetime] = None
+        # Add new tracking variables
+        self.last_execution_time = None
+        self.EXECUTION_INTERVAL = timedelta(minutes=10)  # 10 minutes interval
+        self.TRADE_COOLDOWN = timedelta(minutes=30)  # 30 minutes cooldown
+        self.MAX_TRADES_PER_EXPIRY = 3
 
     def loss_limit(self):
         return -700  # Fixed for NIFTY
@@ -70,9 +88,9 @@ class NiftyPositionalStrategy:
             is_entry_window = time(11, 45) <= current_time <= time(12, 15)
             
             if is_entry_window:
-                logging.info(f"Entry window active. Current time: {current_time}, "
-                           f"Days to expiry: {days_to_expiry}, "
-                           f"Next expiry: {expiry_date}")
+                logging.info("Entry window active. Current time: %s, "
+                           "Days to expiry: %d, "
+                           "Next expiry: %s", current_time, days_to_expiry, expiry_date)
             return is_entry_window
             
         return False
@@ -101,118 +119,253 @@ class NiftyPositionalStrategy:
                     f"CE: {ce_current_price}, PE: {pe_current_price}"
                 )
                 return True
-                
+            
             return False
 
         except Exception as e:
             logging.error(f"Error in should_exit_trade: {str(e)}")
             return False
 
-    def execute_strategy(self, option_chain_analyzer, account, quantity, place_order_obj):
+    def execute_strategy(self, option_chain_analyzer, quantity, place_order_obj):
+        """
+        Execute strategy for all accounts
+        
+        Args:
+            option_chain_analyzer: Dictionary containing option chain data
+            quantity: Trade quantity
+            place_order_obj: Order placement object
+        """
         try:
-            if account not in self.accounts:
-                raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
+            current_time = datetime.now()
 
-            # Check if NFO market is open
-            if self.nso_open is None:
-                exchange_data = ExchangeData()
-                exchange_data_var = exchange_data.is_nfo_open()
-                if not exchange_data_var:
-                    print("NFO market is closed")
-                    self.nso_open = False
-                    return
-                self.nso_open = True
-            elif not self.nso_open:
+            # Check execution interval (10 minutes)
+            if self.last_execution_time and \
+               (current_time - self.last_execution_time) < self.EXECUTION_INTERVAL:
+                logging.info("Skipping execution: Within 10-minute interval")
+                return
+            
+            self.last_execution_time = current_time
+
+            # Check NFO market status
+            if not self._check_market_status():
                 return
 
-            # Extract relevant information
-            spot_price = option_chain_analyzer['spot_price']
-            ce_strangle_strike = option_chain_analyzer['ce_strangle_strike']
-            pe_strangle_strike = option_chain_analyzer['pe_strangle_strike']
+            # Loop through all accounts
+            for account in self.accounts:
+                try:
+                    logging.info(f"Executing strategy for account: {account}")
+                    self._execute_for_account(
+                        account=account,
+                        option_chain_analyzer=option_chain_analyzer,
+                        quantity=quantity,
+                        place_order_obj=place_order_obj
+                    )
+                except Exception as acc_error:
+                    logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
+                    self.send_error_message(account, str(acc_error))
+                    continue  # Continue with next account even if one fails
 
-            sold_options_file_path = self.get_sold_options_file_path(account)
+        except Exception as e:
+            logging.error(f"Error in strategy execution: {str(e)}")
+            logging.error(traceback.format_exc())
+
+    def _execute_for_account(self, account: str, option_chain_analyzer: dict, 
+                            quantity: int, place_order_obj):
+        """
+        Execute strategy for a single account
+        
+        Args:
+            account: Trading account identifier
+            option_chain_analyzer: Dictionary containing option chain data
+            quantity: Trade quantity
+            place_order_obj: Order placement object
+        """
+        if account not in self.accounts:
+            raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
+
+        sold_options_file_path = self.get_sold_options_file_path(account)
+        
+        if os.path.exists(sold_options_file_path):
+            existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
             
-            if os.path.exists(sold_options_file_path):
-                # Manage existing position
-                existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
-                
-                if existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
-                    # Update current prices
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-                        option_chain_analyzer['prev_ce_strangle_price']
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                        option_chain_analyzer['prev_pe_strangle_price']
+            # Check number of trades for current expiry
+            current_expiry = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
+            expiry_trades = existing_sold_options_info[
+                existing_sold_options_info['expiry'] == current_expiry
+            ]
+            
+            if len(expiry_trades) >= self.MAX_TRADES_PER_EXPIRY:
+                logging.info(f"Maximum trades ({self.MAX_TRADES_PER_EXPIRY}) reached for account {account}, expiry {current_expiry}")
+                return
 
-                    # Check exit conditions
-                    if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1]):
-                        # Close the trade
-                        ce_close_id, pe_close_id = self.close_trade(
-                            account,
-                            existing_sold_options_info.iloc[-1]['strangle_pe_strike'],
-                            existing_sold_options_info.iloc[-1]['strangle_ce_strike'],
-                            existing_sold_options_info.iloc[-1]['strangle_pe_price'],
-                            existing_sold_options_info.iloc[-1]['strangle_ce_price'],
-                            place_order_obj,
-                            quantity
-                        )
-                        
-                        # Update trade status
-                        self.update_trade_status(
-                            existing_sold_options_info,
-                            ce_close_id,
-                            pe_close_id,
-                            option_chain_analyzer
-                        )
-                        
-                        # Store updated information
-                        self.store_sold_options_info(existing_sold_options_info, account)
-                        
+            # Check if last trade was closed recently (30-min cooldown)
+            if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'closed':
+                last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
+                if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
+                    logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
+                    return
+
+            # Handle existing open positions
+            if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'open':
+                # Update current prices and check exit conditions
+                self._manage_open_position(
+                    existing_sold_options_info,
+                    option_chain_analyzer,
+                    account,
+                    quantity,
+                    place_order_obj
+                )
             else:
-                # Check entry conditions
+                # Check entry conditions for new trade
                 if self.is_entry_time():
-                    # Create new position based on PE/CE ratio
-                    sold_options_info = self.create_new_position(
-                        account,
-                        spot_price,
+                    self._enter_new_position(
                         option_chain_analyzer,
-                        ce_strangle_strike,
-                        pe_strangle_strike,
+                        account,
                         quantity,
                         place_order_obj
                     )
-                    
-                    if sold_options_info:
-                        # Store new position
-                        existing_sold_options_info = pd.DataFrame([sold_options_info])
-                        self.store_sold_options_info(existing_sold_options_info, account)
+
+        else:
+            # First trade for this account/expiry
+            if self.is_entry_time():
+                self._enter_new_position(
+                    option_chain_analyzer,
+                    account,
+                    quantity,
+                    place_order_obj
+                )
+
+    def _check_market_status(self):
+        """Check if NFO market is open"""
+        if self.nso_open is None:
+            exchange_data = ExchangeData()
+            self.nso_open = exchange_data.is_nfo_open()
+            if not self.nso_open:
+                logging.info("NFO market is closed")
+                return False
+        return self.nso_open
+
+    def _manage_open_position(self, existing_sold_options_info, option_chain_analyzer, 
+                            account, quantity, place_order_obj):
+        """Manage existing open positions"""
+        try:
+            # Update current prices
+            updates = {
+                'strangle_ce_close_price': option_chain_analyzer['prev_ce_strangle_price'],
+                'strangle_pe_close_price': option_chain_analyzer['prev_pe_strangle_price']
+            }
+            
+            existing_sold_options_info = self.update_and_store(
+                existing_sold_options_info,
+                account,
+                existing_sold_options_info.index[-1],
+                updates
+            )
+
+            # Check exit conditions
+            if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1]):
+                self._close_position(
+                    existing_sold_options_info,
+                    account,
+                    quantity,
+                    place_order_obj,
+                    option_chain_analyzer
+                )
 
         except Exception as e:
-            logging.error("Error executing Nifty Positional Strategy: %s", e)
-            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-            self.send_error_notification(account, str(e))
+            logging.error(f"Error in managing open position: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
+    def _enter_new_position(self, option_chain_analyzer, account, quantity, place_order_obj):
+        """Enter new position if conditions are met"""
+        sold_options_info = self.create_new_position(
+            account,
+            option_chain_analyzer['spot_price'],
+            option_chain_analyzer,
+            option_chain_analyzer['ce_strangle_strike'],
+            option_chain_analyzer['pe_strangle_strike'],
+            quantity,
+            place_order_obj
+        )
+        
+        if sold_options_info:
+            existing_sold_options_info = pd.DataFrame([sold_options_info])
+            self.store_sold_options_info(existing_sold_options_info, account)
+
+    def get_sold_options_file_path(self, account):
+        """Get file path using expiry date instead of current date"""
+        expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
+        return f"csv/nifty_pos_options_info_{expiry_date}_{account}.csv"
+
+    def get_error_options_file_path(self, account):
+        """Get error file path using expiry date instead of current date"""
+        expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
+        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}.csv"
+
+    def get_option_price(self, option_chain_analyzer, option_type):
+        """
+        Get option price based on option type and market conditions
+        
+        Args:
+            option_chain_analyzer: Dictionary containing option chain data
+            option_type: String indicating option type ('CE' or 'PE')
+        
+        Returns:
+            float: Option price
+        """
+        if option_type == 'CE':
+            if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
+                return option_chain_analyzer['ce_strangle_price']
+            else:
+                return option_chain_analyzer['ce_strangle_price']
+        elif option_type == 'PE':
+            if option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
+                return option_chain_analyzer['pe_strangle_price']
+            else:
+                return option_chain_analyzer['pe_strangle_price']
+        return 0  # Return 0 for invalid option type
+
+    def get_option_strike(self, option_chain_analyzer, option_type):
+        """
+        Get strike price based on option type
+        
+        Args:
+            option_chain_analyzer: Dictionary containing option chain data
+            option_type: String indicating option type ('CE' or 'PE')
+        
+        Returns:
+            float: Strike price
+        """
+        if option_type == 'CE':
+            return option_chain_analyzer['ce_strangle_strike']
+        elif option_type == 'PE':
+            return option_chain_analyzer['pe_strangle_strike']
+        return 0  # Return 0 for invalid option type
 
     def create_new_position(self, account, spot_price, option_chain_analyzer, 
-                          ce_strike, pe_strike, quantity, place_order_obj):
-        """Create new position based on market conditions"""
+                           ce_strike, pe_strike, quantity, place_order_obj):
         sold_options_info = {
             'account': account,
             'symbol': self.symbol,
             'spot_price': spot_price,
-            'strangle_ce_price': get_option_price(option_chain_analyzer, 'CE'),
-            'strangle_pe_price': get_option_price(option_chain_analyzer, 'PE'),
+            'quantity': quantity,
+            'strangle_ce_price': self.get_option_price(option_chain_analyzer, 'CE'),
+            'strangle_pe_price': self.get_option_price(option_chain_analyzer, 'PE'),
             'trade_state': 'open',
             'open_time': datetime.now(),
             'close_time': None,
-            'strangle_ce_strike': ce_strike,
-            'strangle_pe_strike': pe_strike,
-            'strangle_ce_close_price': get_option_price(option_chain_analyzer, 'CE'),
-            'strangle_pe_close_price': get_option_price(option_chain_analyzer, 'PE'),
+            'expiry': self.get_next_nifty_expiry().strftime("%Y-%m-%d"),
+            'strangle_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE'),
+            'strangle_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE'),
+            'strangle_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE'),
+            'strangle_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE'),
             'pe_open_order_id': -1,
             'ce_open_order_id': -1,
             'pe_close_order_id': -1,
             'ce_close_order_id': -1,
-            'pe_open_state': 'open',
-            'ce_open_state': 'open',
+            'pe_open_state': 'open_pending',
+            'ce_open_state': 'open_pending',
             'pe_close_state': 'None',
             'ce_close_state': 'None'
         }
@@ -236,19 +389,361 @@ class NiftyPositionalStrategy:
 
         return sold_options_info
 
-    def get_sold_options_file_path(self, account):
-        """Get file path using expiry date instead of current date"""
-        expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_{expiry_date}_{account}.csv"
+    def place_ce_only(self, sold_options_info, account, ce_strike, quantity, place_order_obj):
+        """Place only CE order"""
+        sold_options_info['strangle_pe_price'] = -1
+        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
+            account, ce_strike, 'CE', self.symbol, quantity)
+        
+        if sold_options_info['ce_open_order_id'] == -1:
+            error_message = "Error in placing ce open order"
+            self.send_error_message(account, error_message)
+            return None
+        
+        sold_options_info['pe_open_order_id'] = -1
+        sold_options_info['pe_open_state'] = 'closed'
+        sold_options_info['ce_open_state'] = 'open_pending'
+        return sold_options_info
 
-    def get_error_options_file_path(self, account):
-        """Get error file path using expiry date instead of current date"""
-        expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}.csv"
+    def place_pe_only(self, sold_options_info, account, pe_strike, quantity, place_order_obj):
+        """Place only PE order"""
+        sold_options_info['strangle_ce_price'] = -1
+        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
+            account, pe_strike, 'PE', self.symbol, quantity)
+        
+        if sold_options_info['pe_open_order_id'] == -1:
+            error_message = "Error in placing pe open order"
+            self.send_error_message(account, error_message)
+            return None
+        
+        sold_options_info['ce_open_order_id'] = -1
+        sold_options_info['ce_open_state'] = 'closed'
+        sold_options_info['pe_open_state'] = 'open_pending'
+        return sold_options_info
 
+    def place_both_legs(self, sold_options_info, account, ce_strike, pe_strike, quantity, place_order_obj):
+        """Place both CE and PE orders"""
+        # Place CE order
+        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
+            account, ce_strike, 'CE', self.symbol, quantity)
+        if sold_options_info['ce_open_order_id'] == -1:
+            error_message = "Error in placing ce open order"
+            self.send_error_message(account, error_message)
+            return None
+        
+        t.sleep(1)
+        
+        # Place PE order
+        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
+            account, pe_strike, 'PE', self.symbol, quantity)
+        if sold_options_info['pe_open_order_id'] == -1:
+            error_message = "Error in placing pe open order"
+            self.send_error_message(account, error_message)
+            return None
+        
+        sold_options_info['ce_open_state'] = 'open_pending'
+        sold_options_info['pe_open_state'] = 'open_pending'
+        return sold_options_info
 
     # Include other utility methods from FarSellStrategy with necessary modifications
     # Such as close_trade, store_sold_options_info, compute_profit_loss, etc.
+
+    def update_trade_status(self, existing_sold_options_info, ce_close_id, pe_close_id, option_chain_analyzer):
+        """Update trade status after closing orders"""
+        if ce_close_id != -1:
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'close_pending'
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'] = ce_close_id
+        
+        if pe_close_id != -1:
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'close_pending'
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = pe_close_id
+        
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
+            option_chain_analyzer['prev_ce_strangle_price']
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
+            option_chain_analyzer['prev_pe_strangle_price']
+        
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closing'
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = datetime.now()
+
+        # When closing positions
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'close_pending'
+        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'close_pending'
+
+        if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+
+        if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
+            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+
+    def check_if_trade_is_executed(self, account, symbol, place_order_obj):
+        error_path = self.get_error_options_file_path(account)
+        if os.path.exists(error_path):
+            return False
+
+        error_in_order = False
+        error_message = ""
+        sold_options_file_path = self.get_sold_options_file_path(account)
+        
+        if os.path.exists(sold_options_file_path):
+            existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
+            
+            # Check PE open order
+            if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open_pending':
+                order_status, price = place_order_obj.order_status(account,
+                            existing_sold_options_info.iloc[-1]['pe_open_order_id'],
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'open'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in pe open order"
+
+            # Check CE open order
+            if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open_pending':
+                t.sleep(3)
+                order_status, price = place_order_obj.order_status(account,
+                            existing_sold_options_info.iloc[-1]['ce_open_order_id'],
+                            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'open'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in ce open order"
+
+            # Check PE close order
+            if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'close_pending':
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['pe_close_order_id'],
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in pe close order"
+
+            # Check CE close order
+            if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'close_pending':
+                t.sleep(3)
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['ce_close_order_id'],
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'])
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = price
+                else:
+                    error_in_order = True
+                    error_message = error_message + "Error in ce close order"
+
+            if error_in_order:
+                self.store_sold_options_info(existing_sold_options_info, account)
+                self.send_error_message(account, error_message)
+                return False
+
+            self.store_sold_options_info(existing_sold_options_info, account)
+            return True
+
+        return True
+
+    def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, place_order_obj, qty):
+        """Close the trade"""
+        logging.info(f"Closing the trade for account {account}")
+        ce_order_id = -1
+        pe_order_id = -1
+        
+        if strangle_pe_price != -1:
+            pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', self.symbol, qty)
+            if pe_order_id == -1:
+                error_message = "Error in placing pe close order"
+                self.send_error_message(account, error_message)
+                return -1, -1
+            
+        if strangle_ce_price != -1:
+            ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', self.symbol, qty)
+            if ce_order_id == -1:
+                error_message = "Error in placing ce close order"
+                self.send_error_message(account, error_message)
+                return -1, -1
+            
+        return ce_order_id, pe_order_id
+
+    def read_existing_sold_options_info(self, file_path):
+        """
+        Read existing trade information from CSV file
+        
+        Args:
+            file_path: Path to the CSV file
+            
+        Returns:
+            pd.DataFrame: DataFrame containing trade information
+        """
+        try:
+            if os.path.exists(file_path):
+                df = pd.read_csv(file_path)
+                
+                # Convert timestamp strings back to datetime objects
+                timestamp_columns = ['open_time', 'close_time']
+                for col in timestamp_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_datetime(df[col])
+                
+                return df
+            else:
+                logging.warning(f"File not found: {file_path}")
+                return pd.DataFrame()  # Return empty DataFrame if file doesn't exist
+
+        except Exception as e:
+            logging.error(f"Error reading trade information: {str(e)}")
+            logging.error(traceback.format_exc())
+            return pd.DataFrame()
+
+    def store_sold_options_info(self, info: pd.DataFrame, account: str):
+        """
+        Store trade information to CSV file
+        
+        Args:
+            info: DataFrame containing trade information
+            account: Trading account identifier
+        """
+        try:
+            file_path = self.get_sold_options_file_path(account)
+            info.to_csv(file_path, index=False)
+            logging.info(f"Trade information stored in {file_path}")
+        except Exception as e:
+            logging.error(f"Error storing trade information: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
+    def update_and_store(self, existing_sold_options_info: pd.DataFrame, account: str, 
+                         index: int, updates: dict):
+        """
+        Update trade information and persist to file
+        
+        Args:
+            existing_sold_options_info: DataFrame containing all trades
+            account: Trading account identifier
+            index: Index of the trade to update
+            updates: Dictionary of column-value pairs to update
+        """
+        try:
+            # Update the specified columns
+            for column, value in updates.items():
+                existing_sold_options_info.loc[index, column] = value
+            
+            # Store updated information
+            self.store_sold_options_info(existing_sold_options_info, account)
+            
+            return existing_sold_options_info
+        except Exception as e:
+            logging.error(f"Error updating trade information: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
+    def _close_position(self, existing_sold_options_info, account, quantity, 
+                       place_order_obj, option_chain_analyzer):
+        """Close open positions"""
+        try:
+            ce_close_id, pe_close_id = self.close_trade(
+                account,
+                existing_sold_options_info.iloc[-1]['strangle_pe_strike'],
+                existing_sold_options_info.iloc[-1]['strangle_ce_strike'],
+                existing_sold_options_info.iloc[-1]['strangle_pe_price'],
+                existing_sold_options_info.iloc[-1]['strangle_ce_price'],
+                place_order_obj,
+                quantity
+            )
+
+            updates = {
+                'ce_close_order_id': ce_close_id,
+                'pe_close_order_id': pe_close_id,
+                'ce_close_state': 'close_pending' if ce_close_id != -1 else 'closed',
+                'pe_close_state': 'close_pending' if pe_close_id != -1 else 'closed',
+                'trade_state': 'closing',
+                'close_time': datetime.now()
+            }
+
+            self.update_and_store(
+                existing_sold_options_info,
+                account,
+                existing_sold_options_info.index[-1],
+                updates
+            )
+
+        except Exception as e:
+            logging.error(f"Error in closing position: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
+    def send_error_message(self, account: str, error_message: str):
+        """
+        Send error message via Telegram and handle error file creation
+        
+        Args:
+            account: Trading account identifier
+            error_message: Error message to be sent
+        """
+        try:
+            # Get file paths
+            sold_options_file_path = self.get_sold_options_file_path(account)
+            error_file_path = self.get_error_options_file_path(account)
+
+            # Initialize Telegram API
+            telegram_api = TelegramSend.telegram_send_api()
+            telegram_group = account + "_telegram"
+            chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
+            # Send error message via Telegram
+            error_msg = f"Nifty Positional Strategy critical error: {account} {self.symbol} {error_message}"
+            telegram_api.send_message(chat_id, error_msg)
+
+            # Handle error file creation and renaming
+            if os.path.exists(sold_options_file_path):
+                # Rename existing file to error file
+                os.rename(
+                    sold_options_file_path,
+                    sold_options_file_path.replace("sold_options_info", "sold_options_info_error")
+                )
+            else:
+                # Create empty error file
+                with open(error_file_path, 'w', encoding='utf-8') as _:
+                    pass
+
+            logging.error(error_msg)
+
+        except Exception as e:
+            logging.error(f"Error in sending error message: {str(e)}")
+            logging.error(traceback.format_exc())
+
+def test_strategy_integration():
+    """
+    Integration test for NiftyPositionalStrategy.
+    WARNING: This is for testing only, do not use with real trading accounts!
+    """
+    from OptionChainData import OptionChainData
+    from PlaceOrder import PlaceOrder
+    
+    # Initialize with test accounts
+    test_accounts = ["test_account1"]
+    strategy = NiftyPositionalStrategy(test_accounts)
+    
+    # Initialize real option chain data fetcher with the required symbolinit parameter
+    option_chain = OptionChainData("NIFTY")  # Pass "NIFTY" as the symbolinit parameter
+    
+    # Initialize order placer with test mode
+    place_order = PlaceOrder(test_mode=True)
+    
+    # Execute strategy
+    strategy.execute_strategy(
+        option_chain_analyzer=option_chain.get_option_chain_data(),
+        quantity=50,
+        place_order_obj=place_order
+    )
+
+if __name__ == '__main__':
+    test_strategy_integration()
 
 
 

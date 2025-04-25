@@ -423,139 +423,146 @@ class angelone_api(object):
 
     def place_order_sythetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         try:
-            df_org = self.l.token_map
-            strike_price = strike_price * 100
-            df =  df_org[(df_org['exch_seg'] == 'NFO') & (df_org['instrumenttype'] == 'OPTIDX') & (df_org['name'] == symbol) & (
-                        df_org['strike'] == strike_price) & (df_org['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+            # Get token info for the symbol
+            df = self.getTokenInfo("NFO", "OPTIDX", symbol, strike_price, pe_ce, expiry)
+            
+            if isinstance(df, int) and df == -1:
+                print("Failed to get token info")
+                return -1, None
 
             if df.empty:
                 print("Token info not found")
-                return -1
+                return -1, None
 
             try:
-                if expiry is None:
-                    today = datetime.now().date()
-                    print(today)
-                    next_month = today.replace(day=28) + timedelta(days=4)
-                    last_day = next_month - timedelta(days=next_month.day)
-
-                    df['expiry'] = pd.to_datetime(df['expiry']).dt.date
-                    current_month_expiries = df[df['expiry'] <= last_day]
-
+                today = datetime.now().date()
+                print(f"Today's date: {today}")
+                
+                # Convert expiry dates to datetime
+                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                
+                if expiry is not None:
+                    # If expiry is provided, use it
+                    try:
+                        date_obj = pd.to_datetime(expiry).date()
+                        print(f"Looking for provided expiry: {date_obj}")
+                        matching_expiries = df[df['expiry'] == date_obj]
+                        if not matching_expiries.empty:
+                            tokenInfo = matching_expiries.iloc[0]
+                        else:
+                            print(f"No matching expiry found for {date_obj}")
+                            print("Available expiries:", df['expiry'].unique())
+                            return -1, None
+                    except Exception as e:
+                        print(f"Error parsing provided expiry date: {e}")
+                        return -1, None
+                else:
+                    # Get current month expiries
+                    current_month_last_day = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+                    current_month_expiries = df[df['expiry'] <= current_month_last_day]
+                    
+                    print(f"Today: {today}")
+                    print(f"Current month last day: {current_month_last_day}")
+                    print(f"Available expiries: {df['expiry'].unique()}")
                     print(f"Current month expiries: {current_month_expiries}")
 
-                    if not current_month_expiries.empty:
-                        # Get days difference between current date and expiry
-                        today = datetime.now().date()
-                        last_expiry = current_month_expiries.iloc[-1]['expiry']
-                        days_to_expiry = (last_expiry - today).days
-
-                        if days_to_expiry < 7:
-                            # Get today's date and calculate next month's first and last day
-                            today = datetime.now().date()
-                            next_month_first = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-                            next_month_last = (next_month_first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-                            print(f"Looking for expiry between {next_month_first} and {next_month_last}")
-
-                            # Filter for next month's expiries only
-                            next_month_expiries = df[
-                                (df['expiry'] > last_day) &
-                                (df['expiry'] <= next_month_last)
-                            ]
-
-                            print(f"Next month expiries: {next_month_expiries}")
-                            if not next_month_expiries.empty:
-                                tokenInfo = next_month_expiries.iloc[-1]  # Get last expiry of next month
-                            else:
-                                # If no next month expiry found, try getting the nearest available expiry
-                                future_expiries = df[df['expiry'] > last_day]
-                                if not future_expiries.empty:
-                                    tokenInfo = future_expiries.iloc[0]  # Get the nearest future expiry
-                                else:
-                                    tokenInfo = df.iloc[-1]  # Fallback to last available expiry
+                    if current_month_expiries.empty:
+                        # If no current month expiries, get the nearest available expiry
+                        future_expiries = df[df['expiry'] > today]
+                        if not future_expiries.empty:
+                            tokenInfo = future_expiries.iloc[0]  # Get the nearest future expiry
+                            print(f"Selected future expiry: {tokenInfo['expiry']}")
                         else:
-                            tokenInfo = current_month_expiries.iloc[-1]  # Use current month expiry
+                            print("No future expiries available")
+                            return -1, None
                     else:
-                        next_month_expiries = df[df['expiry'] > last_day]
-                        if not next_month_expiries.empty:
-                            tokenInfo = next_month_expiries.iloc[-1]
+                        # Get the nearest expiry that's not too close
+                        valid_expiries = current_month_expiries[
+                            current_month_expiries['expiry'] > (today + timedelta(days=1))
+                        ]
+                        if not valid_expiries.empty:
+                            tokenInfo = valid_expiries.iloc[0]
+                            print(f"Selected current month expiry: {tokenInfo['expiry']}")
                         else:
-                            tokenInfo = df.iloc[-1]
-                else:
-                    print(f"Expiry: {expiry}")
-                    df['expiry'] = pd.to_datetime(df['expiry']).dt.date
-                    date_obj = pd.to_datetime(expiry).date()
-                    tokenInfo = df[df['expiry'] == date_obj].iloc[0]
+                            # Get next available expiry
+                            future_expiries = df[df['expiry'] > current_month_last_day]
+                            if not future_expiries.empty:
+                                tokenInfo = future_expiries.iloc[0]
+                                print(f"Selected next month expiry: {tokenInfo['expiry']}")
+                            else:
+                                print("No valid expiries found")
+                                return -1, None
 
-            except Exception as e:
-                logging.error(f"Error executing place_order: {e}")
-                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                print(f"Error executing place_order: {e}")
-                tokenInfo = df.iloc[-1]
-                return -1, -1
+                # Rest of the order placement code...
+                symbol = tokenInfo['symbol']
+                token = tokenInfo['token']
+                lot = int(tokenInfo['lotsize'])
+                
+                print(f"Selected: Symbol={symbol}, Token={token}, Lot={lot}, Expiry={tokenInfo['expiry']}")
+                
+                if qty % lot != 0:
+                    print(f"Quantity {qty} is not a multiple of lot size {lot}")
+                    return -1, None
 
-            symbol = tokenInfo['symbol']
-            token = tokenInfo['token']
-            lot = int(tokenInfo['lotsize'])
+                # Place the order...
+                orderparams = {
+                    "variety": "NORMAL",
+                    "tradingsymbol": symbol,
+                    "symboltoken": token,
+                    "transactiontype": buy_sell,
+                    "exchange": "NFO",
+                    "ordertype": "MARKET",
+                    "producttype": "CARRYFORWARD",
+                    "duration": "DAY",
+                    "quantity": qty
+                }
 
-            if qty % lot != 0:
-                return -1
-
-            orderparams = {
-                "variety": "NORMAL",
-                "tradingsymbol": symbol,
-                "symboltoken": token,
-                "transactiontype": buy_sell,
-                "exchange": "NFO",
-                "ordertype": "MARKET",
-                "producttype": "CARRYFORWARD",
-                "duration": "DAY",
-                "quantity": qty
-            }
-
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
-            try:
-                # Add timeout to API calls
+                print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
                 try:
-                    orderparams["price"] = 0
-                    orderid = self.obj.placeOrder(orderparams)  # Add timeout
-                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-                except requests.exceptions.Timeout:
-                    print("Order placement timed out, retrying once")
-                    logger.warning("Order placement timed out, retrying once")
-                    time.sleep(2)
+                    # Add timeout to API calls
                     try:
+                        orderparams["price"] = 0
+                        orderid = self.obj.placeOrder(orderparams)  # Add timeout
+                        print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                    except requests.exceptions.Timeout:
+                        print("Order placement timed out, retrying once")
+                        logger.warning("Order placement timed out, retrying once")
+                        time.sleep(2)
+                        try:
+                            orderid = self.obj.placeOrder(orderparams)
+                        except Exception as e2:
+                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                            print(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            return -1, None
+                except Exception as e:
+                    try:
+                        print("Error placing order, trying again")
+                        print(f"Error: {e}")
+                        logger.error(f"Error executing place_order again: {e}")
+                        x = TelegramSend.telegram_send_api()
+
+                        # Send profit loss over telegramsend send_message
+                        x.send_message("-4008545231", f"Warning angel one {symbol} option buy order Pls check")
+                        time.sleep(2)
                         orderid = self.obj.placeOrder(orderparams)
-                    except Exception as e2:
-                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                        print(f"Error executing place_order after timeout: {e2}")
-                        logger.error(f"Error executing place_order after timeout: {e2}")
-                        return -1, -1
+                    except Exception as e1:
+                        logging.error(f"Error executing place_order: {e1}")
+                        print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                        print(f"Error executing place_order: {e1}")
+                        return -1, None
+
+                return orderid, tokenInfo['expiry']
+
             except Exception as e:
-                try:
-                    print("Error placing order, trying again")
-                    print(f"Error: {e}")
-                    logger.error(f"Error executing place_order again: {e}")
-                    x = TelegramSend.telegram_send_api()
+                print(f"Error in expiry processing: {e}")
+                traceback.print_exc()
+                return -1, None
 
-                    # Send profit loss over telegramsend send_message
-                    x.send_message("-4008545231", f"Warning angel one {symbol} option buy order Pls check")
-                    time.sleep(2)
-                    orderid = self.obj.placeOrder(orderparams)
-                except Exception as e1:
-                    logging.error(f"Error executing place_order: {e1}")
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(f"Error executing place_order: {e1}")
-                    return -1, -1
-
-            return orderid, tokenInfo['expiry']
         except Exception as e:
-            #print("Order placement failed: {}".format(e.message))
-            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-            print(f"Error executing place_order: {e}")
-            logger.error(f"Error executing place_order: {e}")
-            return -1, -1
+            print(f"Error in place_order_sythetic_future: {e}")
+            traceback.print_exc()
+            return -1, None
 
 
 
