@@ -348,7 +348,29 @@ class cash_stratergy:
                     logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {last_price}")
                     quantity = int(row['amount'] / last_price)
                     order_id = place_order.place_cash_order(row['account'], row['symbol'], quantity, "BUY")
+                    if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
+                        print("Order placement failed, got invalid order_id")
+
+                        # send error over telegramsend send_message
+                        telegram_group = row['account'] + "_telegram"
+                        id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                        x = TelegramSend.telegram_send_api()
+                        # Send error over telegramsend send_message
+                        x.send_message(id1, f"Cash strategy open error {row['account']} {symbol}")
+                        continue
+
                     logger.info(f"Order ID: {order_id}")
+                    logging.info(f"Order id for account: {order_id}")
+                    if order_id is None or (isinstance(order_id, float) and pd.isna(order_id)):
+                        logging.error(f"Received invalid order_id: {order_id}")
+
+                        # send error over telegramsend send_message
+                        telegram_group = row['account'] + "_telegram"
+                        id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                        x = TelegramSend.telegram_send_api()
+                        # Send error over telegramsend send_message
+                        x.send_message(id1, f"Cash strategy open error {row['account']} {symbol}")
+                        continue
 
                     # Update the row in the DataFrame
                     data.loc[idx, 'buy_order_id'] = order_id
@@ -392,6 +414,17 @@ class cash_stratergy:
                 if last_price <= row['sl'] or last_price >= row['profit_target']:
                     if row['account'] == "deepti":
                         order_id = place_order.place_cash_order(row['account'], row['symbol'], row['quantity'], "SELL")
+                        if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
+                            print("Order placement failed, got invalid order_id")
+
+                            # send error over telegramsend send_message
+                            telegram_group = row['account'] + "_telegram"
+                            id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                            x = TelegramSend.telegram_send_api()
+                            # Send error over telegramsend send_message
+                            x.send_message(id1, f"Cash strategy close error {row['account']} {symbol}")
+
+                            continue
                         logger.info(f"Order ID: {order_id}")
 
                         # Update the row in the DataFrame
