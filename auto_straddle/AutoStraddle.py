@@ -134,7 +134,7 @@ def main():
     optionbuy_account_details = pd.read_csv(optionbuy_path)
     print(optionbuy_account_details)
 
-    niftyposition_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    niftyposition_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn_xcX-C2JGmkNQAj_DmrHhpfj0d0EESIN-JiE0zsrQ4guej5Y8FwHvDSCks7pdMMyE0UtkdTR_-bZ/pub?output=csv'
     nifty_position_account_details = pd.read_csv(niftyposition_path)
     print(nifty_position_account_details)
 
