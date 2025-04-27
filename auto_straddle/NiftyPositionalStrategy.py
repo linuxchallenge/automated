@@ -92,7 +92,7 @@ class NiftyPositionalStrategy:
         # Check if it's 2 days before expiry
         if days_to_expiry == 2:
             # Check if time is around 12 PM (giving 15-minute window)
-            is_entry_window = time(11, 45) <= current_time <= time(12, 15)
+            is_entry_window = time(10, 45) <= current_time <= time(11, 15)
 
             if is_entry_window:
                 logging.info("Entry window active. Current time: %s, "
@@ -237,17 +237,6 @@ class NiftyPositionalStrategy:
                 existing_sold_options_info['expiry'] == current_expiry
             ]
 
-            if len(expiry_trades) >= self.MAX_TRADES_PER_EXPIRY:
-                logging.info(f"Maximum trades ({self.MAX_TRADES_PER_EXPIRY}) reached for account {account}, expiry {current_expiry}")
-                return
-
-            # Check if last trade was closed recently (30-min cooldown)
-            if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'closed':
-                last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
-                if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
-                    logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
-                    return
-
             # Handle existing open positions
             if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'open':
                 # Update current prices and check exit conditions
@@ -259,15 +248,22 @@ class NiftyPositionalStrategy:
                     place_order_obj
                 )
             else:
-                # Check entry conditions for new trade
-                if self.is_entry_time():
-                    self._enter_new_position(
-                        option_chain_analyzer,
-                        account,
-                        quantity,
-                        place_order_obj
-                    )
+                if len(expiry_trades) >= self.MAX_TRADES_PER_EXPIRY:
+                    logging.info(f"Maximum trades ({self.MAX_TRADES_PER_EXPIRY}) reached for account {account}, expiry {current_expiry}")
+                    return
 
+                # Check if last trade was closed recently (30-min cooldown)
+                if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'closed':
+                    last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
+                    if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
+                        logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
+                        return                    
+                self._enter_new_position(
+                    option_chain_analyzer,
+                    account,
+                    quantity,
+                    place_order_obj
+                )
         else:
             # First trade for this account/expiry
             if self.is_entry_time():
@@ -435,7 +431,7 @@ class NiftyPositionalStrategy:
         """Place only CE order"""
         sold_options_info['strangle_pe_price'] = -1
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
-            account, ce_strike, 'CE', self.symbol, quantity)
+            account, ce_strike, 'CE', self.symbol, quantity, False)
 
         if sold_options_info['ce_open_order_id'] == -1:
             error_message = "Error in placing ce open order"
@@ -451,7 +447,7 @@ class NiftyPositionalStrategy:
         """Place only PE order"""
         sold_options_info['strangle_ce_price'] = -1
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
-            account, pe_strike, 'PE', self.symbol, quantity)
+            account, pe_strike, 'PE', self.symbol, quantity, False)
 
         if sold_options_info['pe_open_order_id'] == -1:
             error_message = "Error in placing pe open order"
@@ -467,7 +463,7 @@ class NiftyPositionalStrategy:
         """Place both CE and PE orders"""
         # Place CE order
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
-            account, ce_strike, 'CE', self.symbol, quantity)
+            account, ce_strike, 'CE', self.symbol, quantity, False)
         if sold_options_info['ce_open_order_id'] == -1:
             error_message = "Error in placing ce open order"
             self.send_error_message(account, error_message)
@@ -477,7 +473,7 @@ class NiftyPositionalStrategy:
 
         # Place PE order
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
-            account, pe_strike, 'PE', self.symbol, quantity)
+            account, pe_strike, 'PE', self.symbol, quantity, False)
         if sold_options_info['pe_open_order_id'] == -1:
             error_message = "Error in placing pe open order"
             self.send_error_message(account, error_message)
@@ -787,22 +783,19 @@ from pathlib import Path
 import logging_config  # This sets up the logging
 from OptionChainData import OptionChainData
 
-strike = {"NIFTY": 23000, "BANKNIFTY": 49000, "FINNIFTY": 15000}
+strike = {"NIFTY": 23000}
 
 # Test code
 if __name__ == '__main__':
-    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn_xcX-C2JGmkNQAj_DmrHhpfj0d0EESIN-JiE0zsrQ4guej5Y8FwHvDSCks7pdMMyE0UtkdTR_-bZ/pub?output=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
 
     print(commodity_account_details)
 
     symbol = "NIFTY"
 
-    # add deepti GOLD and 1 to commodity_account_details
-    #commodity_account_details = commodity_account_details.append({'Account': 'deepti', 'Symbol': 'GOLD', 'Quantity': 1}, ignore_index=True)
-
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
-    #place_order.init_account("deepti")
+    place_order.init_account("deepti")
     #place_order.init_account("leelu")
     #place_order.init_account("avanthi")
 
@@ -844,6 +837,7 @@ if __name__ == '__main__':
 
     # Execute strategy with correct parameters
     for account in commodity_account_details['Account'].unique():
-        quantity = commodity_account_details[commodity_account_details['Account'] == account]['Quantity'].values[0]
+        quantity = commodity_account_details[commodity_account_details['Account'] == account]['quantity'].values[0]
         commodity_stratergy.execute_strategy(option_chain_info, quantity, place_order)
 """
+

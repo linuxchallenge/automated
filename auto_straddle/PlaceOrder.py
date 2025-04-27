@@ -144,6 +144,7 @@ class PlaceOrder:
             return -1
 
         logging.info(f"Order id for account: {order_id}")
+        print(f"Order id for account: {order_id}")
         return order_id
 
     def place_order_sythetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):

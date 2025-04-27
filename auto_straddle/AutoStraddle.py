@@ -26,6 +26,7 @@ import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
 from IndexFutureStratergy import IndexFutureStratergy
+from NiftyPositionalStrategy import NiftyPositionalStrategy
 #from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # This sets up the logging
 from TelegramSend import telegram_send_api
@@ -57,6 +58,7 @@ def main():
     accounts_commodity = []
     accounts_index = []
     accounts_optionbuy = []
+    accounts_niftyposition = []
     symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
     current_time_dt = datetime.now().time()
@@ -132,6 +134,10 @@ def main():
     optionbuy_account_details = pd.read_csv(optionbuy_path)
     print(optionbuy_account_details)
 
+    niftyposition_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    nifty_position_account_details = pd.read_csv(niftyposition_path)
+    print(nifty_position_account_details)
+
     # Append accounts with data from google sheet
     for _, row in commodity_account_details.iterrows():
         accounts_commodity.append(row['Account'])
@@ -141,6 +147,10 @@ def main():
 
     for _, row in optionbuy_account_details.iterrows():
         accounts_optionbuy.append(row['Account'])
+
+    # Append accounts with data from google sheet
+    for _, row in nifty_position_account_details.iterrows():
+        accounts_niftyposition.append(row['Account'])
 
     # Remove duplicates
     accounts = list(dict.fromkeys(accounts))
@@ -153,8 +163,11 @@ def main():
 
     accounts_optionbuy = list(dict.fromkeys(accounts_optionbuy))
 
+    accounts_niftyposition = list(dict.fromkeys(accounts_niftyposition))
+
     #merge accounts and accounts_commodity
-    accounts_merged = accounts + accounts_commodity + accounts_index + accounts_optionbuy
+    accounts_merged = accounts + accounts_commodity + accounts_index + \
+        accounts_optionbuy + accounts_niftyposition
 
     # remove duplicates of accounts_merged
     accounts_merged = list(dict.fromkeys(accounts_merged))
@@ -176,6 +189,8 @@ def main():
     logging.info("After initializing all accounts")
 
     index_future_stratergy = IndexFutureStratergy(accounts_index)
+
+    nifty_position_stratergy = NiftyPositionalStrategy(accounts_niftyposition)
 
     #optionbuy_stratergy = OptionBuyStrategy()
 
@@ -212,6 +227,13 @@ def main():
 
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+
+                try:
+                    nifty_position_stratergy.execute_strategy(accounts_niftyposition, place_order, nifty_position_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
