@@ -103,7 +103,7 @@ class PlaceOrder:
         return order_id, expiry_ret
 
 
-    def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
+    def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
             'BANKNIFTY': 30,
@@ -126,9 +126,9 @@ class PlaceOrder:
         order_id = 0
 
         if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
-            order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+                order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
             order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
             if (order_id == -1):

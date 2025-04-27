@@ -245,7 +245,10 @@ class angelone_api(object):
             return -1, -1
 
 
-    def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
+    def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, intraday=True):
+
+        product_type = "INTRADAY" if intraday else "CARRYFORWARD"
+
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df.empty:
@@ -278,7 +281,7 @@ class angelone_api(object):
                 "transactiontype": buy_sell,
                 "exchange": "NFO",
                 "ordertype": "MARKET",
-                "producttype": "INTRADAY",
+                "producttype": product_type,
                 "duration": "DAY",
                 "quantity": qty
             }
