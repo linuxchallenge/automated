@@ -111,28 +111,41 @@ class NiftyPositionalStrategy:
 
         return False
 
-    def should_exit_trade(self, option_chain_analyzer):
+    def should_exit_trade(self, option_chain_analyzer, sold_options_info):
         """
         Check exit conditions:
-        Exit when CE/PE strike is within 1x of sum of ATM straddle price
+        1. Exit if ATM strike + ATM straddle sum is greater than our sold CE strike
+        2. Exit if ATM strike - ATM straddle sum is less than our sold PE strike
         """
         try:
-            # Get ATM straddle price
+            # Get ATM straddle price and ATM strike
             atm_ce_price = option_chain_analyzer['atm_ce_price']
             atm_pe_price = option_chain_analyzer['atm_pe_price']
             atm_straddle_sum = atm_ce_price + atm_pe_price
+            atm_strike = option_chain_analyzer['atm_strike']
 
-            # Get current prices of our positions
-            ce_current_price = option_chain_analyzer['prev_ce_strangle_price']
-            pe_current_price = option_chain_analyzer['prev_pe_strangle_price']
+            # Get our actually sold strangle strikes from the trade entry
+            strangle_ce_strike = sold_options_info.iloc[-1]['strangle_ce_strike']
+            strangle_pe_strike = sold_options_info.iloc[-1]['strangle_pe_strike']
 
-            # Check if either strike is within 1x of straddle sum
-            if (ce_current_price >= atm_straddle_sum or
-                pe_current_price >= atm_straddle_sum):
+            # Calculate the boundaries
+            upper_boundary = atm_strike + atm_straddle_sum
+            lower_boundary = atm_strike - atm_straddle_sum
+
+            # Check if our sold strikes are breached by the boundaries
+            if upper_boundary > strangle_ce_strike:
                 logging.info(
-                    f"Exiting trade as strike price reached straddle sum threshold. "
-                    f"Straddle sum: {atm_straddle_sum}, "
-                    f"CE: {ce_current_price}, PE: {pe_current_price}"
+                    f"Exiting trade - Upper boundary breach: "
+                    f"ATM {atm_strike} + Straddle {atm_straddle_sum} = {upper_boundary} > "
+                    f"CE Strike {strangle_ce_strike}"
+                )
+                return True
+
+            if lower_boundary < strangle_pe_strike:
+                logging.info(
+                    f"Exiting trade - Lower boundary breach: "
+                    f"ATM {atm_strike} - Straddle {atm_straddle_sum} = {lower_boundary} < "
+                    f"PE Strike {strangle_pe_strike}"
                 )
                 return True
 
@@ -140,6 +153,7 @@ class NiftyPositionalStrategy:
 
         except Exception as e:
             logging.error(f"Error in should_exit_trade: {str(e)}")
+            traceback.print_exc()
             return False
 
     def execute_strategy(self, option_chain_analyzer, quantity, place_order_obj):
@@ -311,7 +325,7 @@ class NiftyPositionalStrategy:
             )
 
             # Check exit conditions
-            if self.should_exit_trade(option_chain_analyzer):
+            if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info):
                 self._close_position(
                     existing_sold_options_info,
                     account,
