@@ -99,9 +99,9 @@ class NiftyPositionalStrategy:
         days_to_expiry = (expiry_date - current_date).days
 
         # Check if it's 2 days before expiry
-        if days_to_expiry == 2:
-            # Check if time is around 12 PM (giving 15-minute window)
-            is_entry_window = time(10, 45) <= current_time <= time(11, 15)
+        if days_to_expiry <= 2:
+            # Entry window is true if after 11 AM
+            is_entry_window = current_time >= time(11, 0)
 
             if is_entry_window:
                 logging.info("Entry window active. Current time: %s, "
@@ -171,7 +171,7 @@ class NiftyPositionalStrategy:
             # Check execution interval (10 minutes)
             if self.last_execution_time and \
                (current_time - self.last_execution_time) < self.EXECUTION_INTERVAL:
-                logging.info("Skipping execution: Within 10-minute interval")
+                #logging.info("Skipping execution: Within 10-minute interval")
                 return
 
             self.last_execution_time = current_time
