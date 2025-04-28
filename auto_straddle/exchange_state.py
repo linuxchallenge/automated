@@ -53,6 +53,40 @@ class ExchangeData:
                   response.status_code)
             return None
 
+    def is_nfo_holiday(self, date_to_check):
+        """
+        Check if the given date (datetime.date or 'YYYY-MM-DD' string) is a holiday for NFO.
+        Returns True if holiday, False if trading day, None if error.
+        """
+        if isinstance(date_to_check, datetime.date):
+            date_str = date_to_check.strftime("%Y-%m-%d")
+        else:
+            date_str = str(date_to_check)
+        url = f'https://api.upstox.com/v2/market/timings/{date_str}'
+        headers = {'Accept': 'application/json'}
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('data', []):
+                    if item['exchange'] == 'NFO':
+                        # If the market is closed the whole day, it's a holiday
+                        if not item.get('is_open', True):
+                            return True
+                        # If start_time == end_time, it's a holiday
+                        if item.get('start_time', 0) == item.get('end_time', 1):
+                            return True
+                        # Otherwise, it's a trading day
+                        return False
+                # If NFO not found, treat as holiday
+                return True
+            else:
+                print(f"Failed to retrieve data. Status code: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"Error checking NFO holiday: {e}")
+            return None
+
     # write a function in which for exchange MCX current it is open
 
 '''

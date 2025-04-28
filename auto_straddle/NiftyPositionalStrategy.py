@@ -51,31 +51,40 @@ class NiftyPositionalStrategy:
         return -700  # Fixed for NIFTY
 
 
-    def get_next_nifty_expiry(self) -> datetime:
-        """Calculate the next NIFTY expiry date"""
-        current_date = datetime.now()
+    def get_next_nifty_expiry(self):
+        """
+        Returns the next NIFTY expiry date, accounting for holidays.
+        If Thursday is a holiday, uses Wednesday; if Wednesday is also a holiday, uses Tuesday, etc.
+        Caches the result for the current expiry week.
+        """
+        today = datetime.now().date()
 
-        # If we have a cached expiry and it's still valid, return it
-        if (self._cached_expiry and
-            self._last_expiry_check and
-            current_date.date() == self._last_expiry_check.date()):
-            return self._cached_expiry
+        # If we have a cached expiry and it's still valid for this week, return it
+        if self._cached_expiry and self._last_expiry_check:
+            # If today is before or on the cached expiry, and the cache was checked this week, use it
+            if today <= self._cached_expiry.date() and (today - self._last_expiry_check.date()).days < 7:
+                return self._cached_expiry
 
-        # Calculate next expiry
-        current_day = current_date.weekday()
-        days_to_thursday = (3 - current_day) % 7  # 3 represents Thursday
+        # Find the next Thursday (expiry week)
+        days_ahead = (3 - today.weekday()) % 7  # 3 = Thursday
+        expiry_candidate = today + timedelta(days=days_ahead)
+        ex = ExchangeData()  # Make sure to import ExchangeData
 
-        next_thursday = current_date + timedelta(days=days_to_thursday)
+        # Check Thursday, then Wednesday, then Tuesday, then Monday
+        for offset in range(0, 4):
+            check_date = expiry_candidate - timedelta(days=offset)
+            if not ex.is_nfo_holiday(check_date):
+                expiry_datetime = datetime.combine(check_date, datetime.min.time())
+                # Cache the result
+                self._cached_expiry = expiry_datetime
+                self._last_expiry_check = today
+                return expiry_datetime
 
-        # If today is Thursday and it's past market hours, get next Thursday
-        if current_day == 3 and current_date.time() > time(15, 30):
-            next_thursday += timedelta(days=7)
-
-        # Cache the result
-        self._cached_expiry = next_thursday
-        self._last_expiry_check = current_date
-
-        return next_thursday
+        # Fallback: if all are holidays, use Thursday
+        expiry_datetime = datetime.combine(expiry_candidate, datetime.min.time())
+        self._cached_expiry = expiry_datetime
+        self._last_expiry_check = today
+        return expiry_datetime
 
     def is_entry_time(self) -> bool:
         """Check if it's entry time (around 12 PM, 2 days before expiry)"""
@@ -257,7 +266,7 @@ class NiftyPositionalStrategy:
                     last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
                     if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
                         logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
-                        return                    
+                        return
                 self._enter_new_position(
                     option_chain_analyzer,
                     account,
@@ -840,4 +849,3 @@ if __name__ == '__main__':
         quantity = commodity_account_details[commodity_account_details['Account'] == account]['quantity'].values[0]
         commodity_stratergy.execute_strategy(option_chain_info, quantity, place_order)
 """
-
