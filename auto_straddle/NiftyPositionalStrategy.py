@@ -19,6 +19,7 @@ import pandas as pd
 import TelegramSend
 import configuration
 from exchange_state import ExchangeData
+from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
 
 ORDER_STATES = {
@@ -64,7 +65,7 @@ class NiftyPositionalStrategy:
             # Convert datetime to date for comparison
             cached_expiry_date = self._cached_expiry.date() if isinstance(self._cached_expiry, datetime) else self._cached_expiry
             last_check_date = self._last_expiry_check.date() if isinstance(self._last_expiry_check, datetime) else self._last_expiry_check
-            
+
             if today <= cached_expiry_date and (today - last_check_date).days < 7:
                 return self._cached_expiry
 
@@ -163,48 +164,86 @@ class NiftyPositionalStrategy:
             traceback.print_exc()
             return False
 
-    def execute_strategy(self, option_chain_analyzer, quantity, place_order_obj):
+    def execute_strategy(self, place_order_obj, account_details):
         """
         Execute strategy for all accounts
 
         Args:
-            option_chain_analyzer: Dictionary containing option chain data
-            quantity: Trade quantity
             place_order_obj: Order placement object
+            account_details: DataFrame containing account-specific trading details with columns
+                            ['Account', 'Symbol', 'quantity']
+        
+        Returns:
+            bool: True if execution was successful, False otherwise
         """
         try:
+            # Validate input parameters
+            if account_details is None or account_details.empty:
+                logging.error("Account details DataFrame is empty or None")
+                return False
+            
+            required_columns = ['Account', 'Symbol', 'quantity']
+            if not all(col in account_details.columns for col in required_columns):
+                logging.error(f"Account details missing required columns: {required_columns}")
+                return False
+
             current_time = datetime.now()
 
-            # Check execution interval (10 minutes)
+            # Check execution interval
             if self.last_execution_time and \
                (current_time - self.last_execution_time) < self.EXECUTION_INTERVAL:
-                #logging.info("Skipping execution: Within 10-minute interval")
-                return
+                logging.info("Skipping execution: Within 10-minute interval")
+                return False
 
             self.last_execution_time = current_time
 
             # Check NFO market status
             if not self._check_market_status():
-                return
+                logging.info("Market is closed, skipping execution")
+                return False
+
+            try:
+                option_chain_analyzer = OptionChainData("NIFTY")
+            except Exception as e:
+                logging.error(f"Failed to create OptionChainData: {str(e)}")
+                return False
 
             # Loop through all accounts
+            execution_results = []
             for account in self.accounts:
                 try:
                     logging.info(f"Executing strategy for account: {account}")
-                    self._execute_for_account(
+                    account_data = account_details[
+                        (account_details['Account'] == account) & 
+                        (account_details['Symbol'] == "NIFTY")
+                    ]
+                    
+                    if account_data.empty:
+                        logging.warning(f"No trading data found for account {account}")
+                        continue
+                        
+                    quantity = account_data['quantity'].values[0]
+                    
+                    result = self._execute_for_account(
                         account=account,
                         option_chain_analyzer=option_chain_analyzer,
                         quantity=quantity,
                         place_order_obj=place_order_obj
                     )
+                    execution_results.append(result)
+                    
                 except Exception as acc_error:
                     logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
                     self.send_error_message(account, str(acc_error))
-                    continue  # Continue with next account even if one fails
+                    execution_results.append(False)
+                    continue
+
+            return all(execution_results)
 
         except Exception as e:
             logging.error(f"Error in strategy execution: {str(e)}")
             logging.error(traceback.format_exc())
+            return False
 
     def _execute_for_account(self, account: str, option_chain_analyzer: dict,
                             quantity: int, place_order_obj):
@@ -259,7 +298,7 @@ class NiftyPositionalStrategy:
                     chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
                     telegram_api.send_message(chat_id, pl_message)
 
-                    return
+                    return True
 
             # Check number of trades for current expiry
             current_expiry = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
@@ -280,14 +319,14 @@ class NiftyPositionalStrategy:
             else:
                 if len(expiry_trades) >= self.MAX_TRADES_PER_EXPIRY:
                     logging.info(f"Maximum trades ({self.MAX_TRADES_PER_EXPIRY}) reached for account {account}, expiry {current_expiry}")
-                    return
+                    return True
 
                 # Check if last trade was closed recently (30-min cooldown)
                 if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'closed':
                     last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
                     if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
                         logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
-                        return
+                        return True
                 self._enter_new_position(
                     option_chain_analyzer,
                     account,
@@ -303,6 +342,8 @@ class NiftyPositionalStrategy:
                     quantity,
                     place_order_obj
                 )
+
+        return True
 
     def _check_market_status(self):
         """Check if NFO market is open"""

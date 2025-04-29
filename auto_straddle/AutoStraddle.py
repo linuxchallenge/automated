@@ -233,7 +233,7 @@ def main():
 
 
                 try:
-                    nifty_position_stratergy.execute_strategy(accounts_niftyposition, place_order, nifty_position_account_details)
+                    nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
