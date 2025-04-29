@@ -61,14 +61,18 @@ class NiftyPositionalStrategy:
 
         # If we have a cached expiry and it's still valid for this week, return it
         if self._cached_expiry and self._last_expiry_check:
-            # If today is before or on the cached expiry, and the cache was checked this week, use it
-            if today <= self._cached_expiry and (today - self._last_expiry_check).days < 7:
+            # Convert datetime to date for comparison
+            cached_expiry_date = self._cached_expiry.date() if isinstance(self._cached_expiry, datetime) else self._cached_expiry
+            last_check_date = self._last_expiry_check.date() if isinstance(self._last_expiry_check, datetime) else self._last_expiry_check
+            
+            if today <= cached_expiry_date and (today - last_check_date).days < 7:
                 return self._cached_expiry
 
+        # The rest of the function remains unchanged
         # Find the next Thursday (expiry week)
         days_ahead = (3 - today.weekday()) % 7  # 3 = Thursday
         expiry_candidate = today + timedelta(days=days_ahead)
-        ex = ExchangeData()  # Make sure to import ExchangeData
+        ex = ExchangeData()
 
         # Check Thursday, then Wednesday, then Tuesday, then Monday
         for offset in range(0, 4):
