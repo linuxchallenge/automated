@@ -127,8 +127,8 @@ class NiftyPositionalStrategy:
         """
         try:
             # Get ATM straddle price and ATM strike
-            atm_ce_price = option_chain_analyzer['atm_ce_price']
-            atm_pe_price = option_chain_analyzer['atm_pe_price']
+            atm_ce_price = option_chain_analyzer['atm_current_ce_price']
+            atm_pe_price = option_chain_analyzer['atm_current_pe_price']
             atm_straddle_sum = atm_ce_price + atm_pe_price
             atm_strike = option_chain_analyzer['atm_strike']
 
@@ -354,6 +354,11 @@ class NiftyPositionalStrategy:
             self.nso_open = exchange_data.is_nfo_open()
             if not self.nso_open:
                 logging.info("NFO market is closed")
+                return False
+        else:
+            # Check if market is closed after 3:30 PM
+            if datetime.now().time() > time(15, 30):
+                self.nso_open = False
                 return False
         return self.nso_open
 
