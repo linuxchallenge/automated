@@ -181,7 +181,7 @@ class NiftyPositionalStrategy:
             if account_details is None or account_details.empty:
                 logging.error("Account details DataFrame is empty or None")
                 return False
-            
+
             required_columns = ['Account', 'Symbol', 'quantity']
             if not all(col in account_details.columns for col in required_columns):
                 logging.error(f"Account details missing required columns: {required_columns}")
@@ -192,7 +192,6 @@ class NiftyPositionalStrategy:
             # Check execution interval
             if self.last_execution_time and \
                (current_time - self.last_execution_time) < self.EXECUTION_INTERVAL:
-                logging.info("Skipping execution: Within 10-minute interval")
                 return False
 
             self.last_execution_time = current_time
@@ -202,10 +201,13 @@ class NiftyPositionalStrategy:
                 logging.info("Market is closed, skipping execution")
                 return False
 
+            # Create OptionChainData object but then get the dictionary data from it
             try:
-                option_chain_analyzer = OptionChainData("NIFTY")
+                option_chain_obj = OptionChainData("NIFTY")
+                # Get the actual data dictionary
+                option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, "NIFTY")
             except Exception as e:
-                logging.error(f"Failed to create OptionChainData: {str(e)}")
+                logging.error(f"Failed to create or get data from OptionChainData: {str(e)}")
                 return False
 
             # Loop through all accounts
@@ -214,16 +216,16 @@ class NiftyPositionalStrategy:
                 try:
                     logging.info(f"Executing strategy for account: {account}")
                     account_data = account_details[
-                        (account_details['Account'] == account) & 
+                        (account_details['Account'] == account) &
                         (account_details['Symbol'] == "NIFTY")
                     ]
-                    
+
                     if account_data.empty:
                         logging.warning(f"No trading data found for account {account}")
                         continue
-                        
+
                     quantity = account_data['quantity'].values[0]
-                    
+
                     result = self._execute_for_account(
                         account=account,
                         option_chain_analyzer=option_chain_analyzer,
@@ -231,7 +233,7 @@ class NiftyPositionalStrategy:
                         place_order_obj=place_order_obj
                     )
                     execution_results.append(result)
-                    
+
                 except Exception as acc_error:
                     logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
                     self.send_error_message(account, str(acc_error))
