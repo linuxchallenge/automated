@@ -99,7 +99,7 @@ class NiftyPositionalStrategy:
         days_to_expiry = (expiry_date - current_date).days
 
         # Check if it's 2 days before expiry
-        if days_to_expiry <= 2:
+        if days_to_expiry == 2:
             # Entry window is true if after 11 AM
             is_entry_window = current_time >= time(11, 0)
 
@@ -108,6 +108,9 @@ class NiftyPositionalStrategy:
                            "Days to expiry: %d, "
                            "Next expiry: %s", current_time, days_to_expiry, expiry_date)
             return is_entry_window
+
+        if days_to_expiry < 2:
+            return True
 
         return False
 
