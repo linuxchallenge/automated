@@ -266,6 +266,9 @@ class NiftyPositionalStrategy:
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
 
+            # Check and update order status for any pending orders
+            self.check_if_trade_is_executed(account, place_order_obj)
+
             # Check for expiry day closing time
             if self.is_expiry_day_closing_time():
                 if not existing_sold_options_info.empty and existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
