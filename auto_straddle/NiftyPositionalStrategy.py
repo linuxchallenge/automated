@@ -490,7 +490,7 @@ class NiftyPositionalStrategy:
             'quantity': quantity,
             'strangle_ce_price': self.get_option_price(option_chain_analyzer, 'CE'),
             'strangle_pe_price': self.get_option_price(option_chain_analyzer, 'PE'),
-            'trade_state': 'open',
+            'trade_state': 'open_pending',
             'open_time': datetime.now(),
             'close_time': None,
             'expiry': self.get_next_nifty_expiry().strftime("%Y-%m-%d"),
@@ -675,6 +675,36 @@ class NiftyPositionalStrategy:
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in ce close order"
+
+            # Add this section before storing results:
+            # Check if we should change trade_state from open_pending to open
+            if existing_sold_options_info.iloc[-1]['trade_state'] == 'open_pending':
+                is_ce_ready = (existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1 or
+                              existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open')
+                is_pe_ready = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
+                              existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open')
+
+                if is_ce_ready and is_pe_ready:
+                    logging.info(f"All orders executed for account {account}, changing state to open")
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'open'
+
+            # Check transition from closing to closed (as we already implemented)
+            if existing_sold_options_info.iloc[-1]['trade_state'] == 'closing':
+                # For CE-only trade
+                ce_closed = (existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1 or
+                             existing_sold_options_info.iloc[-1]['ce_close_state'] == 'closed')
+
+                # For PE-only trade
+                pe_closed = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
+                             existing_sold_options_info.iloc[-1]['pe_close_state'] == 'closed')
+
+                # If both legs are closed, update trade state to 'closed'
+                if ce_closed and pe_closed:
+                    logging.info(f"Trade for account {account} is now fully closed")
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
+
+            # Store updated information
+            self.store_sold_options_info(existing_sold_options_info, account)
 
             if error_in_order:
                 self.store_sold_options_info(existing_sold_options_info, account)
