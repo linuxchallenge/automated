@@ -132,7 +132,7 @@ class commodity_data:
                     return self.historic_data_tv(symbol, daily)
                 except Exception as e:
                     print(f"Error executing historic_data_tv: {e}")
-                    logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     logging.error(f"Error executing historic_data_tv: {e}")
                     return self.historic_data_upstox(symbol, daily)
             elif self.use_source == "up":
@@ -141,7 +141,7 @@ class commodity_data:
             return self.historic_data_investing(symbol, daily)
         except Exception as e:
             print(f"Error executing historic_data: {e}")
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             logging.error(f"Error executing historic_data: {e}")
             return None
 
@@ -177,7 +177,7 @@ class commodity_data:
         except Exception as e:
             print(f"Error executing historic_data_tv: {e}")
             logging.error(f"Error executing historic_data_tv: {e}")
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
             # Maintian count is error is more than 5 times switch to UP
             self.tv_error = self.tv_error + 1
@@ -359,7 +359,7 @@ class commodity_data:
                 # Remove all entires which has PETAL and GUINEA in tradingsymbol column
                 token = token[~token.tradingsymbol.str.contains('PETAL')]
                 token = token[~token.tradingsymbol.str.contains('GUINEA')]
-                token = token[~token.tradingsymbol.str.contains('GOLDTEN')]                
+                token = token[~token.tradingsymbol.str.contains('GOLDTEN')]
 
             if symbol == 'LEAD' or symbol == 'ZINC':
                 # Remove all entires which has MINI in tradingsymbol column
@@ -384,13 +384,13 @@ class commodity_data:
             #print(f"Token: {token}")
             #token_id = token.iloc[0]['instrument_key']
 
+            fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=100 if isDaily else 20)) .strftime("%Y-%m-%d")
+            todate = datetime.now(TIME_ZONE).strftime("%Y-%m-%d")
+
             if isDaily:
-                fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=100)) .strftime("%Y-%m-%d")
-                todate = datetime.now(TIME_ZONE).strftime("%Y-%m-%d")
                 url = f'https://api.upstox.com/v2/historical-candle/{token}/day/{todate}/{fromDate}'
+                url_history = None  # Not used for daily data
             else:
-                fromDate = (datetime.now(TIME_ZONE)  - timedelta(days=20)) .strftime("%Y-%m-%d")
-                todate = datetime.now(TIME_ZONE).strftime("%Y-%m-%d")
                 url = f'https://api.upstox.com/v2/historical-candle/intraday/{token}/30minute'
                 url_history = f'https://api.upstox.com/v2/historical-candle/{token}/30minute/{todate}/{fromDate}'
             headers = {
@@ -425,8 +425,8 @@ class commodity_data:
                 print('No data',candleRes)
                 candleData = None
 
-            if isDaily is False:
-                res = requests.get(url_history,headers=headers, params={},timeout=5.0)
+            if isDaily is False and url_history is not None:
+                res = requests.get(url_history, headers=headers, params={}, timeout=5.0)
                 candleRes = res.json()
 
                 if 'data' in candleRes and 'candles' in candleRes['data'] and  candleRes['data']['candles']:
@@ -463,7 +463,7 @@ class commodity_data:
 
         except Exception as e:
             print(f"Error executing historic_data_upstox: {e}")
-            logging.error(''.join(traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)))
+            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
         # Rename date column to Date
         candleData = candleData.rename(columns={'date': 'Date'})
