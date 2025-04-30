@@ -349,22 +349,37 @@ class NiftyPositionalStrategy:
 
     def _check_market_status(self):
         """Check if NFO market is open"""
-        if datetime.now().time() < time(9, 0):
+        current_time = datetime.now().time()
+
+        if current_time < time(9, 0):
             # Market is closed before 9 AM
             return False
 
+        # Special case for expiry day closing
+        if self.is_expiry_day() and current_time >= time(15, 25) and current_time <= time(15, 35):
+            # Allow execution during expiry closing window
+            logging.info("Allowing execution for expiry day closing window")
+            return True
+
+        if current_time > time(15, 30):
+            self.nso_open = False
+            return False
+
+        # Normal market hours check
         if self.nso_open is None:
             exchange_data = ExchangeData()
             self.nso_open = exchange_data.is_nfo_open()
             if not self.nso_open:
                 logging.info("NFO market is closed")
                 return False
-        else:
-            # Check if market is closed after 3:30 PM
-            if datetime.now().time() > time(15, 30):
-                self.nso_open = False
-                return False
+
         return self.nso_open
+
+    def is_expiry_day(self) -> bool:
+        """Check if today is expiry day"""
+        current_date = datetime.now().date()
+        expiry_date = self.get_next_nifty_expiry().date()
+        return current_date == expiry_date
 
     def _manage_open_position(self, existing_sold_options_info, option_chain_analyzer,
                             account, quantity, place_order_obj):
@@ -874,6 +889,11 @@ if __name__ == '__main__':
 
     print(commodity_account_details)
 
+    # in commodity_account_details keep only dummy account
+    #commodity_account_details = commodity_account_details[commodity_account_details['Account'] == 'dummy']
+
+    #print(commodity_account_details)    
+
     symbol = "NIFTY"
 
     place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
@@ -918,7 +938,9 @@ if __name__ == '__main__':
     option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
 
     # Execute strategy with correct parameters
-    for account in commodity_account_details['Account'].unique():
-        quantity = commodity_account_details[commodity_account_details['Account'] == account]['quantity'].values[0]
-        commodity_stratergy.execute_strategy(option_chain_info, quantity, place_order)
+    # Create a DataFrame with the required columns for account_details
+    account_details = commodity_account_details[['Account', 'Symbol', 'quantity']]
+    
+    # Execute the strategy with the correct parameters
+    commodity_stratergy.execute_strategy(place_order, account_details)
 """
