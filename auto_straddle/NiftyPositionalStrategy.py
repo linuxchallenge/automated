@@ -354,7 +354,7 @@ class NiftyPositionalStrategy:
         """Check if NFO market is open"""
         current_time = datetime.now().time()
 
-        if current_time < time(9, 0):
+        if current_time < time(9, 15):
             # Market is closed before 9 AM
             return False
 
