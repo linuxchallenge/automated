@@ -263,6 +263,8 @@ class NiftyPositionalStrategy:
 
         sold_options_file_path = self.get_sold_options_file_path(account)
 
+        logging.info(f"Sold options file path: {sold_options_file_path}")
+
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
 
@@ -339,6 +341,8 @@ class NiftyPositionalStrategy:
                     place_order_obj
                 )
         else:
+            logging.info(f"File not found for account {account}, creating new position")
+
             # First trade for this account/expiry
             if self.is_entry_time():
                 self._enter_new_position(
@@ -583,48 +587,18 @@ class NiftyPositionalStrategy:
         sold_options_info['pe_open_state'] = 'open_pending'
         return sold_options_info
 
-    # Include other utility methods from FarSellStrategy with necessary modifications
-    # Such as close_trade, store_sold_options_info, compute_profit_loss, etc.
-
-    def update_trade_status(self, existing_sold_options_info, ce_close_id, pe_close_id, option_chain_analyzer):
-        """Update trade status after closing orders"""
-        if ce_close_id != -1:
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'close_pending'
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'] = ce_close_id
-
-        if pe_close_id != -1:
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'close_pending'
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = pe_close_id
-
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
-            option_chain_analyzer['prev_ce_strangle_price']
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-            option_chain_analyzer['prev_pe_strangle_price']
-
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closing'
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = datetime.now()
-
-        # When closing positions
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'close_pending'
-        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'close_pending'
-
-        if existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1:
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
-
-        if existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1:
-            existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
 
     def check_if_trade_is_executed(self, account, place_order_obj):
-        error_path = self.get_error_options_file_path(account)
-        if os.path.exists(error_path):
-            return False
-
         error_in_order = False
         error_message = ""
         sold_options_file_path = self.get_sold_options_file_path(account)
 
+        logging.info(f"Checking if trade is executed for account {account}")
+
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
+
+            logging.info("Checking pe order is executed or not")
 
             # Check PE open order
             if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open_pending':
@@ -632,6 +606,7 @@ class NiftyPositionalStrategy:
                             existing_sold_options_info.iloc[-1]['pe_open_order_id'],
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'])
                 if order_status == 'Complete':
+                    logging.info(f"PE order executed for account {account}")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'open'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'] = price
                 else:
@@ -641,10 +616,12 @@ class NiftyPositionalStrategy:
             # Check CE open order
             if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open_pending':
                 t.sleep(3)
+                logging.info("Checking ce order is executed or not")
                 order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['ce_open_order_id'],
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
                 if order_status == 'Complete':
+                    logging.info(f"CE order executed for account {account}")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'open'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'] = price
                 else:
@@ -683,6 +660,8 @@ class NiftyPositionalStrategy:
                               existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open')
                 is_pe_ready = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
                               existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open')
+                
+                logging.info(f"CE ready: {is_ce_ready}, PE ready: {is_pe_ready}")
 
                 if is_ce_ready and is_pe_ready:
                     logging.info(f"All orders executed for account {account}, changing state to open")
@@ -702,6 +681,8 @@ class NiftyPositionalStrategy:
                 if ce_closed and pe_closed:
                     logging.info(f"Trade for account {account} is now fully closed")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
+
+            logging.info(f"Trade state updated for account {account}")
 
             # Store updated information
             self.store_sold_options_info(existing_sold_options_info, account)
