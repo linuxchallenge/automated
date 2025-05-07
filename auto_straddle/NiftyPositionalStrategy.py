@@ -271,6 +271,9 @@ class NiftyPositionalStrategy:
             # Check and update order status for any pending orders
             self.check_if_trade_is_executed(account, place_order_obj)
 
+            # IMPORTANT: Reload the file to get updated trade states
+            existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
+
             # Check for expiry day closing time
             if self.is_expiry_day_closing_time():
                 if not existing_sold_options_info.empty and existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
@@ -314,15 +317,20 @@ class NiftyPositionalStrategy:
             ]
 
             # Handle existing open positions
-            if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'open':
-                # Update current prices and check exit conditions
-                self._manage_open_position(
-                    existing_sold_options_info,
-                    option_chain_analyzer,
-                    account,
-                    quantity,
-                    place_order_obj
-                )
+            # Check for ANY active trade state - not just 'open'
+            active_states = ['open', 'open_pending', 'closing']
+            if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] in active_states:
+                if expiry_trades.iloc[-1]['trade_state'] == 'open':
+                    # Only manage positions that are fully open
+                    self._manage_open_position(
+                        existing_sold_options_info,
+                        option_chain_analyzer,
+                        account,
+                        quantity,
+                        place_order_obj
+                    )
+                else:
+                    logging.info(f"Trade for account {account} is in {expiry_trades.iloc[-1]['trade_state']} state. Waiting for completion.")
             else:
                 if len(expiry_trades) >= self.MAX_TRADES_PER_EXPIRY:
                     logging.info(f"Maximum trades ({self.MAX_TRADES_PER_EXPIRY}) reached for account {account}, expiry {current_expiry}")
@@ -660,7 +668,7 @@ class NiftyPositionalStrategy:
                               existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open')
                 is_pe_ready = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
                               existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open')
-                
+
                 logging.info(f"CE ready: {is_ce_ready}, PE ready: {is_pe_ready}")
 
                 if is_ce_ready and is_pe_ready:
