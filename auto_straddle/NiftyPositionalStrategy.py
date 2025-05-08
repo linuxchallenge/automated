@@ -883,15 +883,18 @@ class NiftyPositionalStrategy:
             logging.error(traceback.format_exc())
 
     def is_expiry_day_closing_time(self) -> bool:
-        """Check if it's 3:27 PM on expiry day"""
+        """Check if it's near expiry closing time on expiry day"""
         current_time = datetime.now()
         current_date = current_time.date()
         expiry_date = self.get_next_nifty_expiry().date()
 
         # Check if today is expiry day
         if current_date == expiry_date:
-            # Check if time is 3:27 PM
-            return current_time.time() >= time(15, 27)
+            # Check if time is at or after 3:15 PM (giving more time)
+            closing_time = current_time.time() >= time(15, 15)
+            if closing_time:
+                logging.info(f"Expiry day closing condition met. Current time: {current_time.time()}")
+            return closing_time
         return False
 
 """
