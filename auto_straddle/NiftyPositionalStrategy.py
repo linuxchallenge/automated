@@ -283,32 +283,58 @@ class NiftyPositionalStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = 0
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = 0
 
-                    # Close the positions
-                    self._close_position(
-                        existing_sold_options_info,
-                        account,
-                        quantity,
-                        place_order_obj
-                    )
+                    # Change the tarde state to closed
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'close_time'] = datetime.now()
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'] = -1
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = -1
 
-                    # Compute and send P/L
-                    ce_pl = (existing_sold_options_info.iloc[-1]['strangle_ce_price'] - 0) * quantity
-                    pe_pl = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] - 0) * quantity
-                    total_pl = ce_pl + pe_pl
+                # Compute and send P/L
+                # Compute P/L for all trades in current expiry
+                total_ce_pl = 0
+                total_pe_pl = 0
+                total_pl = 0
 
-                    # Send P/L information via Telegram
-                    pl_message = (
-                        f"Expiry Day Closing P/L for {account}:\n"
-                        f"CE P/L: {ce_pl:.2f}\n"
-                        f"PE P/L: {pe_pl:.2f}\n"
-                        f"Total P/L: {total_pl:.2f}"
-                    )
-                    telegram_api = TelegramSend.telegram_send_api()
-                    telegram_group = account + "_telegram"
-                    chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
-                    telegram_api.send_message(chat_id, pl_message)
+                # Loop through all trades for this expiry
+                for _, trade in expiry_trades.iterrows():
+                    # Skip trades that weren't opened
+                    if trade['trade_state'] not in ['closed', 'open']:
+                        continue
 
-                    return True
+                    # Use quantity from each trade record
+                    trade_qty = trade['quantity']
+
+                    # For CE leg
+                    if trade['strangle_ce_price'] != -1:
+                        ce_close_price = 0  # For expiry day closing
+                        ce_pl = (trade['strangle_ce_price'] - ce_close_price) * trade_qty
+                        total_ce_pl += ce_pl
+
+                    # For PE leg
+                    if trade['strangle_pe_price'] != -1:
+                        pe_close_price = 0  # For expiry day closing
+                        pe_pl = (trade['strangle_pe_price'] - pe_close_price) * trade_qty
+                        total_pe_pl += pe_pl
+
+                total_pl = total_ce_pl + total_pe_pl
+
+                # Send consolidated P/L information via Telegram
+                pl_message = (
+                    f"Expiry Day Consolidated P/L for {account}:\n"
+                    f"CE P/L: {total_ce_pl:.2f}\n"
+                    f"PE P/L: {total_pe_pl:.2f}\n"
+                    f"Total P/L: {total_pl:.2f}\n"
+                    f"Number of trades: {len(expiry_trades)}"
+                )
+                telegram_api = TelegramSend.telegram_send_api()
+                telegram_group = account + "_telegram"
+                chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                telegram_api.send_message(chat_id, pl_message)
+
+                telegram_api.send_file(chat_id, sold_options_file_path)
+                return True
 
             # Check number of trades for current expiry
             current_expiry = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
