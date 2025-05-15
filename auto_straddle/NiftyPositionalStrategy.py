@@ -6,6 +6,7 @@
 # pylint: disable=C0116
 # pylint: disable=C0115
 # pylint: disable=C0103
+# pylint: disable=C0302
 # pylint: disable=W0105
 # pylint: disable=W0621
 
@@ -646,6 +647,7 @@ class NiftyPositionalStrategy:
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in pe open order"
+                self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE open order
             if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open_pending':
@@ -661,6 +663,7 @@ class NiftyPositionalStrategy:
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in ce open order"
+                self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check PE close order
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'close_pending':
@@ -673,6 +676,7 @@ class NiftyPositionalStrategy:
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in pe close order"
+                self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE close order
             if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'close_pending':
@@ -686,6 +690,7 @@ class NiftyPositionalStrategy:
                 else:
                     error_in_order = True
                     error_message = error_message + "Error in ce close order"
+                self.store_sold_options_info(existing_sold_options_info, account)
 
             # Add this section before storing results:
             # Check if we should change trade_state from open_pending to open
@@ -700,6 +705,7 @@ class NiftyPositionalStrategy:
                 if is_ce_ready and is_pe_ready:
                     logging.info(f"All orders executed for account {account}, changing state to open")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'open'
+                    self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check transition from closing to closed (as we already implemented)
             if existing_sold_options_info.iloc[-1]['trade_state'] == 'closing':
@@ -715,11 +721,10 @@ class NiftyPositionalStrategy:
                 if ce_closed and pe_closed:
                     logging.info(f"Trade for account {account} is now fully closed")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
+                    # Store updated information
+                    self.store_sold_options_info(existing_sold_options_info, account)
 
             logging.info(f"Trade state updated for account {account}")
-
-            # Store updated information
-            self.store_sold_options_info(existing_sold_options_info, account)
 
             if error_in_order:
                 self.store_sold_options_info(existing_sold_options_info, account)
