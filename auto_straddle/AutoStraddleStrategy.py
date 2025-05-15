@@ -836,12 +836,15 @@ class AutoStraddleStrategy:
         index_trend = index_future_stratergy.get_index_trend(symbol)
 
         if sold_options_info.shape[0] == 0 and index_trend == option_chain_trend:
+            logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
             return True
 
         # If sold_options_info.shape[0] is 1 and loss greater than 0.2 times of self.loss_limit(symbol)
         # then reenter only if index_trend is in the same direction as option_chain_trend
         if sold_options_info.shape[0] == 1 and profit_amount < 0.2 * self.loss_limit(symbol):
             if index_trend == option_chain_trend:
+                logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
+                             profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
                 return True
             return False
 
@@ -849,6 +852,8 @@ class AutoStraddleStrategy:
         # then reenter only if index_trend is in the same direction as option_chain_trend
         if sold_options_info.shape[0] >= 2 and profit_amount < 0.4 * self.loss_limit(symbol):
             if index_trend == option_chain_trend:
+                logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
+                             profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
                 return True
             return False
 
