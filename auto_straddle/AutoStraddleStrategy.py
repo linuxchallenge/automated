@@ -835,9 +835,11 @@ class AutoStraddleStrategy:
 
         index_trend = index_future_stratergy.get_index_trend(symbol)
 
-        if sold_options_info.shape[0] == 0 and index_trend == option_chain_trend:
-            logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
-            return True
+        if sold_options_info.shape[0] == 0:
+            if index_trend == option_chain_trend:
+                logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
+                return True
+            return False
 
         # If sold_options_info.shape[0] is 1 and loss greater than 0.2 times of self.loss_limit(symbol)
         # then reenter only if index_trend is in the same direction as option_chain_trend
