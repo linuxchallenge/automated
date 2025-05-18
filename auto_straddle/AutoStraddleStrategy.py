@@ -448,9 +448,7 @@ class AutoStraddleStrategy:
                         else:
                             option_chain_trend = "sideways"
 
-                        if index_trend == "uptrend" and option_chain_trend == "downtrend":
-                            return
-                        if index_trend == "downtrend" and option_chain_trend == "uptrend":
+                        if index_trend != option_chain_trend:
                             return
                     except Exception as e:
                         print(f"Error in getting index trend: {e}")
@@ -835,6 +833,8 @@ class AutoStraddleStrategy:
 
         index_trend = index_future_stratergy.get_index_trend(symbol)
 
+        logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
+
         if sold_options_info.shape[0] == 0:
             if index_trend == option_chain_trend:
                 logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
@@ -859,7 +859,7 @@ class AutoStraddleStrategy:
                 return True
             return False
 
-        return True
+        return False
 
 
     def get_option_price(self, option_chain_analyzer, option_type, symbol):

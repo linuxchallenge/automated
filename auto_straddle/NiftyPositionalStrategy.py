@@ -264,8 +264,6 @@ class NiftyPositionalStrategy:
 
         sold_options_file_path = self.get_sold_options_file_path(account)
 
-        logging.info(f"Sold options file path: {sold_options_file_path}")
-
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
 
@@ -382,10 +380,9 @@ class NiftyPositionalStrategy:
                     place_order_obj
                 )
         else:
-            logging.info(f"File not found for account {account}, creating new position")
-
             # First trade for this account/expiry
             if self.is_entry_time():
+                logging.info(f"File not found for account {account}, creating new position")
                 self._enter_new_position(
                     option_chain_analyzer,
                     account,
