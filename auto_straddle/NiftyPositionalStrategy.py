@@ -366,6 +366,12 @@ class NiftyPositionalStrategy:
                 # Check if last trade was closed recently (30-min cooldown)
                 if not expiry_trades.empty and expiry_trades.iloc[-1]['trade_state'] == 'closed':
                     last_close_time = pd.to_datetime(expiry_trades.iloc[-1]['close_time'])
+
+                    # Don't enter into new trade on expiry day
+                    if self.is_expiry_day():
+                        logging.info(f"Skipping execution for account {account}: Today is expiry day")
+                        return True
+
                     if (datetime.now() - last_close_time) < self.TRADE_COOLDOWN:
                         logging.info(f"Skipping execution for account {account}: Within 30-minute cooldown after previous trade")
                         return True
