@@ -833,8 +833,6 @@ class AutoStraddleStrategy:
 
         index_trend = index_future_stratergy.get_index_trend(symbol)
 
-        logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")
-
         if sold_options_info.shape[0] == 0:
             if index_trend == option_chain_trend:
                 logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}")

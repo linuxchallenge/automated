@@ -407,7 +407,6 @@ class IndexFutureStratergy:
             return 'sideways'
 
         trend = self.alligator_trends[symbol_name]
-        self.logger.info(f"Retrieved trend for {symbol_name}: {trend}")
         return trend
 
     def execute_strategy(self, accounts, place_order, account_details):
