@@ -430,10 +430,25 @@ class NiftyPositionalStrategy:
                             account, quantity, place_order_obj):
         """Manage existing open positions"""
         try:
+            # Add defensive check for option_chain_analyzer
+            if option_chain_analyzer is None:
+                logging.warning(f"Option chain analyzer is None for account {account}. Skipping price updates.")
+                return
+                
+            # Add keys check before accessing
+            ce_price = option_chain_analyzer.get('prev_ce_strangle_price')
+            pe_price = option_chain_analyzer.get('prev_pe_strangle_price')
+            
+            if ce_price is None or pe_price is None:
+                logging.warning(f"Missing price data in option chain analyzer for account {account}")
+                # Use existing values as fallback
+                ce_price = existing_sold_options_info.iloc[-1]['strangle_ce_close_price']
+                pe_price = existing_sold_options_info.iloc[-1]['strangle_pe_close_price']
+                
             # Update current prices
             updates = {
-                'strangle_ce_close_price': option_chain_analyzer['prev_ce_strangle_price'],
-                'strangle_pe_close_price': option_chain_analyzer['prev_pe_strangle_price']
+                'strangle_ce_close_price': ce_price,
+                'strangle_pe_close_price': pe_price
             }
 
             existing_sold_options_info = self.update_and_store(
