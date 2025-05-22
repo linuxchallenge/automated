@@ -206,7 +206,7 @@ class PlaceOrder:
         return order_id
 
 
-    def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty):
+    def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
             'BANKNIFTY': 30,
@@ -222,9 +222,9 @@ class PlaceOrder:
         logging.info(f"Closing order for account {account}: option with strike price {atm_ce_strike} {symbol}")
         order_id = 0
         if (account == 'deepti'):
-            order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+                order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         if (account == 'leelu'):
             order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)

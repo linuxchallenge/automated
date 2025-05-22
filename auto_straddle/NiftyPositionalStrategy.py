@@ -127,22 +127,44 @@ class NiftyPositionalStrategy:
         2. Exit if ATM strike - ATM straddle sum is less than our sold PE strike
         """
         try:
-            # Get ATM straddle price and ATM strike
-            atm_ce_price = option_chain_analyzer['atm_current_ce_price']
-            atm_pe_price = option_chain_analyzer['atm_current_pe_price']
-            atm_straddle_sum = atm_ce_price + atm_pe_price
-            atm_strike = option_chain_analyzer['atm_strike']
+            # Check if option_chain_analyzer is None
+            if option_chain_analyzer is None:
+                logging.warning("Option chain analyzer is None, cannot check exit conditions")
+                return False
 
-            # Get our actually sold strangle strikes from the trade entry
+            # Safely access required dictionary keys with defaults
+            atm_ce_price = option_chain_analyzer.get('atm_current_ce_price')
+            atm_pe_price = option_chain_analyzer.get('atm_current_pe_price')
+            atm_strike = option_chain_analyzer.get('atm_strike')
+
+            # Validate all required data is present
+            if atm_ce_price is None or atm_pe_price is None or atm_strike is None:
+                logging.warning(f"Missing required price data for exit check: CE: {atm_ce_price}, PE: {atm_pe_price}, ATM: {atm_strike}")
+                return False
+
+            # Check if DataFrame is empty or lacks required data
+            if sold_options_info.empty:
+                logging.warning("No trade data available to check exit conditions")
+                return False
+
+            # Get our sold strangle strikes
             strangle_ce_strike = sold_options_info.iloc[-1]['strangle_ce_strike']
             strangle_pe_strike = sold_options_info.iloc[-1]['strangle_pe_strike']
 
-            # Calculate the boundaries
+            # Check if we even have both legs open
+            ce_is_active = sold_options_info.iloc[-1]['strangle_ce_price'] != -1
+            pe_is_active = sold_options_info.iloc[-1]['strangle_pe_price'] != -1
+
+            # Calculate exit boundaries
+            atm_straddle_sum = atm_ce_price + atm_pe_price
             upper_boundary = atm_strike + atm_straddle_sum
             lower_boundary = atm_strike - atm_straddle_sum
 
-            # Check if our sold strikes are breached by the boundaries
-            if upper_boundary > strangle_ce_strike:
+            # Log boundary information for debugging
+            logging.info(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
+
+            # Only check relevant boundaries based on which legs are active
+            if ce_is_active and upper_boundary > strangle_ce_strike:
                 logging.info(
                     f"Exiting trade - Upper boundary breach: "
                     f"ATM {atm_strike} + Straddle {atm_straddle_sum} = {upper_boundary} > "
@@ -150,7 +172,7 @@ class NiftyPositionalStrategy:
                 )
                 return True
 
-            if lower_boundary < strangle_pe_strike:
+            if pe_is_active and lower_boundary < strangle_pe_strike:
                 logging.info(
                     f"Exiting trade - Lower boundary breach: "
                     f"ATM {atm_strike} - Straddle {atm_straddle_sum} = {lower_boundary} < "
@@ -162,7 +184,7 @@ class NiftyPositionalStrategy:
 
         except Exception as e:
             logging.error(f"Error in should_exit_trade: {str(e)}")
-            traceback.print_exc()
+            logging.error(traceback.format_exc())
             return False
 
     def execute_strategy(self, place_order_obj, account_details):
@@ -434,17 +456,17 @@ class NiftyPositionalStrategy:
             if option_chain_analyzer is None:
                 logging.warning(f"Option chain analyzer is None for account {account}. Skipping price updates.")
                 return
-                
+
             # Add keys check before accessing
             ce_price = option_chain_analyzer.get('prev_ce_strangle_price')
             pe_price = option_chain_analyzer.get('prev_pe_strangle_price')
-            
+
             if ce_price is None or pe_price is None:
                 logging.warning(f"Missing price data in option chain analyzer for account {account}")
                 # Use existing values as fallback
                 ce_price = existing_sold_options_info.iloc[-1]['strangle_ce_close_price']
                 pe_price = existing_sold_options_info.iloc[-1]['strangle_pe_close_price']
-                
+
             # Update current prices
             updates = {
                 'strangle_ce_close_price': ce_price,
@@ -727,20 +749,18 @@ class NiftyPositionalStrategy:
 
             # Check transition from closing to closed (as we already implemented)
             if existing_sold_options_info.iloc[-1]['trade_state'] == 'closing':
-                # For CE-only trade
-                ce_closed = (existing_sold_options_info.iloc[-1]['strangle_ce_price'] == -1 or
-                             existing_sold_options_info.iloc[-1]['ce_close_state'] == 'closed')
+                # For CE leg
+                ce_was_opened = existing_sold_options_info.iloc[-1]['strangle_ce_price'] != -1
+                ce_closed = not ce_was_opened or existing_sold_options_info.iloc[-1]['ce_close_state'] == 'closed'
 
-                # For PE-only trade
-                pe_closed = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
-                             existing_sold_options_info.iloc[-1]['pe_close_state'] == 'closed')
+                # For PE leg
+                pe_was_opened = existing_sold_options_info.iloc[-1]['strangle_pe_price'] != -1
+                pe_closed = not pe_was_opened or existing_sold_options_info.iloc[-1]['pe_close_state'] == 'closed'
 
-                # If both legs are closed, update trade state to 'closed'
+                # If both legs are closed (or weren't opened), update trade state to 'closed'
                 if ce_closed and pe_closed:
                     logging.info(f"Trade for account {account} is now fully closed")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
-                    # Store updated information
-                    self.store_sold_options_info(existing_sold_options_info, account)
 
             logging.info(f"Trade state updated for account {account}")
 
@@ -761,14 +781,14 @@ class NiftyPositionalStrategy:
         pe_order_id = -1
 
         if strangle_pe_price != -1:
-            pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', self.symbol, qty)
+            pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', self.symbol, qty, False)
             if pe_order_id == -1:
                 error_message = "Error in placing pe close order"
                 self.send_error_message(account, error_message)
                 return -1, -1
 
         if strangle_ce_price != -1:
-            ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', self.symbol, qty)
+            ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', self.symbol, qty, False)
             if ce_order_id == -1:
                 error_message = "Error in placing ce close order"
                 self.send_error_message(account, error_message)
@@ -848,12 +868,15 @@ class NiftyPositionalStrategy:
             logging.error(traceback.format_exc())
             raise
 
-    def _close_position(self, existing_sold_options_info, account, quantity,
-                       place_order_obj):
+    def _close_position(self, existing_sold_options_info, account, quantity, place_order_obj):
         """Close open positions"""
         try:
             # Check if it's expiry day closing
             is_expiry_closing = self.is_expiry_day_closing_time()
+
+            # Get the current states
+            pe_was_opened = existing_sold_options_info.iloc[-1]['strangle_pe_price'] != -1
+            ce_was_opened = existing_sold_options_info.iloc[-1]['strangle_ce_price'] != -1
 
             ce_close_id, pe_close_id = self.close_trade(
                 account,
@@ -866,18 +889,26 @@ class NiftyPositionalStrategy:
             )
 
             updates = {
-                'ce_close_order_id': ce_close_id,
-                'pe_close_order_id': pe_close_id,
-                'ce_close_state': 'close_pending' if ce_close_id != -1 else 'closed',
-                'pe_close_state': 'close_pending' if pe_close_id != -1 else 'closed',
                 'trade_state': 'closing',
                 'close_time': datetime.now()
             }
 
-            # If it's expiry day closing, set close prices to 0
+            # Only update CE states if CE was opened
+            if ce_was_opened:
+                updates['ce_close_order_id'] = ce_close_id
+                updates['ce_close_state'] = 'close_pending' if ce_close_id != -1 else 'closed'
+
+            # Only update PE states if PE was opened
+            if pe_was_opened:
+                updates['pe_close_order_id'] = pe_close_id
+                updates['pe_close_state'] = 'close_pending' if pe_close_id != -1 else 'closed'
+
+            # If it's expiry day closing, set close prices to 0 for opened legs
             if is_expiry_closing:
-                updates['strangle_ce_close_price'] = 0
-                updates['strangle_pe_close_price'] = 0
+                if ce_was_opened:
+                    updates['strangle_ce_close_price'] = 0
+                if pe_was_opened:
+                    updates['strangle_pe_close_price'] = 0
 
             self.update_and_store(
                 existing_sold_options_info,
