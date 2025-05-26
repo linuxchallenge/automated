@@ -295,7 +295,13 @@ class NiftyPositionalStrategy:
             # IMPORTANT: Reload the file to get updated trade states
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
 
-            # Check for expiry day closing time
+            # Define expiry_trades BEFORE using it in any code path
+            current_expiry = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
+            expiry_trades = existing_sold_options_info[
+                existing_sold_options_info['expiry'] == current_expiry
+            ]
+
+            # Now check for expiry day closing time
             if self.is_expiry_day_closing_time():
                 if not existing_sold_options_info.empty and existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
                     logging.info(f"Closing positions at expiry day 3:27 PM for account {account}")
@@ -312,8 +318,7 @@ class NiftyPositionalStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'] = -1
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = -1
 
-                # Compute and send P/L
-                # Compute P/L for all trades in current expiry
+                # Compute and send P/L (now expiry_trades is defined)
                 total_ce_pl = 0
                 total_pe_pl = 0
                 total_pl = 0
