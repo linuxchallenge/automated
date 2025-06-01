@@ -226,8 +226,23 @@ class fivepaise_api(object):
                 return -1, -1
         return order_id['BrokerOrderID'], tokenInfo['Expiry']
 
-    def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce):
+    def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, isIntraday=True):
+        """
+        Place an order for a given symbol, quantity, buy/sell action, strike price, and option type (PE/CE).
+        
+        Args:
+            symbol: The underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+            qty: Quantity to trade
+            buy_sell: 'BUY' or 'SELL'
+            strike_price: Strike price of the option
+            pe_ce: Option type 'PE' or 'CE'
+            isIntraday: True for intraday orders, False for delivery/positional orders
+        """
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
+
+        if tokenInfo is None:
+            print(f"Could not find token info for {symbol} {strike_price} {pe_ce}")
+            return -1, None
 
         print("five paise place order")
 
@@ -235,20 +250,31 @@ class fivepaise_api(object):
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
-        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}, IsIntraday: {isIntraday}")
 
         if qty % lot != 0:
-            return -1
+            return -1, None
+
         if buy_sell == 'BUY':
             buy_sell = 'B'
         else:
             buy_sell = 'S'
+
         try:
-            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
-                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+            # Use the isIntraday parameter in the order placement
+            order_id = self.obj.place_order(
+                OrderType=buy_sell,
+                Exchange='N',
+                ExchangeType='D',
+                ScripCode=int(token),
+                Qty=int(qty),
+                Price=0,
+                IsIntraday=isIntraday  # Actually use the parameter
+            )
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
             logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+
         except Exception as e1:
             try:
                 time.sleep(2)
@@ -257,20 +283,28 @@ class fivepaise_api(object):
                 logger.error("Error placing order, trying again %s", e1)
 
                 x = TelegramSend.telegram_send_api()
-
-                # Send profit loss over telegramsend send_message
                 x.send_message("-4008545231", f"Warning 5 paise {symbol} order Pls check")
 
-                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
-                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                # Retry with the same isIntraday parameter
+                order_id = self.obj.place_order(
+                    OrderType=buy_sell,
+                    Exchange='N',
+                    ExchangeType='D',
+                    ScripCode=int(token),
+                    Qty=int(qty),
+                    Price=0,
+                    IsIntraday=isIntraday  # Use the parameter in retry as well
+                )
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
                 logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+
             except Exception as e2:
                 print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
-                return -1, None  # Changed to return tuple for consistency
+                return -1, None
+
         return order_id['BrokerOrderID'], tokenInfo['Expiry']  # Changed to return tuple
 
     def get_order_status(self, order_id):

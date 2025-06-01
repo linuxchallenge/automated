@@ -130,13 +130,13 @@ class PlaceOrder:
             if (order_id == -1):
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
-            order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+                order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
-            order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+            order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce)
+                order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 123456789
         else:
@@ -227,14 +227,14 @@ class PlaceOrder:
                 order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         if (account == 'leelu'):
-            order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+                order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         if (account == 'avanthi'):
-            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             if (order_id == -1):
-                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce)
+                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         logging.info(f"Order id for close account: {order_id}")
         return order_id

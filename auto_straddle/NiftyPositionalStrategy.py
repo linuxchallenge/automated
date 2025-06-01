@@ -345,6 +345,7 @@ class NiftyPositionalStrategy:
                         total_pe_pl += pe_pl
 
                 total_pl = total_ce_pl + total_pe_pl
+                total_pl = total_pl * 75
 
                 # Send consolidated P/L information via Telegram
                 pl_message = (
