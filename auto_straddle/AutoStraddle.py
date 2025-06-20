@@ -321,7 +321,7 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
                     if quantity > 0:
                         #print("==== Executing far sell strategy for account: " + account + " " + symbol)
                         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
-                                                                    quantity, place_order)
+                                                                    quantity, place_order, index_future_stratergy)
                         #print("==== Exit far sell strategy for account: " + account + " " + symbol)
 
         else:

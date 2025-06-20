@@ -155,7 +155,7 @@ class FarSellStratergy:
 
         return True
 
-    def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj):
+    def execute_strategy(self, option_chain_analyzer, symbol, account, quantity, place_order_obj, index_future_stratergy):
 
         #print("Executing far sell strategy" , account , symbol , quantity)
         try:
@@ -344,7 +344,7 @@ class FarSellStratergy:
                             pass
                     elif existing_sold_options_info.iloc[-1]['trade_state'] == 'closed':
                         # Check if the conditions to re-enter the trade are met
-                        if self.should_reenter_trade(existing_sold_options_info):
+                        if self.should_reenter_trade(existing_sold_options_info, option_chain_analyzer, symbol, index_future_stratergy):
                             # Re-enter the trade
                             sold_options_info = {
                                 'account': account,
@@ -371,7 +371,7 @@ class FarSellStratergy:
 
                             # Place orders for strangle CE and strangle PE, if pe is less than 0.7 place only CE order and\
                             # if pe greater than 1.4 place only PE order else place both orders
-                            if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
+                            if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                                 # Place only CE order
                                 sold_options_info['strangle_pe_price'] = -1
                                 sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
@@ -381,7 +381,7 @@ class FarSellStratergy:
                                     return
                                 sold_options_info['pe_open_order_id'] = -1
                                 sold_options_info['pe_open_state'] = 'closed'
-                            elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
+                            elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                                 # Place only PE order
                                 sold_options_info['strangle_ce_price'] = -1
                                 sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
@@ -417,6 +417,17 @@ class FarSellStratergy:
                             pass
                 else:
                     # If the file doesn't exist, create a new sold_options_info
+                    index_trend = index_future_stratergy.get_index_trend(symbol)
+                    if self.check_bullish_option_chain(option_chain_analyzer, symbol):
+                        option_chain_trend = "uptrend"
+                    elif self.check_bearish_option_chain(option_chain_analyzer, symbol):
+                        option_chain_trend = "downtrend"
+                    else:
+                        option_chain_trend = "sideways"
+
+                    if index_trend != option_chain_trend:
+                        return
+
                     existing_sold_options_info = pd.DataFrame()
                     sold_options_info = {
                         'account': account,
@@ -445,7 +456,7 @@ class FarSellStratergy:
                     # and if pe greater than 1.4 place only PE order else place both orders
                     logging.info(f"Auto Straddle {symbol} {get_option_price(option_chain_analyzer, 'CE')} {get_option_price(option_chain_analyzer, 'PE')}")
                     logging.info(f"Auto Straddle {option_chain_analyzer['pe_to_ce_ratio']} {symbol} {option_chain_analyzer['spot_price']}")
-                    if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
+                    if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                         # Place only CE order
                         sold_options_info['strangle_pe_price'] = -1
                         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strangle_strike, 'CE', symbol, quantity)
@@ -455,7 +466,7 @@ class FarSellStratergy:
                             return
                         sold_options_info['pe_open_order_id'] = -1
                         sold_options_info['pe_open_state'] = 'closed'
-                    elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
+                    elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                         # Place only PE order
                         sold_options_info['strangle_ce_price'] = -1
                         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strangle_strike, 'PE', symbol, quantity)
@@ -738,7 +749,7 @@ class FarSellStratergy:
         # Default return if no valid data found
         return 0, 0
 
-    def should_reenter_trade(self, sold_options_info):
+    def should_reenter_trade(self, sold_options_info, option_chain_analyzer, symbol, index_future_stratergy):
 
         profit_amount = self.compute_profit_loss(sold_options_info, sold_options_info.iloc[-1]['symbol'])
         if profit_amount < self.loss_limit(sold_options_info.iloc[-1]['symbol']):
@@ -750,6 +761,17 @@ class FarSellStratergy:
         if sold_options_info.shape[0] >= 2:
             return False
 
+        index_trend = index_future_stratergy.get_index_trend(symbol)
+        if self.check_bullish_option_chain(option_chain_analyzer, symbol):
+            option_chain_trend = "uptrend"
+        elif self.check_bearish_option_chain(option_chain_analyzer, symbol):
+            option_chain_trend = "downtrend"
+        else:
+            option_chain_trend = "sideways"
+
+        if index_trend != option_chain_trend:
+            return
+
         # Check if the required 5-minute interval has passed since the trade close time
         if (
                 sold_options_info.iloc[-1]['close_time'] and sold_options_info.iloc[-1]['trade_state'] == 'closed'
@@ -760,6 +782,59 @@ class FarSellStratergy:
             return True
         return False
 
+    def check_bullish_option_chain(self, option_chain_info, symbol):
+        if option_chain_info is None:
+            return False
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
+
+        # Check file exists, if read from file and append new data
+        # if not create a new file and write data
+
+        if os.path.exists(file_name):
+            data_frame = pd.read_csv(file_name)
+        else:
+            return False
+
+        # Get lowest pe_to_ce_ratio from the data_frame
+        min_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].min()
+
+        if (option_chain_info['pe_to_ce_ratio'] - min_pe_to_ce_ratio) > 0.2:
+            return True
+
+        if option_chain_info['pe_to_ce_ratio']  > 1.4:
+            return True
+
+        return False
+
+    def check_bearish_option_chain(self, option_chain_info, symbol):
+        if option_chain_info is None:
+            return False
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
+
+        # Check file exists, if read from file and append new data
+        # if not create a new file and write data
+
+        if os.path.exists(file_name):
+            data_frame = pd.read_csv(file_name)
+        else:
+            return False
+
+        # Get highest pe_to_ce_ratio from the data_frame
+        max_pe_to_ce_ratio = data_frame['pe_to_ce_ratio'].max()
+
+        if (max_pe_to_ce_ratio - option_chain_info['pe_to_ce_ratio']) > 0.2:
+            return True
+
+        if option_chain_info['pe_to_ce_ratio'] < 0.7:
+            return True
+
+        return False
+
+
 
 def get_option_price(option_chain_analyzer, option_type):
     # Implement your logic to get the option price based on strike price and type (CE/PE)
@@ -767,16 +842,9 @@ def get_option_price(option_chain_analyzer, option_type):
     # For example, option_chain_analyzer['CE'] and option_chain_analyzer['PE']
     # return option_price from option_chain_analyzer
     if option_type == 'CE':
-        if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
-            return option_chain_analyzer['ce_strangle_price']
-        else:
-            return option_chain_analyzer['ce_strangle_price']
+        return option_chain_analyzer['ce_strangle_price']
     elif option_type == 'PE':
-        if option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
-            return option_chain_analyzer['pe_strangle_price']
-        else:
-            return option_chain_analyzer['pe_strangle_price']
-
+        return option_chain_analyzer['pe_strangle_price']
 
 def get_option_strike(option_chain_analyzer, option_type):
     # Implement your logic to get the option price based on strike price and type (CE/PE)
