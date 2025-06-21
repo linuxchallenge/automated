@@ -40,6 +40,8 @@ def get_strike_interval(symbolsearch):
         return 50
     if symbolsearch == "MIDCPNIFTY":
         return 25
+    if symbolsearch == "SENSEX":
+        return 100
     return 0
 
 class OptionChainData:
@@ -359,7 +361,7 @@ class OptionChainData:
                             & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(symbolData))]
         df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(symbolData)) \
                             & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(symbolData))]
-
+ 
         # merge the two dataframes on strikePrice
         df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
@@ -492,6 +494,8 @@ class OptionChainData:
             url = "https://groww.in/options/nifty-financial-services"
         elif symbolData == "MIDCPNIFTY":
             url = "https://groww.in/options/nifty-midcap-select"
+        elif symbolData == "SENSEX":
+            url = "https://groww.in/options/sp-bse-sensex"
         else:
             return None
 
