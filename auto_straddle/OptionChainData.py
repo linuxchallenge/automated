@@ -20,6 +20,8 @@ import time
 import json
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,8 @@ class OptionChainData:
                 print(f"Error: {e}")
                 ret = None
             if ret is None:
+                if symbolData == "SENSEX":
+                    return self.get_option_chain_data_bse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
                 return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
             else:
                 return ret
@@ -190,7 +194,7 @@ class OptionChainData:
                 prev_atm_ce_price = self.safe_get_dataframe_value(
                     df_ce,
                     df_ce['strikePrice'] == prev_atm_strike,
-                    'lastPrice', 
+                    'lastPrice',
                     default_value=0
                 )
                 prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
@@ -237,7 +241,7 @@ class OptionChainData:
                 'ce_third_highest_last_price': float(ce_third_highest_values[2]),
                 'pe_third_highest_strike': float(pe_third_highest_values[0]),
                 'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
-                'pe_third_highest_last_price': float(pe_third_highest_values[2])                
+                'pe_third_highest_last_price': float(pe_third_highest_values[2])
             }
 
             return result_dict
@@ -361,7 +365,7 @@ class OptionChainData:
                             & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(symbolData))]
         df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(symbolData)) \
                             & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(symbolData))]
- 
+
         # merge the two dataframes on strikePrice
         df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
@@ -475,7 +479,7 @@ class OptionChainData:
             'ce_third_highest_last_price': float(ce_third_highest_values[2]),
             'pe_third_highest_strike': float(pe_third_highest_values[0]),
             'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
-            'pe_third_highest_last_price': float(pe_third_highest_values[2])            
+            'pe_third_highest_last_price': float(pe_third_highest_values[2])
         }
 
         return result_dict
@@ -539,7 +543,309 @@ class OptionChainData:
         return default_value
 
 
+    def get_option_chain_data_bse(self, expiry_date, session, scrip_cd=1, strike_price=0):
+        """
+        Get option chain data from BSE API
+
+        Args:
+            expiry_date: Expiry date in format "24 Jun 2025"
+            scrip_cd: Script code (default: 1 for SENSEX)
+            strike_price: Strike price (default: 0 for all strikes)
+        """
+        try:
+            # First, initialize the session
+            url = "https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain.html"
+
+            response = session.get(url, timeout=30)
+            response.raise_for_status()
+
+            # Extract any necessary cookies or session tokens if needed
+            _ = session.cookies.get_dict()
+
+            # Now make the API call using the established session
+            api_url = "https://api.bseindia.com/BseIndiaAPI/api/DerivOptionChain_IV/w"
+
+            params = {
+                'Expiry': expiry_date,
+                'scrip_cd': scrip_cd,
+                'strprice': strike_price
+            }
+
+            # Update headers for API call
+            api_headers = {
+                'Accept': 'application/json, text/plain, */*',
+                'Referer': 'https://www.bseindia.com/',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+
+            # Update session headers for API call
+            session.headers.update(api_headers)
+
+            response = session.get(api_url, params=params, timeout=30)
+            response.raise_for_status()
+
+            # Parse JSON response
+            data = response.json()
+            return data
+
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+            return None
+        except ValueError as e:
+            print(f"JSON parsing error: {e}")
+            return None
+
+    def extract_options_data_bse(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
+        fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
+        symboldf = pd.read_json(fileurl)
+
+        # filter for BSE options
+        symboldf = symboldf[symboldf['exchange'] == 'BSE']
+        symboldf = symboldf[symboldf['segment'] == 'BSE_FO']
+
+        # Extract unique expiry dates
+        expiry_dates = symboldf['expiry'].unique()
+
+        # sort expiry_dates
+        expiry_dates = sorted(expiry_dates)
+
+        # keep only nearest 1 date
+        expiry_dates = expiry_dates[:1]
+
+        print("Available expiry dates in the dataset:")
+        print(expiry_dates)
+
+        date_pd = pd.to_datetime(expiry_dates, unit='ms')
+        print(f"Pandas conversion: {date_pd.strftime('%d %b %Y')}")
+
+        session = requests.Session()
+
+        # Set up retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        # Set proper headers to mimic Mozilla browser
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0'
+        })
+
+
+        url = "https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain.html"
+
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+
+        # Extract any necessary cookies or session tokens if needed
+        _ = session.cookies.get_dict()
+
+        # Get option chain data for SENSEX expiry on 24 Jun 2025
+        data = self.get_option_chain_data_bse(date_pd.strftime('%d %b %Y'), session, scrip_cd=1, strike_price=0)
+
+        if data:
+            option_chain = data.get("Table", [])
+
+            first_entry = option_chain[0]
+            spot_price = first_entry.get("UlaValue", 0)
+
+            # convert spot_price to float
+            spot_price = float(spot_price.replace(',', '')) if isinstance(spot_price, str) else float(spot_price)
+
+            # Step 5: Parse the required fields
+            pe_parsed_data = []
+            for entry in option_chain:
+                try:
+                    pe_parsed_data.append({
+                        'strikePrice': float(entry.get('Strike_Price', '0').replace(',', '')),
+                        'put_open_interest': int(entry.get('Open_Interest', '0')),
+                        'put_ltp': float(entry.get('Last_Trd_Price', '0'))
+                    })
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            # Step 6: Create a DataFrame
+            df_pe = pd.DataFrame(pe_parsed_data)
+
+            #Convert strikePrice column to numeric
+            df_pe['strikePrice'] = pd.to_numeric(df_pe['strikePrice'], errors='coerce')
+
+            # Step 5: Parse the required fields
+            ce_parsed_data = []
+            for entry in option_chain:
+                try:
+                    ce_parsed_data.append({
+                        'strikePrice': float(entry.get('Strike_Price', '0').replace(',', '')),
+                        'call_open_interest': int(entry.get('Open_Interest', '0')),
+                        'call_ltp': float(entry.get('C_Last_Trd_Price', '0'))
+                    })
+                except (ValueError, TypeError, AttributeError):
+                    pass
+
+            # Step 6: Create a DataFrame
+            df_ce = pd.DataFrame(ce_parsed_data)
+            df_ce['strikePrice'] = pd.to_numeric(df_ce['strikePrice'], errors='coerce')
+
+            # Get the rows with the highest, second highest, and third highest openInterest in df_ce and df_pe
+            ce_rows_sorted_by_open_interest = self.extract_top_open_interest_values_ce(df_ce)
+            pe_rows_sorted_by_open_interest = self.extract_top_open_interest_values_pe(df_pe)
+
+            # Extract values of strikePrice, openInterest, and lastPrice from the rows with the highest, second highest, and third highest openInterest
+            ce_highest_values = ce_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'call_open_interest', 'call_ltp']].values
+            ce_second_highest_values = ce_rows_sorted_by_open_interest.iloc[1][
+                ['strikePrice', 'call_open_interest', 'call_ltp']].values
+            ce_third_highest_values = ce_rows_sorted_by_open_interest.iloc[2][
+                ['strikePrice', 'call_open_interest', 'call_ltp']].values
+
+            pe_highest_values = pe_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'put_open_interest', 'put_ltp']].values
+            pe_second_highest_values = pe_rows_sorted_by_open_interest.iloc[1][
+                ['strikePrice', 'put_open_interest', 'put_ltp']].values
+            pe_third_highest_values = pe_rows_sorted_by_open_interest.iloc[2][
+                ['strikePrice', 'put_open_interest', 'put_ltp']].values
+
+            # Find the ATM strike (nearest to spot price) for CE and PE
+            atm_ce_strike = df_ce.loc[(df_ce['strikePrice'] - spot_price).abs().idxmin()]['strikePrice']
+            atm_pe_strike = df_pe.loc[(df_pe['strikePrice'] - spot_price).abs().idxmin()]['strikePrice']
+
+            # Create short dataframes which only 10 aboe and below of atm_ce_strike and atm_pe_strike
+            df_ce_temp = df_ce[(df_ce['strikePrice'] >= atm_ce_strike - 10 * get_strike_interval(symbolData)) \
+                                & (df_ce['strikePrice'] <= atm_ce_strike + 10 * get_strike_interval(symbolData))]
+            df_pe_temp = df_pe[(df_pe['strikePrice'] >= atm_pe_strike - 10 * get_strike_interval(symbolData)) \
+                                & (df_pe['strikePrice'] <= atm_pe_strike + 10 * get_strike_interval(symbolData))]
+
+            # merge the two dataframes on strikePrice
+            df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
+
+            df_merge_temp = df_merge.iloc[5:]
+            df_merge_temp = df_merge_temp[:-5]
+
+            #Get strike price which has minimium difference between lastPrice_ce and lastPrice_pe
+            df_merge_temp['diff'] = abs(df_merge_temp['call_ltp'] - df_merge_temp['put_ltp'])
+            df_merge_temp['diff'] = df_merge_temp['diff'].astype(float)
+
+            # Sort df_merge by diff
+            df_merge_temp = df_merge_temp.sort_values(by=['diff'])
+
+            # get strangle strike price which has minimium difference between lastPrice_ce and lastPrice_pe
+            strangle_strike = df_merge_temp['strikePrice'].iloc[0]
+
+            atm_ce_strike = strangle_strike
+            atm_pe_strike = strangle_strike
+
+            #print(symbolData, strangle_strike, df_merge_temp['call_ltp'].iloc[0], df_merge_temp['put_ltp'].iloc[0])
+
+            # ce strangle strike price is 2 times of sum of lastPrice_ce and lastPrice_pe
+            ce_strangle_strike = strangle_strike +  2 * ((df_merge_temp['call_ltp'] + df_merge_temp['put_ltp']).iloc[0])
+            pe_strangle_strike = strangle_strike -  2 * ((df_merge_temp['call_ltp'] + df_merge_temp['put_ltp']).iloc[0])
+
+            #print(strangle_strike, ce_strangle_strike, pe_strangle_strike)
+
+            # round of ce_strangle_strike to nearest 50
+            ce_strangle_strike = round(ce_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
+            pe_strangle_strike = round(pe_strangle_strike / get_strike_interval(symbolData)) * get_strike_interval(symbolData)
+
+            #print(ce_strangle_strike, pe_strangle_strike)
+
+            if prev_strangle_ce_strike == 0:
+                prev_strangle_ce_strike = ce_strangle_strike
+
+            if prev_strangle_pe_strike == 0:
+                prev_strangle_pe_strike = pe_strangle_strike
+
+            # Calculate the PE to CE ratio
+            total_open_interest_ce = df_ce['call_open_interest'].sum()
+            total_open_interest_pe = df_pe['put_open_interest'].sum()
+
+            pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
+
+            # Find the last prices for ATM CE and ATM PE
+            atm_ce_last_price = df_ce[df_ce['strikePrice'] == atm_ce_strike]['call_ltp'].values[0]
+            atm_pe_last_price = df_pe[df_pe['strikePrice'] == atm_pe_strike]['put_ltp'].values[0]
+            if prev_atm_strike == 0:
+                prev_atm_ce_price = 0
+                prev_atm_pe_price = 0
+                prev_atm_next_ce_price = 0
+                prev_atm_pe_strike_price = 0
+            else:
+                prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['call_ltp'].values[0]
+                prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['put_ltp'].values[0]
+                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]
+                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 *get_strike_interval(symbolData))]['put_ltp'].values[0]
+
+            # Save data to a dictionary along with the current time
+            result_dict = {
+                'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'spot_price': spot_price,
+                'pe_to_ce_ratio': pe_to_ce_ratio,
+                'atm_strike': float(atm_ce_strike),
+                'atm_current_ce_price': float(atm_ce_last_price),
+                'atm_current_pe_price': float(atm_pe_last_price),
+                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]),
+                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData))]['put_ltp'].values[0]),
+                'prev_atm_strike': prev_atm_strike,
+                'prev_atm_ce_price': float(prev_atm_ce_price),
+                'prev_atm_pe_price': float(prev_atm_pe_price),
+                'prev_atm_next_ce_price': float(prev_atm_next_ce_price),
+                'prev_atm_next_pe_price': float(prev_atm_pe_strike_price),
+                'ce_strangle_strike': float(ce_strangle_strike),
+                'pe_strangle_strike': float(pe_strangle_strike),
+                'ce_strangle_price': float(df_ce[df_ce['strikePrice'] == ce_strangle_strike]['call_ltp'].values[0]),
+                'pe_strangle_price': float(df_pe[df_pe['strikePrice'] == pe_strangle_strike]['put_ltp'].values[0]),
+                'prev_strangle_ce_strike': prev_strangle_ce_strike,
+                'prev_strangle_pe_strike': prev_strangle_pe_strike,
+                'prev_ce_strangle_price': float(df_ce[df_ce['strikePrice'] == prev_strangle_ce_strike]['call_ltp'].values[0]),
+                'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['put_ltp'].values[0]),
+                'ce_highest_strike': float(ce_highest_values[0]),
+                'ce_highest_open_interest': float(ce_highest_values[1]),
+                'ce_highest_last_price': float(ce_highest_values[2]),
+                'pe_highest_strike': float(pe_highest_values[0]),
+                'pe_highest_open_interest': float(pe_highest_values[1]),
+                'pe_highest_last_price': float(pe_highest_values[2]),
+                'ce_second_highest_strike': float(ce_second_highest_values[0]),
+                'ce_second_highest_open_interest': float(ce_second_highest_values[1]),
+                'ce_second_highest_last_price': float(ce_second_highest_values[2]),
+                'pe_second_highest_strike': float(pe_second_highest_values[0]),
+                'pe_second_highest_open_interest': float(pe_second_highest_values[1]),
+                'pe_second_highest_last_price': float(pe_second_highest_values[2]),
+                'ce_third_highest_strike': float(ce_third_highest_values[0]),
+                'ce_third_highest_open_interest': float(ce_third_highest_values[1]),
+                'ce_third_highest_last_price': float(ce_third_highest_values[2]),
+                'pe_third_highest_strike': float(pe_third_highest_values[0]),
+                'pe_third_highest_open_interest': float(pe_third_highest_values[1]),
+                'pe_third_highest_last_price': float(pe_third_highest_values[2])
+            }
+            return result_dict
+
+        else:
+            print("Failed to retrieve option chain data")
+            return None
+
 """
+symbol = "SENSEX"
+option_chain_analyzer = OptionChainData(symbol)
+option_chain_info = option_chain_analyzer.extract_options_data_bse(0, 0, 0, symbol)
+print("BSE data \n")
+print(option_chain_info)
+
+option_chain_info =option_chain_analyzer.extract_options_data_groww(0, 0, 0, symbol)
+print("Groww data \n")
+print(option_chain_info)
+
+
 # Example usage:
 symbol = "NIFTY"
 option_chain_analyzer = OptionChainData(symbol)
