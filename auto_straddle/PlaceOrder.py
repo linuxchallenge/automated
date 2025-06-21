@@ -150,7 +150,7 @@ class PlaceOrder:
     def place_order_sythetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 30,
+            'BANKNIFTY': 35,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
