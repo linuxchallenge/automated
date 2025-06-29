@@ -15,7 +15,6 @@ from datetime import datetime, time, timedelta
 import os
 import logging
 import time as t
-from typing import Optional
 import pandas as pd
 import TelegramSend
 import configuration
@@ -23,17 +22,8 @@ from exchange_state import ExchangeData
 from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
 
-ORDER_STATES = {
-    'OPEN': {
-        'INITIAL': 'open_pending',
-        'COMPLETED': 'open',
-        'FAILED': 'closed'
-    },
-    'CLOSE': {
-        'INITIAL': 'close_pending',
-        'COMPLETED': 'closed',
-        'FAILED': 'open'  # Remains open if close fails
-    }
+STATERGY_SEQ = {
+    "SENSEX", "NIFTY"
 }
 
 class NiftyPositionalStrategy:
@@ -41,56 +31,34 @@ class NiftyPositionalStrategy:
         self.accounts = accounts
         self.symbol = "NIFTY"  # Fixed to NIFTY only
         self.nso_open = None
-        self._cached_expiry: Optional[datetime] = None
-        self._last_expiry_check: Optional[datetime] = None
         # Add new tracking variables
         self.last_execution_time = None
-        self.EXECUTION_INTERVAL = timedelta(minutes=10)  # 10 minutes interval
+        self.EXECUTION_INTERVAL = timedelta(minutes=5)  # 10 minutes interval
         self.TRADE_COOLDOWN = timedelta(minutes=30)  # 30 minutes cooldown
         self.MAX_TRADES_PER_EXPIRY = 3
+        self.nifty_date_pd = None
+        self.sensex_date_pd = None
+        self.get_nift_sensex_expiry()
 
     def loss_limit(self):
         return -700  # Fixed for NIFTY
 
 
     def get_next_nifty_expiry(self):
-        """
-        Returns the next NIFTY expiry date, accounting for holidays.
-        If Thursday is a holiday, uses Wednesday; if Wednesday is also a holiday, uses Tuesday, etc.
-        Caches the result for the current expiry week.
-        """
-        today = datetime.now().date()
-
-        # If we have a cached expiry and it's still valid for this week, return it
-        if self._cached_expiry and self._last_expiry_check:
-            # Convert datetime to date for comparison
-            cached_expiry_date = self._cached_expiry.date() if isinstance(self._cached_expiry, datetime) else self._cached_expiry
-            last_check_date = self._last_expiry_check.date() if isinstance(self._last_expiry_check, datetime) else self._last_expiry_check
-
-            if today <= cached_expiry_date and (today - last_check_date).days < 7:
-                return self._cached_expiry
-
-        # The rest of the function remains unchanged
-        # Find the next Thursday (expiry week)
-        days_ahead = (3 - today.weekday()) % 7  # 3 = Thursday
-        expiry_candidate = today + timedelta(days=days_ahead)
-        ex = ExchangeData()
-
-        # Check Thursday, then Wednesday, then Tuesday, then Monday
-        for offset in range(0, 4):
-            check_date = expiry_candidate - timedelta(days=offset)
-            if not ex.is_nfo_holiday(check_date):
-                expiry_datetime = datetime.combine(check_date, datetime.min.time())
-                # Cache the result
-                self._cached_expiry = expiry_datetime
-                self._last_expiry_check = today
-                return expiry_datetime
-
-        # Fallback: if all are holidays, use Thursday
-        expiry_datetime = datetime.combine(expiry_candidate, datetime.min.time())
-        self._cached_expiry = expiry_datetime
-        self._last_expiry_check = today
-        return expiry_datetime
+        # self.nifty_date_pd is self.nifty_date_pd, want to return in format self.nifty_date_pd
+        if self.symbol == "NIFTY":
+            if self.nifty_date_pd is not None and len(self.nifty_date_pd) > 0:
+                return self.nifty_date_pd[0]
+            logging.error("Nifty expiry date not found.")
+            return None
+        elif self.symbol == "SENSEX":
+            if self.sensex_date_pd is not None and len(self.sensex_date_pd) > 0:
+                return self.sensex_date_pd[0]
+            logging.error("SENSEX expiry date not found.")
+            return None
+        else:
+            logging.error(f"Invalid symbol: {self.symbol}. Expected 'NIFTY' or 'SENSEX'.")
+            return None
 
     def is_entry_time(self) -> bool:
         """Check if it's entry time (around 12 PM, 2 days before expiry)"""
@@ -99,13 +67,23 @@ class NiftyPositionalStrategy:
 
         # Get next expiry (using cached value)
         next_expiry = self.get_next_nifty_expiry()
+        if next_expiry is None:
+            logging.error("Could not get next expiry date, skipping entry time check")
+            return False
         expiry_date = next_expiry.date()
 
         # Calculate days until expiry
         days_to_expiry = (expiry_date - current_date).days
 
+        # check the index of STATERGY_SEQ self.symbol is index 0 or 1
+        dates_to_expiry = 0
+        if self.symbol == list(STATERGY_SEQ)[0]:
+            dates_to_expiry = 1
+        elif self.symbol == list(STATERGY_SEQ)[1]:
+            dates_to_expiry = 2
+
         # Check if it's 2 days before expiry
-        if days_to_expiry == 2:
+        if days_to_expiry == dates_to_expiry:
             # Entry window is true if after 11 AM
             is_entry_window = current_time >= time(11, 0)
 
@@ -115,7 +93,7 @@ class NiftyPositionalStrategy:
                            "Next expiry: %s", current_time, days_to_expiry, expiry_date)
             return is_entry_window
 
-        if days_to_expiry < 2:
+        if days_to_expiry < dates_to_expiry:
             return True
 
         return False
@@ -224,44 +202,49 @@ class NiftyPositionalStrategy:
                 logging.info("Market is closed, skipping execution")
                 return False
 
-            # Create OptionChainData object but then get the dictionary data from it
-            try:
-                option_chain_obj = OptionChainData("NIFTY")
-                # Get the actual data dictionary
-                option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, "NIFTY")
-            except Exception as e:
-                logging.error(f"Failed to create or get data from OptionChainData: {str(e)}")
-                return False
+            for STRATEGY_SEQ_KEY in STATERGY_SEQ:
+                self.symbol = STRATEGY_SEQ_KEY
 
-            # Loop through all accounts
-            execution_results = []
-            for account in self.accounts:
+                # Create OptionChainData object but then get the dictionary data from it
                 try:
-                    logging.info(f"Executing strategy for account: {account}")
-                    account_data = account_details[
-                        (account_details['Account'] == account) &
-                        (account_details['Symbol'] == "NIFTY")
-                    ]
+                    option_chain_obj = OptionChainData(STRATEGY_SEQ_KEY)
+                    option_chain_obj.set_bse_expiry_date_pd(self.sensex_date_pd)
+                    # Get the actual data dictionary
+                    option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, STRATEGY_SEQ_KEY)
+                except Exception as e:
+                    logging.error(f"Failed to create or get data from OptionChainData: {str(e)}")
+                    return False
 
-                    if account_data.empty:
-                        logging.warning(f"No trading data found for account {account}")
+                # Loop through all accounts
+                execution_results = []
+                for account in self.accounts:
+                    try:
+                        logging.info(f"Executing strategy for account: {account}")
+                        account_data = account_details[
+                            (account_details['Account'] == account) &
+                            (account_details['Symbol'] == STRATEGY_SEQ_KEY)
+                        ]
+
+                        if account_data.empty:
+                            logging.warning(f"No trading data found for account {account}")
+                            continue
+
+                        quantity = account_data['quantity'].values[0]
+
+                        result = self._execute_for_account(
+                            account=account,
+                            option_chain_analyzer=option_chain_analyzer,
+                            quantity=quantity,
+                            symbol=STRATEGY_SEQ_KEY,
+                            place_order_obj=place_order_obj
+                        )
+                        execution_results.append(result)
+
+                    except Exception as acc_error:
+                        logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
+                        self.send_error_message(account, str(acc_error))
+                        execution_results.append(False)
                         continue
-
-                    quantity = account_data['quantity'].values[0]
-
-                    result = self._execute_for_account(
-                        account=account,
-                        option_chain_analyzer=option_chain_analyzer,
-                        quantity=quantity,
-                        place_order_obj=place_order_obj
-                    )
-                    execution_results.append(result)
-
-                except Exception as acc_error:
-                    logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
-                    self.send_error_message(account, str(acc_error))
-                    execution_results.append(False)
-                    continue
 
             return all(execution_results)
 
@@ -271,7 +254,7 @@ class NiftyPositionalStrategy:
             return False
 
     def _execute_for_account(self, account: str, option_chain_analyzer: dict,
-                            quantity: int, place_order_obj):
+                            quantity: int, symbol: str, place_order_obj):
         """
         Execute strategy for a single account
 
@@ -284,7 +267,7 @@ class NiftyPositionalStrategy:
         if account not in self.accounts:
             raise ValueError(f"Error: Account '{account}' not valid. Choose from {self.accounts}")
 
-        sold_options_file_path = self.get_sold_options_file_path(account)
+        sold_options_file_path = self.get_sold_options_file_path(account, symbol)
 
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
@@ -345,11 +328,15 @@ class NiftyPositionalStrategy:
                         total_pe_pl += pe_pl
 
                 total_pl = total_ce_pl + total_pe_pl
-                total_pl = total_pl * 75
+                if self.symbol == "NIFTY":
+                    total_pl = total_pl * 75
+                elif self.symbol == "SENSEX":
+                    total_pl = total_pl * 20
 
                 # Send consolidated P/L information via Telegram
                 pl_message = (
                     f"Expiry Day Consolidated P/L for {account}:\n"
+                    f"Symbol: {self.symbol}\n"
                     f"CE P/L: {total_ce_pl:.2f}\n"
                     f"PE P/L: {total_pe_pl:.2f}\n"
                     f"Total P/L: {total_pl:.2f}\n"
@@ -516,15 +503,15 @@ class NiftyPositionalStrategy:
             existing_sold_options_info = pd.DataFrame([sold_options_info])
             self.store_sold_options_info(existing_sold_options_info, account)
 
-    def get_sold_options_file_path(self, account):
+    def get_sold_options_file_path(self, account, symbol):
         """Get file path using expiry date instead of current date"""
         expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_{expiry_date}_{account}.csv"
+        return f"csv/nifty_pos_options_info_{expiry_date}_{account}_{symbol}.csv"
 
-    def get_error_options_file_path(self, account):
+    def get_error_options_file_path(self, account, symbol):
         """Get error file path using expiry date instead of current date"""
         expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}.csv"
+        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}_{symbol}.csv"
 
     def get_option_price(self, option_chain_analyzer, option_type):
         """
@@ -672,7 +659,7 @@ class NiftyPositionalStrategy:
     def check_if_trade_is_executed(self, account, place_order_obj):
         error_in_order = False
         error_message = ""
-        sold_options_file_path = self.get_sold_options_file_path(account)
+        sold_options_file_path = self.get_sold_options_file_path(account, self.symbol)
 
         logging.info(f"Checking if trade is executed for account {account}")
 
@@ -841,7 +828,7 @@ class NiftyPositionalStrategy:
             account: Trading account identifier
         """
         try:
-            file_path = self.get_sold_options_file_path(account)
+            file_path = self.get_sold_options_file_path(account, self.symbol)
             info.to_csv(file_path, index=False)
             logging.info(f"Trade information stored in {file_path}")
         except Exception as e:
@@ -938,8 +925,8 @@ class NiftyPositionalStrategy:
         """
         try:
             # Get file paths
-            sold_options_file_path = self.get_sold_options_file_path(account)
-            error_file_path = self.get_error_options_file_path(account)
+            sold_options_file_path = self.get_sold_options_file_path(account, self.symbol)
+            error_file_path = self.get_error_options_file_path(account, self.symbol)
 
             # Initialize Telegram API
             telegram_api = TelegramSend.telegram_send_api()
@@ -982,6 +969,57 @@ class NiftyPositionalStrategy:
                 logging.info(f"Expiry day closing condition met. Current time: {current_time.time()}")
             return closing_time
         return False
+
+    def get_nift_sensex_expiry(self):
+        """
+        Get the next Nifty expiry date
+
+        Returns:
+            datetime: Next Nifty expiry date
+        """
+        fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
+        symboldf = pd.read_json(fileurl)
+
+        # filter for BSE options
+        symboldf = symboldf[symboldf['exchange'] == 'BSE']
+        symboldf = symboldf[symboldf['segment'] == 'BSE_FO']
+
+        # Extract unique expiry dates
+        expiry_dates = symboldf['expiry'].unique()
+
+        # sort expiry_dates
+        expiry_dates = sorted(expiry_dates)
+
+        # keep only nearest 1 date
+        expiry_dates = expiry_dates[:1]
+
+        self.sensex_date_pd = pd.to_datetime(expiry_dates, unit='ms')
+
+        fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
+        symboldf = pd.read_json(fileurl)
+
+        # filter for BSE options
+        symboldf = symboldf[symboldf['exchange'] == 'NSE']
+        symboldf = symboldf[symboldf['segment'] == 'NSE_FO']
+
+        # Extract unique expiry dates
+        expiry_dates = symboldf['expiry'].unique()
+
+        # sort expiry_dates
+        expiry_dates = sorted(expiry_dates)
+
+        # keep only nearest 1 date
+        expiry_dates = expiry_dates[:1]
+
+        self.nifty_date_pd = pd.to_datetime(expiry_dates, unit='ms')
+
+
+#commodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn_xcX-C2JGmkNQAj_DmrHhpfj0d0EESIN-JiE0zsrQ4guej5Y8FwHvDSCks7pdMMyE0UtkdTR_-bZ/pub?output=csv'
+#commodity_account_details = pd.read_csv(commodity_path)
+#commodity_stratergy = NiftyPositionalStrategy(commodity_account_details['Account'].unique())
+#date = commodity_stratergy.get_next_nifty_expiry()
+#print(f"Next Nifty expiry date: {date}")
+
 
 """
 import PlaceOrder

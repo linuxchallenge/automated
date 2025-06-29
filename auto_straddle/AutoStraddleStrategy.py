@@ -558,7 +558,7 @@ class AutoStraddleStrategy:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
                 'NIFTY': 75,
-                'BANKNIFTY': 30,
+                'BANKNIFTY': 35,
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
@@ -613,7 +613,7 @@ class AutoStraddleStrategy:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
                 'NIFTY': 75,
-                'BANKNIFTY': 30,
+                'BANKNIFTY': 35,
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
@@ -700,7 +700,7 @@ class AutoStraddleStrategy:
 
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 30,
+            'BANKNIFTY': 35,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }

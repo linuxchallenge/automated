@@ -240,6 +240,13 @@ class fivepaise_api(object):
         """
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
 
+        if symbol == "SENSEX":
+            # For SENSEX, we use the BFO exchange
+            exchange = "B"
+        else:
+            # For other symbols, we use the NFO exchange
+            exchange = "N"
+
         if tokenInfo is None:
             print(f"Could not find token info for {symbol} {strike_price} {pe_ce}")
             return -1, None
@@ -264,7 +271,7 @@ class fivepaise_api(object):
             # Use the isIntraday parameter in the order placement
             order_id = self.obj.place_order(
                 OrderType=buy_sell,
-                Exchange='N',
+                Exchange=exchange,
                 ExchangeType='D',
                 ScripCode=int(token),
                 Qty=int(qty),

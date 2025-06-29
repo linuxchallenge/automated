@@ -106,9 +106,10 @@ class PlaceOrder:
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 30,
+            'BANKNIFTY': 35,
             'FINNIFTY': 65,
-            'MIDCPNIFTY': 50
+            'MIDCPNIFTY': 50,
+            'SENSEX': 20
         }
         # Use .get() with default value of 1
         multiplier = multiplication_factor.get(symbol, 1)
@@ -174,7 +175,7 @@ class PlaceOrder:
     def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 30,
+            'BANKNIFTY': 35,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
@@ -209,9 +210,10 @@ class PlaceOrder:
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 30,
+            'BANKNIFTY': 35,
             'FINNIFTY': 65,
-            'MIDCPNIFTY': 50
+            'MIDCPNIFTY': 50,
+            'SENSEX': 20
         }
         qty = qty * multiplication_factor[symbol]
 

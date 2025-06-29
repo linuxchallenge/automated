@@ -56,6 +56,7 @@ class OptionChainData:
         self.symbol = symbolinit
         #self.url = self.BASE_URL.format(symbol.value)
         self.url = self.BASE_URL.format(symbolinit)
+        self.bse_expiry_date_pd = None
 
     def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
         if self.get_from == "groww":
@@ -594,30 +595,11 @@ class OptionChainData:
         except ValueError as e:
             print(f"JSON parsing error: {e}")
             return None
+        
+    def set_bse_expiry_date_pd(self, expiry_date):
+        self.bse_expiry_date_pd = expiry_date
 
     def extract_options_data_bse(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
-        fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
-        symboldf = pd.read_json(fileurl)
-
-        # filter for BSE options
-        symboldf = symboldf[symboldf['exchange'] == 'BSE']
-        symboldf = symboldf[symboldf['segment'] == 'BSE_FO']
-
-        # Extract unique expiry dates
-        expiry_dates = symboldf['expiry'].unique()
-
-        # sort expiry_dates
-        expiry_dates = sorted(expiry_dates)
-
-        # keep only nearest 1 date
-        expiry_dates = expiry_dates[:1]
-
-        print("Available expiry dates in the dataset:")
-        print(expiry_dates)
-
-        date_pd = pd.to_datetime(expiry_dates, unit='ms')
-        print(f"Pandas conversion: {date_pd.strftime('%d %b %Y')}")
-
         session = requests.Session()
 
         # Set up retry strategy
@@ -655,7 +637,7 @@ class OptionChainData:
         _ = session.cookies.get_dict()
 
         # Get option chain data for SENSEX expiry on 24 Jun 2025
-        data = self.get_option_chain_data_bse(date_pd.strftime('%d %b %Y'), session, scrip_cd=1, strike_price=0)
+        data = self.get_option_chain_data_bse(self.bse_expiry_date_pd.strftime('%d %b %Y'), session, scrip_cd=1, strike_price=0)
 
         if data:
             option_chain = data.get("Table", [])

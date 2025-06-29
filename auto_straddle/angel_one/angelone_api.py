@@ -87,6 +87,9 @@ class angelone_api(object):
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
         df = self.l.token_map
         strike_price = strike_price * 100
+        if symbol == "SENSEX":
+            return df[(df['exch_seg'] == 'BFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
+                df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
         if exch_seg == 'NSE':
             eq_df = df[(df['exch_seg'] == 'NSE') & (df['symbol'].str.contains('EQ'))]
             return eq_df[eq_df['name'] == symbol]
@@ -98,7 +101,7 @@ class angelone_api(object):
                 df['expiry'] = pd.to_datetime(df['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
                 return df[(df['exch_seg'] == 'NFO') &  (df['instrumenttype'] == instrumenttype) & \
-                          (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
+                        (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
             else:
                 expiry_str = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
                                 (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
@@ -106,9 +109,9 @@ class angelone_api(object):
                 expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
                 if (expiry_date - today).days <= 10:
                     return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
-                              (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+                            (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
                 return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
-                          (df['name'] == symbol)].sort_values(by=['expiry'])
+                        (df['name'] == symbol)].sort_values(by=['expiry'])
         elif exch_seg == 'NFO' and (instrumenttype == 'OPTSTK' or instrumenttype == 'OPTIDX'):
             return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
                         df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
@@ -267,6 +270,11 @@ class angelone_api(object):
                 logging.error(f"Error executing place_order: {e}")
                 tokenInfo = df.iloc[0]
 
+            if symbol == "SENSEX":
+                exchange = "BFO"
+            else:
+                exchange = "NFO"
+
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
@@ -279,14 +287,14 @@ class angelone_api(object):
                 "tradingsymbol": symbol,
                 "symboltoken": token,
                 "transactiontype": buy_sell,
-                "exchange": "NFO",
+                "exchange": exchange,
                 "ordertype": "MARKET",
                 "producttype": product_type,
                 "duration": "DAY",
                 "quantity": qty
             }
 
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot} exchange: {exchange}")
             try:
                 # Add timeout to API calls
                 try:
@@ -583,7 +591,6 @@ class angelone_api(object):
             print(f"Error executing get_order_status: {e}")
             logger.error(f"Error executing get_order_status: {e}")
             return -1, -1
-
 
 
 '''
