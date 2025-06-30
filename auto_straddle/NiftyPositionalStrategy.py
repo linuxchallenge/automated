@@ -226,7 +226,7 @@ class NiftyPositionalStrategy:
                         ]
 
                         if account_data.empty:
-                            logging.warning(f"No trading data found for account {account}")
+                            logging.warning(f"No trading data found for account {account}  {self.symbol}")
                             continue
 
                         quantity = account_data['quantity'].values[0]
