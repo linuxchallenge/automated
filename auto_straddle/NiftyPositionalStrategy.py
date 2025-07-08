@@ -22,8 +22,13 @@ from exchange_state import ExchangeData
 from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
 
-STATERGY_SEQ = {
+INDEX_SEQ = {
     "SENSEX", "NIFTY"
+}
+
+STRATERGY_SEQ = {
+    "fr",
+    "as"
 }
 
 class NiftyPositionalStrategy:
@@ -75,11 +80,11 @@ class NiftyPositionalStrategy:
         # Calculate days until expiry
         days_to_expiry = (expiry_date - current_date).days
 
-        # check the index of STATERGY_SEQ self.symbol is index 0 or 1
+        # check the index of INDEX_SEQ self.symbol is index 0 or 1
         dates_to_expiry = 0
-        if self.symbol == list(STATERGY_SEQ)[0]:
+        if self.symbol == list(INDEX_SEQ)[0]:
             dates_to_expiry = 1
-        elif self.symbol == list(STATERGY_SEQ)[1]:
+        elif self.symbol == list(INDEX_SEQ)[1]:
             dates_to_expiry = 2
 
         # Check if it's 2 days before expiry
@@ -202,15 +207,15 @@ class NiftyPositionalStrategy:
                 logging.info("Market is closed, skipping execution")
                 return False
 
-            for STRATEGY_SEQ_KEY in STATERGY_SEQ:
-                self.symbol = STRATEGY_SEQ_KEY
+            for INDEX_SEQ_KEY in INDEX_SEQ:
+                self.symbol = INDEX_SEQ_KEY
 
                 # Create OptionChainData object but then get the dictionary data from it
                 try:
-                    option_chain_obj = OptionChainData(STRATEGY_SEQ_KEY)
+                    option_chain_obj = OptionChainData(INDEX_SEQ_KEY)
                     option_chain_obj.set_bse_expiry_date_pd(self.sensex_date_pd)
                     # Get the actual data dictionary
-                    option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, STRATEGY_SEQ_KEY)
+                    option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, INDEX_SEQ_KEY)
                 except Exception as e:
                     logging.error(f"Failed to create or get data from OptionChainData: {str(e)}")
                     return False
@@ -219,10 +224,10 @@ class NiftyPositionalStrategy:
                 execution_results = []
                 for account in self.accounts:
                     try:
-                        logging.info(f"Executing strategy for account: {account} {STRATEGY_SEQ_KEY}")
+                        logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY}")
                         account_data = account_details[
                             (account_details['Account'] == account) &
-                            (account_details['Symbol'] == STRATEGY_SEQ_KEY)
+                            (account_details['Symbol'] == INDEX_SEQ_KEY)
                         ]
 
                         if account_data.empty:
@@ -235,7 +240,7 @@ class NiftyPositionalStrategy:
                             account=account,
                             option_chain_analyzer=option_chain_analyzer,
                             quantity=quantity,
-                            symbol=STRATEGY_SEQ_KEY,
+                            symbol=INDEX_SEQ_KEY,
                             place_order_obj=place_order_obj
                         )
                         execution_results.append(result)
