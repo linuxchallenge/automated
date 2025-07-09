@@ -43,6 +43,7 @@ class NiftyPositionalStrategy:
         self.MAX_TRADES_PER_EXPIRY = 3
         self.nifty_date_pd = None
         self.sensex_date_pd = None
+        self.stratergy = "fr"  # Fixed to 'fr' strategy
         self.get_nift_sensex_expiry()
 
     def loss_limit(self):
@@ -143,6 +144,11 @@ class NiftyPositionalStrategy:
             upper_boundary = atm_strike + atm_straddle_sum
             lower_boundary = atm_strike - atm_straddle_sum
 
+            # if stratergy is as then upper_boundary and lower_boundary will be 75 %
+            if self.stratergy == "as":
+                upper_boundary = atm_strike + (atm_straddle_sum * 0.75)
+                lower_boundary = atm_strike - (atm_straddle_sum * 0.75)
+
             # Log boundary information for debugging
             logging.info(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
 
@@ -188,7 +194,7 @@ class NiftyPositionalStrategy:
                 logging.error("Account details DataFrame is empty or None")
                 return False
 
-            required_columns = ['Account', 'Symbol', 'quantity']
+            required_columns = ['Account', 'Symbol', 'quantity', 'stratergy']
             if not all(col in account_details.columns for col in required_columns):
                 logging.error(f"Account details missing required columns: {required_columns}")
                 return False
@@ -222,34 +228,37 @@ class NiftyPositionalStrategy:
 
                 # Loop through all accounts
                 execution_results = []
-                for account in self.accounts:
-                    try:
-                        logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY}")
-                        account_data = account_details[
-                            (account_details['Account'] == account) &
-                            (account_details['Symbol'] == INDEX_SEQ_KEY)
-                        ]
+                for STRATERGY_SEQ_KEY in STRATERGY_SEQ:
+                    for account in self.accounts:
+                        try:
+                            logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY}")
+                            account_data = account_details[
+                                (account_details['Account'] == account) &
+                                (account_details['Symbol'] == INDEX_SEQ_KEY) &
+                                 (account_details['stratergy'] == STRATERGY_SEQ_KEY)
+                            ]
 
-                        if account_data.empty:
-                            logging.warning(f"No trading data found for account {account}  {self.symbol}")
+                            if account_data.empty:
+                                logging.warning(f"No trading data found for account {account}  {self.symbol}")
+                                continue
+
+                            quantity = account_data['quantity'].values[0]
+                            self.stratergy = STRATERGY_SEQ_KEY
+
+                            result = self._execute_for_account(
+                                account=account,
+                                option_chain_analyzer=option_chain_analyzer,
+                                quantity=quantity,
+                                symbol=INDEX_SEQ_KEY,
+                                place_order_obj=place_order_obj
+                            )
+                            execution_results.append(result)
+
+                        except Exception as acc_error:
+                            logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
+                            self.send_error_message(account, str(acc_error))
+                            execution_results.append(False)
                             continue
-
-                        quantity = account_data['quantity'].values[0]
-
-                        result = self._execute_for_account(
-                            account=account,
-                            option_chain_analyzer=option_chain_analyzer,
-                            quantity=quantity,
-                            symbol=INDEX_SEQ_KEY,
-                            place_order_obj=place_order_obj
-                        )
-                        execution_results.append(result)
-
-                    except Exception as acc_error:
-                        logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
-                        self.send_error_message(account, str(acc_error))
-                        execution_results.append(False)
-                        continue
 
             return all(execution_results)
 
@@ -342,6 +351,7 @@ class NiftyPositionalStrategy:
                 pl_message = (
                     f"Expiry Day Consolidated P/L for {account}:\n"
                     f"Symbol: {self.symbol}\n"
+                    f"Strategy: {self.stratergy}\n"
                     f"CE P/L: {total_ce_pl:.2f}\n"
                     f"PE P/L: {total_pe_pl:.2f}\n"
                     f"Total P/L: {total_pl:.2f}\n"
@@ -498,8 +508,6 @@ class NiftyPositionalStrategy:
             account,
             option_chain_analyzer['spot_price'],
             option_chain_analyzer,
-            option_chain_analyzer['ce_strangle_strike'],
-            option_chain_analyzer['pe_strangle_strike'],
             quantity,
             place_order_obj
         )
@@ -511,12 +519,12 @@ class NiftyPositionalStrategy:
     def get_sold_options_file_path(self, account, symbol):
         """Get file path using expiry date instead of current date"""
         expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_{expiry_date}_{account}_{symbol}.csv"
+        return f"csv/nifty_pos_options_info_{expiry_date}_{account}_{symbol}_{self.stratergy}.csv"
 
     def get_error_options_file_path(self, account, symbol):
         """Get error file path using expiry date instead of current date"""
         expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
-        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}_{symbol}.csv"
+        return f"csv/nifty_pos_options_info_error_{expiry_date}_{account}_{symbol}_{self.stratergy}.csv"
 
     def get_option_price(self, option_chain_analyzer, option_type):
         """
@@ -529,16 +537,16 @@ class NiftyPositionalStrategy:
         Returns:
             float: Option price
         """
-        if option_type == 'CE':
-            if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
+        if self.stratergy == 'fr':
+            if option_type == 'CE':
                 return option_chain_analyzer['ce_strangle_price']
-            else:
-                return option_chain_analyzer['ce_strangle_price']
-        elif option_type == 'PE':
-            if option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
+            if option_type == 'PE':
                 return option_chain_analyzer['pe_strangle_price']
-            else:
-                return option_chain_analyzer['pe_strangle_price']
+        elif self.stratergy == 'as':
+            if option_type == 'CE':
+                return option_chain_analyzer['atm_current_ce_price']
+            if option_type == 'PE':
+                return option_chain_analyzer['atm_current_pe_price']
         return 0  # Return 0 for invalid option type
 
     def get_option_strike(self, option_chain_analyzer, option_type):
@@ -552,14 +560,20 @@ class NiftyPositionalStrategy:
         Returns:
             float: Strike price
         """
-        if option_type == 'CE':
-            return option_chain_analyzer['ce_strangle_strike']
-        elif option_type == 'PE':
-            return option_chain_analyzer['pe_strangle_strike']
+        if self.stratergy == 'fr':
+            if option_type == 'CE':
+                return option_chain_analyzer['ce_strangle_strike']
+            elif option_type == 'PE':
+                return option_chain_analyzer['pe_strangle_strike']
+        elif self.stratergy == 'as':
+            if option_type == 'CE':
+                return option_chain_analyzer['atm_strike']
+            elif option_type == 'PE':
+                return option_chain_analyzer['atm_strike']
         return 0  # Return 0 for invalid option type
 
     def create_new_position(self, account, spot_price, option_chain_analyzer,
-                           ce_strike, pe_strike, quantity, place_order_obj):
+                           quantity, place_order_obj):
         sold_options_info = {
             'account': account,
             'symbol': self.symbol,
@@ -589,17 +603,18 @@ class NiftyPositionalStrategy:
         if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
             # Bearish - Place only CE
             sold_options_info = self.place_ce_only(
-                sold_options_info, account, ce_strike, quantity, place_order_obj
+                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'CE'), quantity, place_order_obj
             )
         elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
             # Bullish - Place only PE
             sold_options_info = self.place_pe_only(
-                sold_options_info, account, pe_strike, quantity, place_order_obj
+                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'PE'), quantity, place_order_obj
             )
         else:
             # Neutral - Place both
             sold_options_info = self.place_both_legs(
-                sold_options_info, account, ce_strike, pe_strike, quantity, place_order_obj
+                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'CE'),
+                self.get_option_strike(option_chain_analyzer, 'PE'), quantity, place_order_obj
             )
 
         return sold_options_info
