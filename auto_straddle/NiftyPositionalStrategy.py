@@ -152,22 +152,41 @@ class NiftyPositionalStrategy:
             # Log boundary information for debugging
             logging.info(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
 
-            # Only check relevant boundaries based on which legs are active
-            if ce_is_active and upper_boundary > strangle_ce_strike:
-                logging.info(
-                    f"Exiting trade - Upper boundary breach: "
-                    f"ATM {atm_strike} + Straddle {atm_straddle_sum} = {upper_boundary} > "
-                    f"CE Strike {strangle_ce_strike}"
-                )
-                return True
+            if self.stratergy == "fr":
+                # Only check relevant boundaries based on which legs are active
+                if ce_is_active and upper_boundary > strangle_ce_strike:
+                    logging.info(
+                        f"Exiting trade - Upper boundary breach: "
+                        f"ATM {atm_strike} + Straddle {atm_straddle_sum} = {upper_boundary} > "
+                        f"CE Strike {strangle_ce_strike}"
+                    )
+                    return True
 
-            if pe_is_active and lower_boundary < strangle_pe_strike:
-                logging.info(
-                    f"Exiting trade - Lower boundary breach: "
-                    f"ATM {atm_strike} - Straddle {atm_straddle_sum} = {lower_boundary} < "
-                    f"PE Strike {strangle_pe_strike}"
-                )
-                return True
+                if pe_is_active and lower_boundary < strangle_pe_strike:
+                    logging.info(
+                        f"Exiting trade - Lower boundary breach: "
+                        f"ATM {atm_strike} - Straddle {atm_straddle_sum} = {lower_boundary} < "
+                        f"PE Strike {strangle_pe_strike}"
+                    )
+                    return True
+            elif self.stratergy == "as":
+                print(strangle_ce_strike, strangle_pe_strike, upper_boundary, lower_boundary)
+                # For 'as' strategy, check if either boundary is breached
+                if ce_is_active and upper_boundary < strangle_ce_strike:
+                    logging.info(
+                        f"Exiting trade - Upper boundary breach: "
+                        f"ATM {atm_strike} + Straddle {atm_straddle_sum} * 0.75 = {upper_boundary} > "
+                        f"CE Strike {strangle_ce_strike}"
+                    )
+                    return True
+
+                if pe_is_active and lower_boundary > strangle_pe_strike:
+                    logging.info(
+                        f"Exiting trade - Lower boundary breach: "
+                        f"ATM {atm_strike} - Straddle {atm_straddle_sum} * 0.75 = {lower_boundary} < "
+                        f"PE Strike {strangle_pe_strike}"
+                    )
+                    return True
 
             return False
 
@@ -1039,77 +1058,3 @@ class NiftyPositionalStrategy:
 #commodity_stratergy = NiftyPositionalStrategy(commodity_account_details['Account'].unique())
 #date = commodity_stratergy.get_next_nifty_expiry()
 #print(f"Next Nifty expiry date: {date}")
-
-
-"""
-import PlaceOrder
-
-import os
-from pathlib import Path
-import logging_config  # This sets up the logging
-from OptionChainData import OptionChainData
-
-strike = {"NIFTY": 23000}
-
-# Test code
-if __name__ == '__main__':
-    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn_xcX-C2JGmkNQAj_DmrHhpfj0d0EESIN-JiE0zsrQ4guej5Y8FwHvDSCks7pdMMyE0UtkdTR_-bZ/pub?output=csv'
-    commodity_account_details = pd.read_csv(coomodity_path)
-
-    print(commodity_account_details)
-
-    # in commodity_account_details keep only dummy account
-    #commodity_account_details = commodity_account_details[commodity_account_details['Account'] == 'dummy']
-
-    #print(commodity_account_details)    
-
-    symbol = "NIFTY"
-
-    place_order = PlaceOrder.PlaceOrder()  # Instantiate the PlaceOrder class
-    place_order.init_account("deepti")
-    #place_order.init_account("leelu")
-    #place_order.init_account("avanthi")
-
-    # Get home directory
-    cur_dir = Path.home()
-    # Add /temp/data_collection to the home directory
-    cur_dir = cur_dir / 'temp' / 'data_collection'
-    # Create the directory if it does not exist
-    cur_dir.mkdir(parents=True, exist_ok=True)
-
-    #Change the current working directory to the directory
-    os.chdir(cur_dir)
-
-    commodity_stratergy = NiftyPositionalStrategy(commodity_account_details['Account'].unique())
-    print("Starting")
-
-    option_chain_analyzer = OptionChainData(symbol)
-
-    #print("Before calling get_option_chain_info", strike_data, pe_strike, ce_strike)
-
-    # Get option chain data for the specified symbol
-    option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
-
-    strike[symbol] = option_chain_info['atm_strike']
-
-    symbol = "BANKNIFTY"
-
-    # Get option chain data for the specified symbol
-    option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
-
-    strike[symbol] = option_chain_info['atm_strike']
-
-    print("After calling get_option_chain_info", strike)
-
-    # Get option chain data for NIFTY
-    symbol = "NIFTY"
-    option_chain_analyzer = OptionChainData(symbol)
-    option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
-
-    # Execute strategy with correct parameters
-    # Create a DataFrame with the required columns for account_details
-    account_details = commodity_account_details[['Account', 'Symbol', 'quantity']]
-    
-    # Execute the strategy with the correct parameters
-    commodity_stratergy.execute_strategy(place_order, account_details)
-"""
