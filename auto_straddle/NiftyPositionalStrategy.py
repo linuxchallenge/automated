@@ -250,7 +250,7 @@ class NiftyPositionalStrategy:
                 for STRATERGY_SEQ_KEY in STRATERGY_SEQ:
                     for account in self.accounts:
                         try:
-                            logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY}")
+                            logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY} {STRATERGY_SEQ_KEY}")
                             account_data = account_details[
                                 (account_details['Account'] == account) &
                                 (account_details['Symbol'] == INDEX_SEQ_KEY) &
