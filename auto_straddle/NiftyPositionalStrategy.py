@@ -172,7 +172,7 @@ class NiftyPositionalStrategy:
             elif self.stratergy == "as":
                 print(strangle_ce_strike, strangle_pe_strike, upper_boundary, lower_boundary)
                 # For 'as' strategy, check if either boundary is breached
-                if upper_boundary < strangle_ce_strike:
+                if pe_is_active and upper_boundary < strangle_ce_strike:
                     logging.info(
                         f"Exiting trade - Upper boundary breach: "
                         f"ATM {atm_strike} + Straddle {atm_straddle_sum} * 0.75 = {upper_boundary} > "
@@ -180,7 +180,7 @@ class NiftyPositionalStrategy:
                     )
                     return True
 
-                if lower_boundary > strangle_pe_strike:
+                if ce_is_active and lower_boundary > strangle_pe_strike:
                     logging.info(
                         f"Exiting trade - Lower boundary breach: "
                         f"ATM {atm_strike} - Straddle {atm_straddle_sum} * 0.75 = {lower_boundary} < "
