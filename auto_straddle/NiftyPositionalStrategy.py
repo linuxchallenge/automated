@@ -320,11 +320,22 @@ class NiftyPositionalStrategy:
             # Now check for expiry day closing time
             if self.is_expiry_day_closing_time():
                 if not existing_sold_options_info.empty and existing_sold_options_info.iloc[-1]['trade_state'] == 'open':
+                    # Check if we've already processed expiry day closing for this account today
+                    expiry_closing_flag_file = f"/tmp/expiry_closing_processed_{datetime.now().strftime('%Y-%m-%d')}_{account}_{self.symbol}_{self.stratergy}.flag"
+
+                    if os.path.exists(expiry_closing_flag_file):
+                        logging.info(f"Expiry day closing already processed for account {account} today")
+                        return True
+
                     logging.info(f"Closing positions at expiry day 3:27 PM for account {account}")
 
+                    spot_price = option_chain_analyzer['spot_price']
+
                     # Set close prices to 0 for expiry day closing
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = 0
-                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = 0
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
+                        max(spot_price - existing_sold_options_info.iloc[-1]['strangle_ce_strike'], 0 )
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
+                        max(existing_sold_options_info.iloc[-1]['strangle_ce_strike'] - spot_price, 0 )
 
                     # Change the tarde state to closed
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
@@ -333,6 +344,10 @@ class NiftyPositionalStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'] = -1
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = -1
+
+                    # Create flag file to indicate processing is complete for today
+                    with open(expiry_closing_flag_file, 'w', encoding='utf-8') as f:
+                        f.write(f"Processed at {datetime.now()}")
 
                 # Compute and send P/L (now expiry_trades is defined)
                 total_ce_pl = 0
@@ -350,13 +365,13 @@ class NiftyPositionalStrategy:
 
                     # For CE leg
                     if trade['strangle_ce_price'] != -1:
-                        ce_close_price = 0  # For expiry day closing
+                        ce_close_price = trade['strangle_ce_close_price']  # For expiry day closing
                         ce_pl = (trade['strangle_ce_price'] - ce_close_price) * trade_qty
                         total_ce_pl += ce_pl
 
                     # For PE leg
                     if trade['strangle_pe_price'] != -1:
-                        pe_close_price = 0  # For expiry day closing
+                        pe_close_price = trade['strangle_pe_close_price']  # For expiry day closing
                         pe_pl = (trade['strangle_pe_price'] - pe_close_price) * trade_qty
                         total_pe_pl += pe_pl
 
@@ -366,22 +381,29 @@ class NiftyPositionalStrategy:
                 elif self.symbol == "SENSEX":
                     total_pl = total_pl * 20
 
-                # Send consolidated P/L information via Telegram
-                pl_message = (
-                    f"Expiry Day Consolidated P/L for {account}:\n"
-                    f"Symbol: {self.symbol}\n"
-                    f"Strategy: {self.stratergy}\n"
-                    f"CE P/L: {total_ce_pl:.2f}\n"
-                    f"PE P/L: {total_pe_pl:.2f}\n"
-                    f"Total P/L: {total_pl:.2f}\n"
-                    f"Number of trades: {len(expiry_trades)}"
-                )
-                telegram_api = TelegramSend.telegram_send_api()
-                telegram_group = account + "_telegram"
-                chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
-                telegram_api.send_message(chat_id, pl_message)
+                # Only send P/L message if we haven't already processed expiry closing today
+                pl_flag_file = f"/tmp/pl_message_sent_{datetime.now().strftime('%Y-%m-%d')}_{account}_{self.symbol}_{self.stratergy}.flag"
+                if not os.path.exists(pl_flag_file):
+                    # Send consolidated P/L information via Telegram
+                    pl_message = (
+                        f"Expiry Day Consolidated P/L for {account}:\n"
+                        f"Symbol: {self.symbol}\n"
+                        f"Strategy: {self.stratergy}\n"
+                        f"CE P/L: {total_ce_pl:.2f}\n"
+                        f"PE P/L: {total_pe_pl:.2f}\n"
+                        f"Total P/L: {total_pl:.2f}\n"
+                        f"Number of trades: {len(expiry_trades)}"
+                    )
+                    telegram_api = TelegramSend.telegram_send_api()
+                    telegram_group = account + "_telegram"
+                    chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                    telegram_api.send_message(chat_id, pl_message)
 
-                telegram_api.send_file(chat_id, sold_options_file_path)
+                    telegram_api.send_file(chat_id, sold_options_file_path)
+
+                    # Create flag file to prevent duplicate P/L messages
+                    with open(pl_flag_file, 'w', encoding='utf-8') as f:
+                        f.write(f"P/L message sent at {datetime.now()}")
                 return True
 
             # Check number of trades for current expiry
@@ -1003,7 +1025,7 @@ class NiftyPositionalStrategy:
         # Check if today is expiry day
         if current_date == expiry_date:
             # Check if time is at or after 3:15 PM (giving more time)
-            closing_time = current_time.time() >= time(15, 15)
+            closing_time = current_time.time() >= time(15, 25)
             if closing_time:
                 logging.info(f"Expiry day closing condition met. Current time: {current_time.time()}")
             return closing_time
