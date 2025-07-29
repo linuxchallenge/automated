@@ -1025,7 +1025,7 @@ class NiftyPositionalStrategy:
         # Check if today is expiry day
         if current_date == expiry_date:
             # Check if time is at or after 3:15 PM (giving more time)
-            closing_time = current_time.time() >= time(15, 25)
+            closing_time = current_time.time() >= time(15, 22)
             if closing_time:
                 logging.info(f"Expiry day closing condition met. Current time: {current_time.time()}")
             return closing_time
