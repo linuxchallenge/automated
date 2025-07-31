@@ -335,7 +335,7 @@ class NiftyPositionalStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = \
                         max(spot_price - existing_sold_options_info.iloc[-1]['strangle_ce_strike'], 0 )
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = \
-                        max(existing_sold_options_info.iloc[-1]['strangle_ce_strike'] - spot_price, 0 )
+                        max(existing_sold_options_info.iloc[-1]['strangle_pe_strike'] - spot_price, 0 )
 
                     # Change the tarde state to closed
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
@@ -448,7 +448,8 @@ class NiftyPositionalStrategy:
                     option_chain_analyzer,
                     account,
                     quantity,
-                    place_order_obj
+                    place_order_obj,
+                    existing_sold_options_info
                 )
         else:
             # First trade for this account/expiry
@@ -458,7 +459,8 @@ class NiftyPositionalStrategy:
                     option_chain_analyzer,
                     account,
                     quantity,
-                    place_order_obj
+                    place_order_obj,
+                    None
                 )
 
         return True
@@ -543,7 +545,7 @@ class NiftyPositionalStrategy:
             logging.error(traceback.format_exc())
             raise
 
-    def _enter_new_position(self, option_chain_analyzer, account, quantity, place_order_obj):
+    def _enter_new_position(self, option_chain_analyzer, account, quantity, place_order_obj, existing_sold_options_info):
         """Enter new position if conditions are met"""
         sold_options_info = self.create_new_position(
             account,
@@ -554,7 +556,10 @@ class NiftyPositionalStrategy:
         )
 
         if sold_options_info:
-            existing_sold_options_info = pd.DataFrame([sold_options_info])
+            if existing_sold_options_info is None or existing_sold_options_info.empty:
+                existing_sold_options_info = pd.DataFrame([sold_options_info])
+            else:
+                existing_sold_options_info = pd.concat([existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
             self.store_sold_options_info(existing_sold_options_info, account)
 
     def get_sold_options_file_path(self, account, symbol):

@@ -595,7 +595,7 @@ class OptionChainData:
         except ValueError as e:
             print(f"JSON parsing error: {e}")
             return None
-        
+
     def set_bse_expiry_date_pd(self, expiry_date):
         self.bse_expiry_date_pd = expiry_date
 
