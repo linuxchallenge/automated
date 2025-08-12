@@ -208,6 +208,10 @@ class NiftyPositionalStrategy:
             bool: True if execution was successful, False otherwise
         """
         try:
+            # print account_details
+            print(account_details)
+            logging.info(f"Account details: {account_details}")
+
             # Validate input parameters
             if account_details is None or account_details.empty:
                 logging.error("Account details DataFrame is empty or None")
