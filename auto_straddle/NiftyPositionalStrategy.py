@@ -22,9 +22,7 @@ from exchange_state import ExchangeData
 from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
 
-INDEX_SEQ = {
-    "SENSEX", "NIFTY"
-}
+INDEX_SEQ = ["SENSEX", "NIFTY"]  # Use list to maintain order
 
 STRATERGY_SEQ = {
     "fr",
@@ -81,14 +79,19 @@ class NiftyPositionalStrategy:
         # Calculate days until expiry
         days_to_expiry = (expiry_date - current_date).days
 
-        # check the index of INDEX_SEQ self.symbol is index 0 or 1
+        # Define entry days based on symbol (use explicit symbol names instead of set indexing)
         dates_to_expiry = 0
-        if self.symbol == list(INDEX_SEQ)[0]:
-            dates_to_expiry = 1
-        elif self.symbol == list(INDEX_SEQ)[1]:
-            dates_to_expiry = 2
+        if self.symbol == "SENSEX":
+            dates_to_expiry = 1  # Enter 1 day before expiry
+        elif self.symbol == "NIFTY":
+            dates_to_expiry = 2  # Enter 2 days before expiry
+        else:
+            logging.error(f"Unknown symbol: {self.symbol}")
+            return False
 
-        # Check if it's 2 days before expiry
+        logging.info(f"Entry time check for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}, current_time={current_time}")
+
+        # Check if it's the correct number of days before expiry
         if days_to_expiry == dates_to_expiry:
             # Entry window is true if after 11 AM
             is_entry_window = current_time >= time(11, 0)
@@ -97,11 +100,17 @@ class NiftyPositionalStrategy:
                 logging.info("Entry window active. Current time: %s, "
                            "Days to expiry: %d, "
                            "Next expiry: %s", current_time, days_to_expiry, expiry_date)
+            else:
+                logging.info("Entry window not active yet. Current time: %s, "
+                           "Entry starts at 11:00 AM", current_time)
             return is_entry_window
 
+        # If fewer days than required, allow entry (catch-up logic)
         if days_to_expiry < dates_to_expiry:
+            logging.info(f"Allowing entry for {self.symbol} as we're past the ideal entry window (days_to_expiry={days_to_expiry} < required={dates_to_expiry})")
             return True
 
+        logging.info(f"Not entry time for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}")
         return False
 
     def should_exit_trade(self, option_chain_analyzer, sold_options_info):
