@@ -49,8 +49,8 @@ logger = logging.getLogger(__name__)
 class cash_stratergy:
     def __init__(self):
         self.csv_path = "cash_stratergy.csv"
-        self.remote_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSmdwtCAt2oAYnuJGBb3zp7L0Q-iYSZoCMLvy3cfLrz48kp9cHvBqPjRp_p7uRc0Muw_lE7kl0wOnNP/pub?output=csv"
-        self.correct_rejected_orders_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpaSDfm5rZ8LbTKKA4hnKw7qtTR70epicX2g5u9CfkfDtzyW9pgNJ79icW0yumKQ3z7vnzJlcrcTpb/pub?output=csv"
+        self.remote_csv_url = "https://docs.google.com/spreadsheets/d/19y1fKqAZtMaCzUHEgKV15FLRSSAXLWVdq-kR1-TY6VY/export?format=csv"
+        self.correct_rejected_orders_url = "https://docs.google.com/spreadsheets/d/1yTl32dlt3h9t2MYuncGnc9oLvn-gB_VkEGMvQ4s08Z8/export?format=csv"
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
         self._cached_positions = None
