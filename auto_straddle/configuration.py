@@ -18,7 +18,7 @@ class ConfigurationLoader:
 
     @staticmethod
     def load_configuration():
-        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vShIRDWl4z12XqBqnHwbi67adbHCO7ibdMz3XUc_JsxwhKQTG03LLe2ZleVqcyrKnX5J7YFPan6qqFI/pub?output=csv"
+        url = "https://docs.google.com/spreadsheets/d/1tnhRzz2WH-Uk0maxO6EOB5g0z8GhC2ROqbDp7Zsoj1A/export?format=csv"
         df = pd.read_csv(url)
 
         # Convert the dataframe to a dictionary

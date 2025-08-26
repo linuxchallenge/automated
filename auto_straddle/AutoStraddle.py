@@ -109,8 +109,7 @@ def main():
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
-    path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQt7b9qZSCk8Un-5nTeOKyiaCNZPjeRLQHv41f8J2JVrXCvNPhaXtuoZEXEz7o3O4NG_ltFCjimld8Y/pub?output=csv'
-    #path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTbpF19Et4qAM5OECrRCEMyb2s5x6R6Im9XXwxrTbLi097-QpLMc3aPcpWO7OF6QTOwUHce91zQPkU8/pub?output=csv'
+    path = 'https://docs.google.com/spreadsheets/d/1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv'
     account_details = pd.read_csv(path)
 
     logging.info("Account details from google sheet")
@@ -121,20 +120,20 @@ def main():
     for _, row in account_details.iterrows():
         accounts.append(row['Account'])
 
-    coomodity_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSW7PvQv8xTthnXTbsRByR09G5Ny9g523F0PP8jKjcQ2cXL2oVqfJvdmdepjjGe_urDKJjj9WnquAuk/pub?output=csv'
+    coomodity_path = 'https://docs.google.com/spreadsheets/d/12hH-wMr36t7VGiyO08oAbaihyOCt6ZPLKj7FO9wNH6o/export?format=csv'
     commodity_account_details = pd.read_csv(coomodity_path)
 
     print(commodity_account_details)
 
-    index_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSt9M_2rCWQqiDtbBY4hn7oCfRLpWpbdHonYbqiQmDznXWSK_0DTgtV3q2TtK1fnslRDjd0NpccSDZU/pub?output=csv'
+    index_path = 'https://docs.google.com/spreadsheets/d/1S2PO_tPjnCpq3LGWRUXJenWouSAJ8dxCuC_jTLSC07E/export?format=csv'
     index_account_details = pd.read_csv(index_path)
     print(index_account_details)
 
-    optionbuy_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQXfDbzC7lWCbDgVa6VwTJVViYo_EXl3ZMgTdFcsTbshjS38hWzwYf93VtddOhY4nfkR4aTdpfCiGRT/pub?output=csv'
+    optionbuy_path = 'https://docs.google.com/spreadsheets/d/1IdB6YTBDLbyMTzwJBW0gWnvFuHc3Q-r_nem0RcSU_ao/export?format=csv'
     optionbuy_account_details = pd.read_csv(optionbuy_path)
     print(optionbuy_account_details)
 
-    niftyposition_path = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn_xcX-C2JGmkNQAj_DmrHhpfj0d0EESIN-JiE0zsrQ4guej5Y8FwHvDSCks7pdMMyE0UtkdTR_-bZ/pub?output=csv'
+    niftyposition_path = 'https://docs.google.com/spreadsheets/d/1Ncv-9eA52t6bMNIcI3kzAxTQlvjQ9dOvqZdFX0-JYCM/export?format=csv'
     nifty_position_account_details = pd.read_csv(niftyposition_path)
     print(nifty_position_account_details)
 
