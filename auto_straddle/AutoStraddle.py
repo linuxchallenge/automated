@@ -17,7 +17,9 @@ import logging
 import os
 from pathlib import Path
 import traceback
+from io import StringIO
 import pandas as pd
+import requests
 from PlaceOrder import PlaceOrder
 from OptionChainData import OptionChainData
 from AutoStraddleStrategy import AutoStraddleStrategy
@@ -51,6 +53,34 @@ def timeout_handler(_signum, _frame):
 
     raise TimeoutError("Operation took too long to complete")
 
+
+def read_csv_from_google_sheet(url, max_retries=3):
+    """Read CSV from Google Sheets with proper headers"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            # Parse CSV content
+            csv_content = StringIO(response.text)
+            df = pd.read_csv(csv_content)
+            return df
+
+        except Exception as e:
+            logging.error(f"Attempt {attempt + 1} failed to read Google Sheet: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)  # Wait before retry
+            else:
+                raise e
 
 def main():
     # Replace these lists with your desired accounts and symbols
@@ -109,33 +139,45 @@ def main():
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
-    path = 'https://docs.google.com/spreadsheets/d/1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv'
-    account_details = pd.read_csv(path)
+    try:
+        path = 'https://docs.google.com/spreadsheets/d/1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv'
+        account_details = read_csv_from_google_sheet(path)
 
-    logging.info("Account details from google sheet")
-    logging.info(account_details)
-    print(account_details)
+        logging.info("Account details from google sheet")
+        logging.info(account_details)
+        print(account_details)
+
+    except Exception as e:
+        logging.error(f"Failed to read account details from Google Sheet: {e}")
+        # Fallback to local file or exit
+        print("Failed to read Google Sheet, using fallback data or exiting...")
+        return
+
+    # Continue with other sheets...
+    try:
+        coomodity_path = 'https://docs.google.com/spreadsheets/d/12hH-wMr36t7VGiyO08oAbaihyOCt6ZPLKj7FO9wNH6o/export?format=csv'
+        commodity_account_details = read_csv_from_google_sheet(coomodity_path)
+        print(commodity_account_details)
+
+        index_path = 'https://docs.google.com/spreadsheets/d/1S2PO_tPjnCpq3LGWRUXJenWouSAJ8dxCuC_jTLSC07E/export?format=csv'
+        index_account_details = read_csv_from_google_sheet(index_path)
+        print(index_account_details)
+
+        optionbuy_path = 'https://docs.google.com/spreadsheets/d/1IdB6YTBDLbyMTzwJBW0gWnvFuHc3Q-r_nem0RcSU_ao/export?format=csv'
+        optionbuy_account_details = read_csv_from_google_sheet(optionbuy_path)
+        print(optionbuy_account_details)
+
+        niftyposition_path = 'https://docs.google.com/spreadsheets/d/1Ncv-9eA52t6bMNIcI3kzAxTQlvjQ9dOvqZdFX0-JYCM/export?format=csv'
+        nifty_position_account_details = read_csv_from_google_sheet(niftyposition_path)
+        print(nifty_position_account_details)
+
+    except Exception as e:
+        logging.error(f"Failed to read one or more Google Sheets: {e}")
+        # Handle fallback logic here
 
     # Append accounts with data from google sheet
     for _, row in account_details.iterrows():
         accounts.append(row['Account'])
-
-    coomodity_path = 'https://docs.google.com/spreadsheets/d/12hH-wMr36t7VGiyO08oAbaihyOCt6ZPLKj7FO9wNH6o/export?format=csv'
-    commodity_account_details = pd.read_csv(coomodity_path)
-
-    print(commodity_account_details)
-
-    index_path = 'https://docs.google.com/spreadsheets/d/1S2PO_tPjnCpq3LGWRUXJenWouSAJ8dxCuC_jTLSC07E/export?format=csv'
-    index_account_details = pd.read_csv(index_path)
-    print(index_account_details)
-
-    optionbuy_path = 'https://docs.google.com/spreadsheets/d/1IdB6YTBDLbyMTzwJBW0gWnvFuHc3Q-r_nem0RcSU_ao/export?format=csv'
-    optionbuy_account_details = pd.read_csv(optionbuy_path)
-    print(optionbuy_account_details)
-
-    niftyposition_path = 'https://docs.google.com/spreadsheets/d/1Ncv-9eA52t6bMNIcI3kzAxTQlvjQ9dOvqZdFX0-JYCM/export?format=csv'
-    nifty_position_account_details = pd.read_csv(niftyposition_path)
-    print(nifty_position_account_details)
 
     # Append accounts with data from google sheet
     for _, row in commodity_account_details.iterrows():
