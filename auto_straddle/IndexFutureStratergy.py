@@ -19,6 +19,7 @@ from datetime import datetime, time, timedelta, date
 import logging
 import pandas as pd
 import requests
+from tvDatafeed import Interval, TvDatafeed
 import configuration
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
@@ -47,6 +48,7 @@ class IndexFutureStratergy:
         self.last_executed_time = None
         self.last_processed_symbol = None
         self.alligator_trends = {}
+        self.tv_obj = TvDatafeed()
 
         # Load saved state
         loaded_time, loaded_symbol = self._load_execution_state()
@@ -237,6 +239,33 @@ class IndexFutureStratergy:
             return intraday_data
         except Exception as e:
             self.logger.error(f"Error in OHLCHistoricData: {e}")
+            return None
+
+    def OHLCHistoricData_tv(self, symbol_parse):
+        try:
+            # Use tvDatafeed to get historical data
+            if symbol_parse == "NIFTY":
+                symbol_tv = "NSE:NIFTY"
+            elif symbol_parse == "BANKNIFTY":
+                symbol_tv = "NSE:BANKNIFTY"
+            elif symbol_parse == "FINNIFTY":
+                symbol_tv = "NSE:FINNIFTY"
+            else:
+                self.logger.error(f"Invalid symbol: {symbol_parse}")
+                return None
+
+            data = self.tv_obj.get_hist(symbol_tv, interval=Interval.in_15_minute, n_bars=7000)
+
+            if data.empty:
+                self.logger.warning(f"Empty data received for {symbol_parse} from tvDatafeed")
+                return None
+
+            data.reset_index(inplace=True)
+            data.rename(columns={'datetime': 'Date', 'open': 'open', 'high': 'high', 'low': 'low', 'close': 'close', 'volume': 'volume'}, inplace=True)
+
+            return data[['Date', 'open', 'high', 'low', 'close', 'volume']]
+        except Exception as e:
+            self.logger.error(f"Error in OHLCHistoricData_tv: {e}")
             return None
 
     # Write function which accepts data frame and retuen alligator and fractal
@@ -450,7 +479,10 @@ class IndexFutureStratergy:
                     return
 
                 # Get the historic data
-                historic_data = self.OHLCHistoricData(s)
+                historic_data = self.OHLCHistoricData_tv(s)
+
+                if historic_data is None:
+                    historic_data = self.OHLCHistoricData(s)
 
                 historic_data_daily = self.convert15m_to_75m(historic_data)
 
@@ -765,6 +797,28 @@ class IndexFutureStratergy:
         else:
             df = pd.DataFrame([pl_dict])
             df.to_csv(file_name, index=False)
+
+"""
+def test_banknifty_data():
+    strategy = IndexFutureStratergy(['test'])
+    
+    print("Fetching BANKNIFTY data...")
+    data = strategy.OHLCHistoricData("BANKNIFTY")
+    
+    if data is not None:
+        print(f"Success! Got {len(data)} data points")
+        print(f"Latest close price: {data.iloc[-1]['close']}")
+        print("\nSample data:")
+        return data
+    else:
+        print("Failed to get data")
+        return None
+
+# Run the test
+if __name__ == '__main__':
+    test_data = test_banknifty_data()
+    print(test_data.tail(100))
+"""
 
 
 """
