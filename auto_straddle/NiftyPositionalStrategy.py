@@ -22,7 +22,7 @@ from exchange_state import ExchangeData
 from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
 
-INDEX_SEQ = ["SENSEX", "NIFTY"]  # Use list to maintain order
+INDEX_SEQ = ["NIFTY", "SENSEX"]  # Use list to maintain order
 
 STRATERGY_SEQ = {
     "fr",
@@ -82,9 +82,9 @@ class NiftyPositionalStrategy:
         # Define entry days based on symbol (use explicit symbol names instead of set indexing)
         dates_to_expiry = 0
         if self.symbol == "SENSEX":
-            dates_to_expiry = 1  # Enter 1 day before expiry
+            dates_to_expiry = 2  # Enter 1 day before expiry
         elif self.symbol == "NIFTY":
-            dates_to_expiry = 2  # Enter 2 days before expiry
+            dates_to_expiry = 1  # Enter 2 days before expiry
         else:
             logging.error(f"Unknown symbol: {self.symbol}")
             return False
@@ -217,10 +217,6 @@ class NiftyPositionalStrategy:
             bool: True if execution was successful, False otherwise
         """
         try:
-            # print account_details
-            print(account_details)
-            logging.info(f"Account details: {account_details}")
-
             # Validate input parameters
             if account_details is None or account_details.empty:
                 logging.error("Account details DataFrame is empty or None")
