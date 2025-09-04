@@ -193,7 +193,7 @@ class CommodityStratergy:
 
             # Get the configuration
             #configuration.ConfigurationLoader.load_configuration()
-            
+
 
             # Loop for all symbol and start with the last processed symbol
             for s in symbol:

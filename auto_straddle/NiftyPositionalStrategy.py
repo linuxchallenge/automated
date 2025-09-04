@@ -38,7 +38,7 @@ class NiftyPositionalStrategy:
         self.last_execution_time = None
         self.EXECUTION_INTERVAL = timedelta(minutes=5)  # 10 minutes interval
         self.TRADE_COOLDOWN = timedelta(minutes=30)  # 30 minutes cooldown
-        self.MAX_TRADES_PER_EXPIRY = 3
+        self.MAX_TRADES_PER_EXPIRY = 2
         self.nifty_date_pd = None
         self.sensex_date_pd = None
         self.stratergy = "fr"  # Fixed to 'fr' strategy
