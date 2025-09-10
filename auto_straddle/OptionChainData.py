@@ -377,6 +377,9 @@ class OptionChainData:
             call_open_interest = call_live_data.get('oi', 0)
             put_open_interest = put_live_data.get('oi', 0)
 
+            # Convert strike price from paise to rupees (divide by 100)
+            strike_price = float(strike_price) / 100
+
             result_dict[strike_price] = {
                 'call_ltp': call_ltp, 
                 'put_ltp': put_ltp,
@@ -839,7 +842,7 @@ class OptionChainData:
                 prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['call_ltp'].values[0]
                 prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['put_ltp'].values[0]
                 prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]
-                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 *get_strike_interval(symbolData))]['put_ltp'].values[0]
+                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData))]['put_ltp'].values[0]
 
             # Save data to a dictionary along with the current time
             result_dict = {
