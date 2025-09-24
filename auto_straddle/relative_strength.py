@@ -605,13 +605,34 @@ def save_results(df_results, filename=None, send_to_telegram=True, telegram_chat
 🕒 Generated: {timestamp_str}
 📈 Total Indices: {total_indices}
 
-Top 5 Performers (1 Week):
+📅 *Top 5 Performers (1 Week):*
 """
             
             # Add top 5 performers for 1 week
             top_5_1w = df_results.nlargest(5, 'RS_1W')[['Index', 'RS_1W']]
             for idx, row in top_5_1w.iterrows():
                 message += f"• {row['Index']}: {row['RS_1W']:.2f}%\n"
+            
+            message += f"\n📅 *Top 5 Performers (1 Month):*\n"
+            
+            # Add top 5 performers for 1 month
+            top_5_1m = df_results.nlargest(5, 'RS_1M')[['Index', 'RS_1M']]
+            for idx, row in top_5_1m.iterrows():
+                message += f"• {row['Index']}: {row['RS_1M']:.2f}%\n"
+            
+            message += f"\n📅 *Top 5 Performers (6 Months):*\n"
+            
+            # Add top 5 performers for 6 months
+            top_5_6m = df_results.nlargest(5, 'RS_6M')[['Index', 'RS_6M']]
+            for idx, row in top_5_6m.iterrows():
+                message += f"• {row['Index']}: {row['RS_6M']:.2f}%\n"
+            
+            message += f"\n📅 *Top 5 Performers (1 Year):*\n"
+            
+            # Add top 5 performers for 1 year
+            top_5_1y = df_results.nlargest(5, 'RS_1Y')[['Index', 'RS_1Y']]
+            for idx, row in top_5_1y.iterrows():
+                message += f"• {row['Index']}: {row['RS_1Y']:.2f}%\n"
             
             message += f"\n📎 Full results attached as CSV file."
             
