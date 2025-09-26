@@ -116,6 +116,9 @@ class angelone_api(object):
             return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
                         df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
         elif exch_seg == 'MCX' and (instrumenttype == 'FUTCOM'):
+
+            logger.info(f"Getting token info for MCX {symbol} {expiry}")
+            print(f"Getting token info for MCX {symbol} {expiry}")
             # if expiry is within 10 days then return the next expiry
             today = datetime.now().date()
 
@@ -125,8 +128,10 @@ class angelone_api(object):
                 return df[(df['exch_seg'] == 'MCX') & (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
             else:
                 expiry_str = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
+                logger.info(f"Nearest expiry for {symbol} is {expiry_str}")
                 expiry_str = expiry_str.strftime('%Y-%m-%d')
                 expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+                logger.info(f"Expiry date object for {symbol} is {expiry_date}")
                 if (expiry_date - today).days <= 10:
                     return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
                 return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
@@ -156,6 +161,8 @@ class angelone_api(object):
             return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
+        logger.info(f"Placing commodity order for {symbol}, qty: {qty}, \
+                    type: {buy_sell}, expiry: {expiry}, iscommodity: {iscommodity}")
         try:
             if symbol == 'GOLD':
                 symbol = 'GOLDM'
@@ -177,6 +184,10 @@ class angelone_api(object):
             symbol = tokenInfo['symbol']
             token = tokenInfo['token']
             lot = int(tokenInfo['lotsize'])
+            logger.info(f"Token info: {tokenInfo}")
+            logger.info(f"Symbol: {symbol}, Token: {token}, Lot size: {lot}")
+            logger.info(f"Quantity requested: {qty}")
+            logger.info(f"Expiry date: {tokenInfo['expiry']}")
 
             qty = qty * lot
 
@@ -206,6 +217,7 @@ class angelone_api(object):
                 }
 
             print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+            logger.info(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
             try:
                 # Add timeout to API calls
                 try:
