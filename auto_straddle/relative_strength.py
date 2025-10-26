@@ -484,8 +484,19 @@ def calculate_all_relative_strengths():
         "NIFTY ENERGY", "NIFTY REALTY", "NIFTY MEDIA", "NIFTY PSU BANK"
     ]
     
-    # Combine and remove duplicates
-    indices_list = list(set(indices_list + common_indices))
+    # Combine and remove duplicates by normalizing names first
+    all_combined = indices_list + common_indices
+    
+    # Normalize all names to API format for deduplication
+    normalized_dict = {}
+    for index_name in all_combined:
+        api_name = clean_index_name_for_api(index_name)
+        # Keep the shorter/cleaner version (prefer "NIFTY REALTY" over "Nifty Realty Index")
+        if api_name not in normalized_dict or len(index_name) < len(normalized_dict[api_name]):
+            normalized_dict[api_name] = index_name
+    
+    # Use the deduplicated names
+    indices_list = list(normalized_dict.values())
     
     print(f"Total indices to process: {len(indices_list)}")
     
