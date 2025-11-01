@@ -225,7 +225,13 @@ for index, row in nifty500.iterrows():
         print(f"Data not found for symbol: {symbol}")
         continue
 
-    print(ohlc_data)
+    # Reverse to oldest first for proper EMA calculation
+    ohlc_data_oldest_first = ohlc_data.iloc[::-1].reset_index(drop=True)
+    # Calculate 200 EMA
+    ohlc_data_oldest_first['ema200'] = ohlc_data_oldest_first['close'].ewm(span=200, adjust=False).mean()
+    # Reverse back to latest first
+    ohlc_data = ohlc_data_oldest_first.iloc[::-1].reset_index(drop=True)
+
     try:
         dz_low, dz_high, sz_low, sz_high = test_calculate_ranges_and_strength(ohlc_data)
     except Exception as e:
@@ -240,6 +246,10 @@ for index, row in nifty500.iterrows():
         nifty500_output.loc[index, 'dz_low'] = dz_low
         nifty500_output.loc[index, 'dz_high'] = dz_high
         nifty500_output.loc[index, 'close'] = ohlc_data.iloc[0]['close']
+        current_close = ohlc_data.iloc[0]['close']
+        ema200 = ohlc_data.iloc[0]['ema200']
+        pct_diff = ((current_close - ema200) / ema200) * 100
+        nifty500_output.loc[index, 'ema200'] = f"{pct_diff:+.2f}%"
     except Exception as e:
         print(f"Error: {e}")
         continue
