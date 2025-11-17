@@ -42,6 +42,11 @@ class NiftyPositionalStrategy:
         self.nifty_date_pd = None
         self.sensex_date_pd = None
         self.stratergy = "fr"  # Fixed to 'fr' strategy
+        # Error message throttling - track last sent time for each account+error combination
+        self.last_error_sent = {}  # Format: {f"{account}_{error_hash}": datetime}
+        # Order retry tracking - track retry attempts for each order
+        self.order_retry_count = {}  # Format: {f"{account}_{symbol}_{order_type}": count}
+        self.MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for rejected orders
         self.get_nift_sensex_expiry()
 
     def loss_limit(self):
@@ -212,7 +217,7 @@ class NiftyPositionalStrategy:
             place_order_obj: Order placement object
             account_details: DataFrame containing account-specific trading details with columns
                             ['Account', 'Symbol', 'quantity']
-        
+
         Returns:
             bool: True if execution was successful, False otherwise
         """
@@ -730,6 +735,49 @@ class NiftyPositionalStrategy:
         sold_options_info['pe_open_state'] = 'open_pending'
         return sold_options_info
 
+    def retry_rejected_order(self, account, order_type, strike, quantity, place_order_obj):
+        """
+        Retry placing a rejected order
+
+        Args:
+            account: Trading account
+            order_type: 'PE' or 'CE'
+            strike: Strike price
+            quantity: Order quantity
+            place_order_obj: Order placement object
+
+        Returns:
+            tuple: (new_order_id, success_flag)
+        """
+        retry_key = f"{account}_{self.symbol}_{order_type}"
+
+        # Get current retry count
+        current_retries = self.order_retry_count.get(retry_key, 0)
+
+        if current_retries >= self.MAX_RETRY_ATTEMPTS:
+            logging.error(f"Maximum retry attempts ({self.MAX_RETRY_ATTEMPTS}) reached for {account} {self.symbol} {order_type} order")
+            return -1, False
+
+        # Increment retry count
+        self.order_retry_count[retry_key] = current_retries + 1
+
+        logging.info(f"Retrying {order_type} order for {account} {self.symbol} (attempt {current_retries + 1}/{self.MAX_RETRY_ATTEMPTS})")
+
+        # Place new order
+        new_order_id = place_order_obj.place_orders(account, strike, order_type, self.symbol, quantity, False)
+
+        if new_order_id == -1:
+            logging.error(f"Retry failed for {account} {self.symbol} {order_type} order")
+            return -1, False
+
+        logging.info(f"Successfully retried {order_type} order for {account} {self.symbol}, new order ID: {new_order_id}")
+        return new_order_id, True
+
+    def reset_retry_count(self, account, order_type):
+        """Reset retry count for successful orders"""
+        retry_key = f"{account}_{self.symbol}_{order_type}"
+        if retry_key in self.order_retry_count:
+            del self.order_retry_count[retry_key]
 
     def check_if_trade_is_executed(self, account, place_order_obj):
         error_in_order = False
@@ -752,9 +800,36 @@ class NiftyPositionalStrategy:
                     logging.info(f"PE order executed for account {account}")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'open'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_price'] = price
-                else:
+                    # Reset retry count on successful completion
+                    self.reset_retry_count(account, 'PE')
+                elif order_status == 'Open':
+                    # Order is still pending, keep waiting
+                    logging.info(f"PE open order {existing_sold_options_info.iloc[-1]['pe_open_order_id']} still pending for account {account}")
+                elif order_status == 'Rejected':
+                    # Order was rejected, try to retry
+                    pe_strike = existing_sold_options_info.iloc[-1]['strangle_pe_strike']
+                    # Get quantity from account details (you may need to adjust this based on your data structure)
+                    quantity = 1  # Default quantity, you may want to get this from configuration or existing data
+
+                    new_order_id, retry_success = self.retry_rejected_order(
+                        account, 'PE', pe_strike, quantity, place_order_obj
+                    )
+
+                    if retry_success:
+                        # Update with new order ID and keep in open_pending state
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_order_id'] = new_order_id
+                        logging.info(f"PE order retry successful for account {account}, new order ID: {new_order_id}")
+                    else:
+                        # Retry failed, mark as error
+                        error_in_order = True
+                        error_message = error_message + f"PE open order rejected and retry failed for account {account}"
+                elif order_status in [-1, 'NotFound']:
+                    # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + "Error in pe open order"
+                    error_message = error_message + f"PE open order API error or not found for account {account}"
+                else:
+                    # Unknown status, log and continue waiting
+                    logging.warning(f"Unknown PE open order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE open order
@@ -768,9 +843,36 @@ class NiftyPositionalStrategy:
                     logging.info(f"CE order executed for account {account}")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'open'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'] = price
-                else:
+                    # Reset retry count on successful completion
+                    self.reset_retry_count(account, 'CE')
+                elif order_status == 'Open':
+                    # Order is still pending, keep waiting
+                    logging.info(f"CE open order {existing_sold_options_info.iloc[-1]['ce_open_order_id']} still pending for account {account}")
+                elif order_status == 'Rejected':
+                    # Order was rejected, try to retry
+                    ce_strike = existing_sold_options_info.iloc[-1]['strangle_ce_strike']
+                    # Get quantity from account details (you may need to adjust this based on your data structure)
+                    quantity = 1  # Default quantity, you may want to get this from configuration or existing data
+
+                    new_order_id, retry_success = self.retry_rejected_order(
+                        account, 'CE', ce_strike, quantity, place_order_obj
+                    )
+
+                    if retry_success:
+                        # Update with new order ID and keep in open_pending state
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_order_id'] = new_order_id
+                        logging.info(f"CE order retry successful for account {account}, new order ID: {new_order_id}")
+                    else:
+                        # Retry failed, mark as error
+                        error_in_order = True
+                        error_message = error_message + f"CE open order rejected and retry failed for account {account}"
+                elif order_status in [-1, 'NotFound']:
+                    # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + "Error in ce open order"
+                    error_message = error_message + f"CE open order API error or not found for account {account}"
+                else:
+                    # Unknown status, log and continue waiting
+                    logging.warning(f"Unknown CE open order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check PE close order
@@ -781,9 +883,20 @@ class NiftyPositionalStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'] = price
-                else:
+                elif order_status == 'Open':
+                    # Order is still pending, keep waiting
+                    logging.info(f"PE close order {existing_sold_options_info.iloc[-1]['pe_close_order_id']} still pending for account {account}")
+                elif order_status == 'Rejected':
+                    # Order was rejected, mark as error
                     error_in_order = True
-                    error_message = error_message + "Error in pe close order"
+                    error_message = error_message + f"PE close order rejected for account {account}"
+                elif order_status in [-1, 'NotFound']:
+                    # API error or order not found, mark as error
+                    error_in_order = True
+                    error_message = error_message + f"PE close order API error or not found for account {account}"
+                else:
+                    # Unknown status, log and continue waiting
+                    logging.warning(f"Unknown PE close order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE close order
@@ -795,9 +908,20 @@ class NiftyPositionalStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_close_price'] = price
-                else:
+                elif order_status == 'Open':
+                    # Order is still pending, keep waiting
+                    logging.info(f"CE close order {existing_sold_options_info.iloc[-1]['ce_close_order_id']} still pending for account {account}")
+                elif order_status == 'Rejected':
+                    # Order was rejected, mark as error
                     error_in_order = True
-                    error_message = error_message + "Error in ce close order"
+                    error_message = error_message + f"CE close order rejected for account {account}"
+                elif order_status in [-1, 'NotFound']:
+                    # API error or order not found, mark as error
+                    error_in_order = True
+                    error_message = error_message + f"CE close order API error or not found for account {account}"
+                else:
+                    # Unknown status, log and continue waiting
+                    logging.warning(f"Unknown CE close order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Add this section before storing results:
@@ -993,12 +1117,25 @@ class NiftyPositionalStrategy:
     def send_error_message(self, account: str, error_message: str):
         """
         Send error message via Telegram and handle error file creation
+        Throttles messages to once per hour for the same error
 
         Args:
             account: Trading account identifier
             error_message: Error message to be sent
         """
         try:
+            # Create a unique key for this account+error combination
+            error_key = f"{account}_{self.symbol}_{hash(error_message)}"
+            current_time = datetime.now()
+
+            # Check if we've sent this error recently (within 1 hour)
+            if error_key in self.last_error_sent:
+                time_since_last = current_time - self.last_error_sent[error_key]
+                if time_since_last < timedelta(hours=1):
+                    # Skip sending, but still log
+                    logging.info(f"Throttling error message for {account} {self.symbol}: {error_message} (last sent {time_since_last} ago)")
+                    return
+
             # Get file paths
             sold_options_file_path = self.get_sold_options_file_path(account, self.symbol)
             error_file_path = self.get_error_options_file_path(account, self.symbol)
@@ -1011,6 +1148,10 @@ class NiftyPositionalStrategy:
             # Send error message via Telegram
             error_msg = f"Nifty Positional Strategy critical error: {account} {self.symbol} {error_message}"
             telegram_api.send_message(chat_id, error_msg)
+
+            # Update the last sent time
+            self.last_error_sent[error_key] = current_time
+            logging.info(f"Error message sent for {account} {self.symbol}: {error_message}")
 
             # Handle error file creation and renaming
             if os.path.exists(sold_options_file_path):

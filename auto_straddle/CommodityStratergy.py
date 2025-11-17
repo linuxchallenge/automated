@@ -11,7 +11,7 @@
 
 import os
 import traceback
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 
 import time as t
@@ -56,6 +56,12 @@ class CommodityStratergy:
             self.last_executed_hour = 0
 
         self.commodity_data = commodity_data.commodity_data()
+
+        # Error message throttling - track last sent time for each account+error combination
+        self.last_error_sent = {}  # Format: {f"{account}_{symbol}_{error_hash}": datetime}
+        # Order retry tracking - track retry attempts for each order
+        self.order_retry_count = {}  # Format: {f"{account}_{symbol}_{order_type}": count}
+        self.MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for rejected orders
         self.commodity_data.intializeSymbolAndGetExpiryData()
 
     # Write function which accepts data frame and retuen alligator and fractal
@@ -83,6 +89,101 @@ class CommodityStratergy:
             return trend, 0, 0
         return trend, data.loc[bearish.index[-1]]['high'], data.loc[bullish.index[-1]]['low']
 
+    def retry_rejected_order(self, account, trading_symbol, order_type, place_order, account_details, current_trade=None, row_number=None):
+        """
+        Retry placing a rejected order
+        
+        Args:
+            account: Trading account
+            trading_symbol: Trading symbol (e.g., 'GOLD', 'COPPER')
+            order_type: 'entry' or 'exit'
+            place_order: Order placement object
+            account_details: DataFrame with account configuration (Account, Symbol, quantity)
+            current_trade: DataFrame with trade data (needed to get trade details)
+            row_number: Row index in the DataFrame
+            
+        Returns:
+            tuple: (new_order_id, success_flag)
+        """
+        retry_key = f"{account}_{trading_symbol}_{order_type}"
+
+        # Get current retry count
+        current_retries = self.order_retry_count.get(retry_key, 0)
+
+        if current_retries >= self.MAX_RETRY_ATTEMPTS:
+            logging.error(f"Maximum retry attempts ({self.MAX_RETRY_ATTEMPTS}) reached for {account} {trading_symbol} {order_type} order")
+            return -1, False
+
+        # Increment retry count
+        self.order_retry_count[retry_key] = current_retries + 1
+
+        logging.info(f"Retrying {order_type} order for {account} {trading_symbol} (attempt {current_retries + 1}/{self.MAX_RETRY_ATTEMPTS})")
+
+        try:
+            # Get quantity from account details
+            try:
+                quantity = account_details.loc[(account_details['Account'] == account) &
+                                             (account_details['Symbol'] == trading_symbol)]['quantity'].values[0]
+                logging.info(f"Retrieved quantity {quantity} for {account} {trading_symbol} from account_details")
+            except (IndexError, KeyError) as e:
+                # Fallback to default quantity if not found in account_details
+                quantity = 1
+                logging.warning(f"Could not find quantity for {account} {trading_symbol} in account_details, using default: {quantity}. Error: {e}")
+
+            if order_type == 'entry':
+                # For entry orders, we need to know if it's a buy or sell based on trade_type
+                if current_trade is not None and row_number is not None:
+                    trade_type = current_trade.loc[row_number, 'trade_type']
+                    if trade_type == 'long':
+                        # Place buy order for long entry
+                        order_id, expiry = place_order.place_buy_orders_commodity(account, trading_symbol, quantity, None)
+                    elif trade_type == 'short':
+                        # Place sell order for short entry
+                        order_id, expiry = place_order.place_sell_orders_commodity(account, trading_symbol, quantity, None)
+                    else:
+                        logging.error(f"Unknown trade_type '{trade_type}' for {account} {trading_symbol}")
+                        return -1, False
+                else:
+                    logging.error(f"Missing trade data for entry order retry: {account} {trading_symbol}")
+                    return -1, False
+
+            elif order_type == 'exit':
+                # For exit orders, we need to do the opposite of the entry
+                if current_trade is not None and row_number is not None:
+                    trade_type = current_trade.loc[row_number, 'trade_type']
+                    expiry = current_trade.loc[row_number, 'expiry']
+                    if trade_type == 'long':
+                        # Place sell order to exit long position
+                        order_id, _ = place_order.place_sell_orders_commodity(account, trading_symbol, quantity, expiry)
+                    elif trade_type == 'short':
+                        # Place buy order to exit short position
+                        order_id, _ = place_order.place_buy_orders_commodity(account, trading_symbol, quantity, expiry)
+                    else:
+                        logging.error(f"Unknown trade_type '{trade_type}' for {account} {trading_symbol}")
+                        return -1, False
+                else:
+                    logging.error(f"Missing trade data for exit order retry: {account} {trading_symbol}")
+                    return -1, False
+            else:
+                logging.error(f"Unknown order_type '{order_type}' for {account} {trading_symbol}")
+                return -1, False
+
+            if order_id == -1:
+                logging.error(f"Retry failed for {account} {trading_symbol} {order_type} order")
+                return -1, False
+
+            logging.info(f"Successfully retried {order_type} order for {account} {trading_symbol}, new order ID: {order_id}")
+            return order_id, True
+
+        except Exception as e:
+            logging.error(f"Exception during retry for {account} {trading_symbol} {order_type}: {str(e)}")
+            return -1, False
+
+    def reset_retry_count(self, account, trading_symbol, order_type):
+        """Reset retry count for successful orders"""
+        retry_key = f"{account}_{trading_symbol}_{order_type}"
+        if retry_key in self.order_retry_count:
+            del self.order_retry_count[retry_key]
 
     def check_trade_executed(self, accounts, place_order, account_details):
         # For all accounts
@@ -115,10 +216,38 @@ class CommodityStratergy:
                         if price != 0:
                             current_trade.loc[row_number, 'entry_price'] = price
                         current_trade.to_csv(file_name, index=False)
-                    else:
-                        # Send telegram message
-                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
+                        logging.info(f"Entry order completed for {account} {current_trade.loc[row_number, 'Symbol']}")
+                        # Reset retry count on successful completion
+                        self.reset_retry_count(account, current_trade.loc[row_number, 'Symbol'], 'entry')
+                    elif status == "Open":
+                        # Order is still pending, keep waiting
+                        logging.info(f"Entry order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
+                    elif status == "Rejected":
+                        # Order was rejected, try to retry
+                        trading_symbol = current_trade.loc[row_number, 'Symbol']
+
+                        new_order_id, retry_success = self.retry_rejected_order(
+                            account, trading_symbol, 'entry', place_order, account_details, current_trade, row_number
+                        )
+
+                        if retry_success:
+                            # Update with new order ID and keep in open_pending state
+                            current_trade.loc[row_number, 'enter_orderid'] = new_order_id
+                            logging.info(f"Entry order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
+                            current_trade.to_csv(file_name, index=False)
+                        else:
+                            # Retry failed, mark as error
+                            self.send_message(account, trading_symbol, "Entry order rejected and retry failed", 0)
+                            current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                            current_trade.to_csv(file_name, index=False)
+                    elif status in [-1, 'NotFound']:
+                        # API error or order not found, mark as error and send message
+                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Entry order API error or not found", 0)
                         current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                        current_trade.to_csv(file_name, index=False)
+                    else:
+                        # Unknown status, log warning but don't mark as error yet
+                        logging.warning(f"Unknown entry order status '{status}' for {account} {current_trade.loc[row_number, 'Symbol']}, continuing to wait")
 
                 # check if any exit_order_state is close_pending
                 if current_trade.loc[current_trade['exit_order_state'] == 'close_pending'].shape[0] != 0:
@@ -164,11 +293,37 @@ class CommodityStratergy:
                                                 current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                             current_trade.to_csv(file_name, index=False)
-                        else:
-                            # Send telegram message
-                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Order status is {status}", 0)
+                            # Reset retry count on successful completion
+                            self.reset_retry_count(account, current_trade.loc[row_number, 'Symbol'], 'exit')
+                        elif status == "Open":
+                            # Order is still pending, keep waiting
+                            logging.info(f"Exit order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
+                        elif status == "Rejected":
+                            # Order was rejected, try to retry
+                            trading_symbol = current_trade.loc[row_number, 'Symbol']
+
+                            new_order_id, retry_success = self.retry_rejected_order(
+                                account, trading_symbol, 'exit', place_order, account_details, current_trade, row_number
+                            )
+
+                            if retry_success:
+                                # Update with new order ID and keep in close_pending state
+                                current_trade.loc[row_number, 'exit_orderid'] = new_order_id
+                                logging.info(f"Exit order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
+                                current_trade.to_csv(file_name, index=False)
+                            else:
+                                # Retry failed, mark as error
+                                self.send_message(account, trading_symbol, "Exit order rejected and retry failed", 0)
+                                current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                current_trade.to_csv(file_name, index=False)
+                        elif status in [-1, 'NotFound']:
+                            # API error or order not found, mark as error and send message
+                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Exit order API error or not found", 0)
                             current_trade.loc[row_number, 'exit_order_state'] = 'error'
                             current_trade.to_csv(file_name, index=False)
+                        else:
+                            # Unknown status, log warning but don't mark as error yet
+                            logging.warning(f"Unknown exit order status '{status}' for {account} {current_trade.loc[row_number, 'Symbol']}, continuing to wait")
                     except Exception as e:
                         logging.error(f"Exception in check_trade_executed: {str(e)}")
 
@@ -394,6 +549,23 @@ class CommodityStratergy:
             traceback.print_exc()
 
     def send_message(self, account, symbol_msg, error_message, compute_profit_loss, brokrage = 0, quantity = 0):
+        # Create a unique key for this account+symbol+error combination
+        error_key = f"{account}_{symbol_msg}_{hash(error_message)}"
+        current_time = datetime.now()
+
+        # Check if we've sent this error recently (within 1 hour) - only for error messages
+        if compute_profit_loss == 0 and brokrage == 0:  # This indicates it's an error message
+            if error_key in self.last_error_sent:
+                time_since_last = current_time - self.last_error_sent[error_key]
+                if time_since_last < timedelta(hours=1):
+                    # Skip sending, but still log
+                    logging.info(f"Throttling error message for {account} {symbol_msg}: {error_message} (last sent {time_since_last} ago)")
+                    return
+
+            # Update the last sent time for error messages
+            self.last_error_sent[error_key] = current_time
+            logging.info(f"Error message sent for {account} {symbol_msg}: {error_message}")
+
         x = telegram_send_api()
 
         telegram_group = account + "_telegram"
