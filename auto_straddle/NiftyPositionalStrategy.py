@@ -808,8 +808,8 @@ class NiftyPositionalStrategy:
                 elif order_status == 'Rejected':
                     # Order was rejected, try to retry
                     pe_strike = existing_sold_options_info.iloc[-1]['strangle_pe_strike']
-                    # Get quantity from account details (you may need to adjust this based on your data structure)
-                    quantity = 1  # Default quantity, you may want to get this from configuration or existing data
+                    # Get quantity from existing sold options info
+                    quantity = existing_sold_options_info.iloc[-1]['quantity']
 
                     new_order_id, retry_success = self.retry_rejected_order(
                         account, 'PE', pe_strike, quantity, place_order_obj
@@ -851,8 +851,8 @@ class NiftyPositionalStrategy:
                 elif order_status == 'Rejected':
                     # Order was rejected, try to retry
                     ce_strike = existing_sold_options_info.iloc[-1]['strangle_ce_strike']
-                    # Get quantity from account details (you may need to adjust this based on your data structure)
-                    quantity = 1  # Default quantity, you may want to get this from configuration or existing data
+                    # Get quantity from existing sold options info
+                    quantity = existing_sold_options_info.iloc[-1]['quantity']
 
                     new_order_id, retry_success = self.retry_rejected_order(
                         account, 'CE', ce_strike, quantity, place_order_obj
