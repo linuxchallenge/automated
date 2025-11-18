@@ -380,12 +380,18 @@ class NiftyPositionalStrategy:
                     # For CE leg
                     if trade['strangle_ce_price'] != -1:
                         ce_close_price = trade['strangle_ce_close_price']  # For expiry day closing
+                        # If no close price, assume 0 for P/L calculation
+                        if ce_close_price is None:
+                            ce_close_price = 0
                         ce_pl = (trade['strangle_ce_price'] - ce_close_price) * trade_qty
                         total_ce_pl += ce_pl
 
                     # For PE leg
                     if trade['strangle_pe_price'] != -1:
                         pe_close_price = trade['strangle_pe_close_price']  # For expiry day closing
+                        # If no close price, assume 0 for P/L calculation
+                        if pe_close_price is None:
+                            pe_close_price = 0
                         pe_pl = (trade['strangle_pe_price'] - pe_close_price) * trade_qty
                         total_pe_pl += pe_pl
 
@@ -522,28 +528,9 @@ class NiftyPositionalStrategy:
                 logging.warning(f"Option chain analyzer is None for account {account}. Skipping price updates.")
                 return
 
-            # Add keys check before accessing
-            ce_price = option_chain_analyzer.get('prev_ce_strangle_price')
-            pe_price = option_chain_analyzer.get('prev_pe_strangle_price')
-
-            if ce_price is None or pe_price is None:
-                logging.warning(f"Missing price data in option chain analyzer for account {account}")
-                # Use existing values as fallback
-                ce_price = existing_sold_options_info.iloc[-1]['strangle_ce_close_price']
-                pe_price = existing_sold_options_info.iloc[-1]['strangle_pe_close_price']
-
-            # Update current prices
-            updates = {
-                'strangle_ce_close_price': ce_price,
-                'strangle_pe_close_price': pe_price
-            }
-
-            existing_sold_options_info = self.update_and_store(
-                existing_sold_options_info,
-                account,
-                existing_sold_options_info.index[-1],
-                updates
-            )
+            # Note: Close prices should only be set when positions are actually closed
+            # Current market prices are available in option_chain_analyzer for exit condition checks
+            # No need to update close prices here as they should remain None until actual closing
 
             # Check exit conditions
             if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info):
@@ -647,8 +634,8 @@ class NiftyPositionalStrategy:
             'expiry': self.get_next_nifty_expiry().strftime("%Y-%m-%d"),
             'strangle_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE'),
             'strangle_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE'),
-            'strangle_ce_close_price': self.get_option_price(option_chain_analyzer, 'CE'),
-            'strangle_pe_close_price': self.get_option_price(option_chain_analyzer, 'PE'),
+            'strangle_ce_close_price': None,
+            'strangle_pe_close_price': None,
             'pe_open_order_id': -1,
             'ce_open_order_id': -1,
             'pe_close_order_id': -1,
@@ -875,8 +862,9 @@ class NiftyPositionalStrategy:
                     logging.warning(f"Unknown CE open order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
-            # Check PE close order
-            if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'close_pending':
+            # Check PE close order - only if close order ID is valid
+            if (existing_sold_options_info.iloc[-1]['pe_close_state'] == 'close_pending' and
+                existing_sold_options_info.iloc[-1]['pe_close_order_id'] != -1):
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['pe_close_order_id'],
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_pe_close_price'])
@@ -899,8 +887,9 @@ class NiftyPositionalStrategy:
                     logging.warning(f"Unknown PE close order status '{order_status}' for account {account}, continuing to wait")
                 self.store_sold_options_info(existing_sold_options_info, account)
 
-            # Check CE close order
-            if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'close_pending':
+            # Check CE close order - only if close order ID is valid
+            if (existing_sold_options_info.iloc[-1]['ce_close_state'] == 'close_pending' and
+                existing_sold_options_info.iloc[-1]['ce_close_order_id'] != -1):
                 t.sleep(3)
                 order_status, price = place_order_obj.order_status(account,
                         existing_sold_options_info.iloc[-1]['ce_close_order_id'],
