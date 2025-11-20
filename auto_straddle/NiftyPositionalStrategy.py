@@ -370,7 +370,7 @@ class NiftyPositionalStrategy:
 
                 # Loop through all trades for this expiry
                 for _, trade in expiry_trades.iterrows():
-                    # Skip trades that weren't opened
+                    # Include both closed and open trades for expiry day P/L
                     if trade['trade_state'] not in ['closed', 'open']:
                         continue
 
@@ -379,18 +379,18 @@ class NiftyPositionalStrategy:
 
                     # For CE leg
                     if trade['strangle_ce_price'] != -1:
-                        ce_close_price = trade['strangle_ce_close_price']  # For expiry day closing
-                        # If no close price, assume 0 for P/L calculation
-                        if ce_close_price is None:
+                        ce_close_price = trade['strangle_ce_close_price']
+                        # On expiry day, if no close price (None or NaN), assume 0 (expired worthless)
+                        if pd.isna(ce_close_price):
                             ce_close_price = 0
                         ce_pl = (trade['strangle_ce_price'] - ce_close_price) * trade_qty
                         total_ce_pl += ce_pl
 
                     # For PE leg
                     if trade['strangle_pe_price'] != -1:
-                        pe_close_price = trade['strangle_pe_close_price']  # For expiry day closing
-                        # If no close price, assume 0 for P/L calculation
-                        if pe_close_price is None:
+                        pe_close_price = trade['strangle_pe_close_price']
+                        # On expiry day, if no close price (None or NaN), assume 0 (expired worthless)
+                        if pd.isna(pe_close_price):
                             pe_close_price = 0
                         pe_pl = (trade['strangle_pe_price'] - pe_close_price) * trade_qty
                         total_pe_pl += pe_pl
