@@ -317,6 +317,9 @@ class cash_stratergy:
 
         Returns:
             float: Last traded price or None if all methods fail
+
+        Raises:
+            ValueError: If all methods fail to fetch price
         """
         try:
             # Primary method: Direct NSE API with caching
@@ -332,6 +335,10 @@ class cash_stratergy:
                     # Cache the fallback result
                     self.price_cache.set(symbol, price)
                     return price
+                else:
+                    # If fallback returns None, raise error
+                    logger.error(f"Fallback method returned None for {symbol}")
+                    raise ValueError(f"Fallback method returned None for {symbol}")
             except Exception as e2:
                 logger.error(f"Fallback method also failed for {symbol}: {e2}")
                 # Re-raise with context from both failures
@@ -490,7 +497,7 @@ class cash_stratergy:
             self.notifier.send_success(remote_row['account'], remote_row['symbol'], "P/L", f"{profit_loss}")
 
         except Exception as e:
-            print(''.join(traceback.format_exception(e)))
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             logger.error(f"Error calculating PnL: {str(e)}")
             raise
 
@@ -535,8 +542,13 @@ class cash_stratergy:
                 print(f"Updated entry for sl_no: {sl_no}")
             else:
                 # Add new entry
+                # If status is blank/empty, set it to 'new' for new rows
+                if pd.isna(row.get('status')) or row.get('status') == '' or row.get('status') is None:
+                    row['status'] = 'new'
+                    print(f"Added new entry for sl_no: {sl_no} with status set to 'new'")
+                else:
+                    print(f"Added new entry for sl_no: {sl_no}")
                 local_data = pd.concat([local_data, pd.DataFrame([row])], ignore_index=True)
-                print(f"Added new entry for sl_no: {sl_no}")
 
         # Save the updated local CSV
         local_data.to_csv(self.csv_path, index=False)
@@ -675,7 +687,7 @@ class cash_stratergy:
                         self.notifier.send_manual_close_request(row['account'], symbol)
 
             except Exception as e:
-                print(''.join(traceback.format_exception(e)))
+                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 logger.error(f"Error processing 'open' row {row['sl_no']}: {e}")
                 data.loc[idx, 'close_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
