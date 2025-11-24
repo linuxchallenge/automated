@@ -336,9 +336,12 @@ class cash_stratergy:
                     self.price_cache.set(symbol, price)
                     return price
                 else:
-                    # If fallback returns None, raise error
+                    # If fallback returns None, raise error with context from primary failure
                     logger.error(f"Fallback method returned None for {symbol}")
-                    raise ValueError(f"Fallback method returned None for {symbol}")
+                    raise ValueError(f"Fallback method returned None for {symbol}") from e
+            except ValueError:
+                # Re-raise ValueError as-is (already has proper context)
+                raise
             except Exception as e2:
                 logger.error(f"Fallback method also failed for {symbol}: {e2}")
                 # Re-raise with context from both failures
@@ -575,7 +578,7 @@ class cash_stratergy:
     def _process_new_orders(self, data, place_order):
         """Process rows with status 'new' - opening new positions"""
         for idx, row in data[data['status'] == 'new'].iterrows():
-            logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
+            logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and sl {row['sl']}")
             try:
                 symbol = row['symbol']
                 sleep(1)
@@ -586,8 +589,9 @@ class cash_stratergy:
                     self.notifier.send_error(row['account'], symbol, "open", f"Price fetch failed: {e}")
                     continue
 
+                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} - last_price: {last_price}, sl: {row['sl']}")
+
                 if last_price > row['sl']:
-                    logger.info(f"Processing row {row['sl_no']} with symbol {symbol} and price {last_price}")
                     quantity = int(row['amount'] / last_price)
 
                     # Try to place order with retry logic
@@ -610,6 +614,8 @@ class cash_stratergy:
                         self.notifier.send_error(row['account'], symbol, "open", "Order placement failed after retries")
                         data.loc[idx, 'open_order_status'] = 'rejected'
                         data.loc[idx, 'status'] = 'rejected'
+                        # Save immediately to prevent duplicate processing
+                        data.to_csv(self.csv_path, index=False)
                         continue
 
                     logger.info(f"Order ID: {order_id}")
@@ -620,15 +626,23 @@ class cash_stratergy:
                     data.loc[idx, 'open_order_status'] = 'open_pending'
                     data.loc[idx, 'status'] = 'open_pending'
                     data.loc[idx, 'quantity'] = quantity
+
+                    # Save immediately after placing order to prevent duplicate processing
+                    data.to_csv(self.csv_path, index=False)
+                    logger.info(f"Status updated to 'open_pending' for row {row['sl_no']}")
                 else:
-                    logger.info(f"Skipping row {row['sl_no']} with symbol {symbol} and price {last_price}")
+                    logger.info(f"Skipping row {row['sl_no']} with symbol {symbol} - price {last_price} not > sl {row['sl']}")
                     data.loc[idx, 'open_order_status'] = 'rejected'
                     data.loc[idx, 'status'] = 'rejected'
+                    # Save immediately
+                    data.to_csv(self.csv_path, index=False)
 
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 data.loc[idx, 'open_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
+                # Save immediately
+                data.to_csv(self.csv_path, index=False)
                 logger.error(f"Error processing 'new' row {row['sl_no']}: {e}")
                 self.notifier.send_error(row['account'], symbol, "open", str(e))
 
@@ -637,7 +651,7 @@ class cash_stratergy:
         for idx, row in data[data['status'] == 'open'].iterrows():
             try:
                 symbol = row['symbol']
-                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} and price {row['sl']}")
+                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} and sl {row['sl']}")
                 sleep(1)
 
                 try:
@@ -645,6 +659,12 @@ class cash_stratergy:
                 except Exception as e:
                     logger.error(f"Error fetching price for symbol {symbol}: {e}")
                     self.notifier.send_error("dummy", symbol, "close", f"Price fetch failed: {e}")
+                    continue
+
+                # Validate last_price is not None
+                if last_price is None:
+                    logger.error(f"Got None price for symbol {symbol}, skipping close check")
+                    self.notifier.send_error(row['account'], symbol, "close", "Price is None")
                     continue
 
                 # Validate profit_target exists and is not NaN
