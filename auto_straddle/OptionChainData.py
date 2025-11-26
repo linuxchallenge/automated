@@ -441,7 +441,7 @@ class OptionChainData:
         return df_with_open_interest.nlargest(top_n, 'put_open_interest')
 
     def parse_json_groww(self, data, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
-        print("Parsing JSON data from Groww...")
+        """Parse JSON data from Groww..."""
 
         # Extract spot price from the new JSON structure
         try:
@@ -460,6 +460,7 @@ class OptionChainData:
 
         # Build result dictionary for option chain data
         result_dict = {}
+
         option_contracts = data.get('props', {}).get('pageProps', {}).get('data', {}).get('optionChain', {}).get('optionContracts', [])
 
         if not option_contracts:
@@ -472,12 +473,17 @@ class OptionChainData:
                 continue
 
             # Extract call and put data from the new structure
-            ce_data = option.get('ce', {})
-            pe_data = option.get('pe', {})
+            # Note: Groww API can return null for ce or pe if option doesn't exist at that strike
+            ce_data = option.get('ce')
+            pe_data = option.get('pe')
+            
+            # Skip if both CE and PE are null
+            if ce_data is None and pe_data is None:
+                continue
 
-            # Extract live data for calls and puts
-            call_live_data = ce_data.get('liveData', {})
-            put_live_data = pe_data.get('liveData', {})
+            # Extract live data for calls and puts, handling null values
+            call_live_data = ce_data.get('liveData', {}) if ce_data is not None else {}
+            put_live_data = pe_data.get('liveData', {}) if pe_data is not None else {}
 
             call_ltp = call_live_data.get('ltp', 0)
             put_ltp = put_live_data.get('ltp', 0)
@@ -1018,6 +1024,7 @@ class OptionChainData:
         else:
             print("Failed to retrieve option chain data")
             return None
+
 
 """
 symbol = "SENSEX"
