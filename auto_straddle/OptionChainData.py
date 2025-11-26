@@ -9,7 +9,7 @@
 # pylint: disable=C0115
 # pylint: disable=C0103
 # pylint: disable=W0105
-
+# pylint: disable=C0302
 
 
 
@@ -59,20 +59,61 @@ class OptionChainData:
         self.bse_expiry_date_pd = None
 
     def get_option_chain_info(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
+
+        if symbolData == "SENSEX":
+            try:
+                ret = self.extract_options_data_bse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+                if ret is not None:
+                    return ret
+            except Exception as e:
+                print(f"BSE failed for SENSEX: {e}")
+                logger.error(f"BSE failed for SENSEX: {e}")
+
+            # BSE failed, try Groww as fallback for SENSEX
+            print("BSE failed, trying Groww as fallback for SENSEX")
+            try:
+                ret = self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+                if ret is not None:
+                    return ret
+            except Exception as e:
+                print(f"Groww also failed for SENSEX: {e}")
+                logger.error(f"Groww also failed for SENSEX: {e}")
+
+            # Both BSE and Groww failed, try NSE as final fallback
+            print("Trying NSE as final fallback for SENSEX")
+            try:
+                return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            except Exception as e:
+                print(f"All sources failed for SENSEX: {e}")
+                logger.error(f"All sources failed for SENSEX: {e}")
+                return None
+
         if self.get_from == "groww":
             try :
                 ret = self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
             except Exception as e:
                 print(f"Error: {e}")
+                logger.error(f"Error: {e}")
                 ret = None
             if ret is None:
-                if symbolData == "SENSEX":
-                    return self.get_option_chain_data_bse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
-                return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+                try:
+                    return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+                except Exception as e:
+                    print(f"Error: {e}")
+                    logger.error(f"Error: {e}")
+                    return None
             else:
                 return ret
         else:
-            return self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            # Try NSE first
+            try:
+                ret = self.get_option_chain_info_nse(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
+            except Exception as e:
+                print(f"Error: {e}")
+                logger.error(f"Error: {e}")
+                ret = None
+            if ret is None:
+                return self.extract_options_data_groww(prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData)
 
     def get_option_chain_info_nse(self, prev_atm_strike, prev_strangle_ce_strike, prev_strangle_pe_strike, symbolData):
         try:
@@ -128,8 +169,18 @@ class OptionChainData:
             # merge the two dataframes on strikePrice
             df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
+            # Check if we have enough data for strangle calculation (need at least 11 rows)
+            if len(df_merge) < 11:
+                print(f"Insufficient data for strangle calculation for {symbolData}: only {len(df_merge)} rows")
+                return None
+
             df_merge_temp = df_merge.iloc[5:]
             df_merge_temp = df_merge_temp[:-5]
+
+            # Check if df_merge_temp is empty after slicing
+            if df_merge_temp.empty:
+                print(f"Empty df_merge_temp after slicing for {symbolData}")
+                return None
 
             #Get strike price which has minimum difference between lastPrice_ce and lastPrice_pe
             df_merge_temp['diff'] = abs(df_merge_temp['lastPrice_ce'] - df_merge_temp['lastPrice_pe'])
@@ -176,6 +227,15 @@ class OptionChainData:
             ce_rows_sorted_by_open_interest = self.extract_top_open_interest_values(df_ce)
             pe_rows_sorted_by_open_interest = self.extract_top_open_interest_values(df_pe)
 
+            # Validate we have at least 3 rows for top OI calculation
+            if len(ce_rows_sorted_by_open_interest) < 3:
+                print(f"Insufficient CE data for top OI calculation for {symbolData}: only {len(ce_rows_sorted_by_open_interest)} rows")
+                return None
+
+            if len(pe_rows_sorted_by_open_interest) < 3:
+                print(f"Insufficient PE data for top OI calculation for {symbolData}: only {len(pe_rows_sorted_by_open_interest)} rows")
+                return None
+
             # Extract values of strikePrice, openInterest, and lastPrice from the rows with the highest, second highest, and third highest openInterest
             ce_highest_values = ce_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'openInterest', 'lastPrice']].values
             ce_second_highest_values = ce_rows_sorted_by_open_interest.iloc[1][
@@ -193,11 +253,8 @@ class OptionChainData:
             total_open_interest_ce = df_ce['openInterest'].sum()
             total_open_interest_pe = df_pe['openInterest'].sum()
 
-            if total_open_interest_ce > 0:
-                pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
-            else:
-                print("Warning: CE open interest is zero, using default ratio value")
-                pe_to_ce_ratio = 0  # or some other default value
+            # Use consistent approach: max() to avoid division by zero
+            pe_to_ce_ratio = total_open_interest_pe / max(total_open_interest_ce, 1)
 
             # Find the last prices for ATM CE and ATM PE
             atm_ce_last_price = df_ce[df_ce['strikePrice'] == atm_ce_strike]['lastPrice'].values[0]
@@ -214,9 +271,24 @@ class OptionChainData:
                     'lastPrice',
                     default_value=0
                 )
-                prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['lastPrice'].values[0]
-                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
-                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]
+                prev_atm_pe_price = self.safe_get_dataframe_value(
+                    df_pe,
+                    df_pe['strikePrice'] == prev_atm_strike,
+                    'lastPrice',
+                    default_value=0
+                )
+                prev_atm_next_ce_price = self.safe_get_dataframe_value(
+                    df_ce,
+                    df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData)),
+                    'lastPrice',
+                    default_value=0
+                )
+                prev_atm_pe_strike_price = self.safe_get_dataframe_value(
+                    df_pe,
+                    df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData)),
+                    'lastPrice',
+                    default_value=0
+                )
 
             # Save data to a dictionary along with the current time
             result_dict = {
@@ -226,8 +298,8 @@ class OptionChainData:
                 'atm_strike': float(atm_ce_strike),
                 'atm_current_ce_price': float(atm_ce_last_price),
                 'atm_current_pe_price': float(atm_pe_last_price),
-                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]),
-                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData))]['lastPrice'].values[0]),
+                'atm_next_ce_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData)), 'lastPrice', 0)),
+                'atm_next_pe_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData)), 'lastPrice', 0)),
                 'prev_atm_strike': prev_atm_strike,
                 'prev_atm_ce_price': float(prev_atm_ce_price),
                 'prev_atm_pe_price': float(prev_atm_pe_price),
@@ -235,12 +307,12 @@ class OptionChainData:
                 'prev_atm_next_pe_price': float(prev_atm_pe_strike_price),
                 'ce_strangle_strike': float(ce_strangle_strike),
                 'pe_strangle_strike': float(pe_strangle_strike),
-                'ce_strangle_price': float(df_ce[df_ce['strikePrice'] == ce_strangle_strike]['lastPrice'].values[0]) if not df_ce[df_ce['strikePrice'] == ce_strangle_strike].empty else 0,
-                'pe_strangle_price': float(df_pe[df_pe['strikePrice'] == pe_strangle_strike]['lastPrice'].values[0]),
+                'ce_strangle_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == ce_strangle_strike, 'lastPrice', 0)),
+                'pe_strangle_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == pe_strangle_strike, 'lastPrice', 0)),
                 'prev_strangle_ce_strike': prev_strangle_ce_strike,
                 'prev_strangle_pe_strike': prev_strangle_pe_strike,
-                'prev_ce_strangle_price': float(df_ce[df_ce['strikePrice'] == prev_strangle_ce_strike]['lastPrice'].values[0]),
-                'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['lastPrice'].values[0]),
+                'prev_ce_strangle_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == prev_strangle_ce_strike, 'lastPrice', 0)),
+                'prev_pe_strangle_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == prev_strangle_pe_strike, 'lastPrice', 0)),
                 'ce_highest_strike': float(ce_highest_values[0]),
                 'ce_highest_open_interest': float(ce_highest_values[1]),
                 'ce_highest_last_price': float(ce_highest_values[2]),
@@ -268,6 +340,17 @@ class OptionChainData:
             return None
 
     def get_option_chain_data_with_retry(self, url, max_retries=3, retry_delay=3):
+        """
+        Fetch option chain data with retry mechanism and proper error handling.
+        
+        Args:
+            url: API endpoint URL
+            max_retries: Maximum number of retry attempts
+            retry_delay: Delay in seconds between retries
+            
+        Returns:
+            dict: JSON response data or None if all retries fail
+        """
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -282,44 +365,68 @@ class OptionChainData:
 
         baseurl = "https://www.nseindia.com/"
 
-        with requests.Session() as session:
-            # First, visit the base URL to establish session and get cookies
-            try:
-                session.headers.update(headers)
-                request = session.get(baseurl, headers=headers, timeout=10)
-                request.raise_for_status()
-                cookies = dict(request.cookies)
-                print(f"Session established, got {len(cookies)} cookies")
-            except Exception as e:
-                print(f"Failed to establish session: {e}")
+        try:
+            with requests.Session() as session:
+                # First, visit the base URL to establish session and get cookies
+                try:
+                    session.headers.update(headers)
+                    request = session.get(baseurl, headers=headers, timeout=10)
+                    request.raise_for_status()
+                    cookies = dict(request.cookies)
+                    print(f"Session established, got {len(cookies)} cookies")
+                except requests.exceptions.RequestException as e:
+                    print(f"Failed to establish session: {e}")
+                    logger.error(f"Failed to establish session for {url}: {e}")
+                    return None
+
+                # Retry loop for actual API call
+                for retry in range(max_retries + 1):
+                    try:
+                        # Update headers for API call
+                        api_headers = headers.copy()
+                        api_headers.update({
+                            "Referer": "https://www.nseindia.com/option-chain",
+                            "Host": "www.nseindia.com",
+                            "X-Requested-With": "XMLHttpRequest"
+                        })
+
+                        response = session.get(url, headers=api_headers, timeout=10)
+                        if response.status_code == 200:
+                            data = response.json()
+                            return data
+                        else:
+                            print(f"HTTP {response.status_code}: {response.reason}")
+                            if retry < max_retries:
+                                print(f"Retrying after {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                            else:
+                                logger.error(f"Max retries exceeded for {url}. Status: {response.status_code}")
+                                return None
+                    except requests.exceptions.RequestException as e:
+                        print(f"Request failed on retry {retry + 1}/{max_retries + 1}. Error: {e}")
+                        logger.error(f"Request failed on retry {retry + 1}. URL: {url}, Error: {e}")
+                        if retry < max_retries:
+                            print(f"Retrying after {retry_delay} seconds...")
+                            time.sleep(retry_delay)
+                        else:
+                            logger.error(f"Max retries exceeded for {url}")
+                            return None
+                    except Exception as e:
+                        print(f"Unexpected error on retry {retry + 1}: {e}")
+                        logger.error(f"Unexpected error for {url}: {e}")
+                        if retry < max_retries:
+                            time.sleep(retry_delay)
+                        else:
+                            return None
+
+                # If we exit the loop without returning, all retries failed
                 return None
 
-            for retry in range(max_retries + 1):
-                try:
-                    # Update headers for API call
-                    api_headers = headers.copy()
-                    api_headers.update({
-                        "Referer": "https://www.nseindia.com/option-chain",
-                        "Host": "www.nseindia.com",
-                        "X-Requested-With": "XMLHttpRequest"
-                    })
-
-                    response = session.get(url, headers=api_headers, timeout=10)
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data
-                    else:
-                        print(f"HTTP {response.status_code}: {response.reason}")
-                        response.raise_for_status()
-                except requests.exceptions.RequestException as e:
-                    print(f"Request failed on retry {retry + 1}. Error: {e}")
-                    logging.error(f"Request failed on retry {retry + 1}. Error: {url}")
-                    if retry < max_retries:
-                        print(f"Retrying after {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                    else:
-                        logging.error("Max retries exceeded. Unable to fetch data.")
-                        raise requests.exceptions.RequestException("Max retries exceeded.") from e
+        except Exception as e:
+            # Catch any exception from the entire process
+            print(f"Critical error in get_option_chain_data_with_retry: {e}")
+            logger.error(f"Critical error for {url}: {e}")
+            return None
 
     def extract_top_open_interest_values(self, df, top_n=3):
         df_with_open_interest = df[df['openInterest'] > 0]
@@ -762,6 +869,15 @@ class OptionChainData:
             ce_rows_sorted_by_open_interest = self.extract_top_open_interest_values_ce(df_ce)
             pe_rows_sorted_by_open_interest = self.extract_top_open_interest_values_pe(df_pe)
 
+            # Validate we have at least 3 rows for top OI calculation (BSE/SENSEX)
+            if len(ce_rows_sorted_by_open_interest) < 3:
+                print(f"Insufficient CE data for top OI calculation for {symbolData} (BSE): only {len(ce_rows_sorted_by_open_interest)} rows")
+                return None
+
+            if len(pe_rows_sorted_by_open_interest) < 3:
+                print(f"Insufficient PE data for top OI calculation for {symbolData} (BSE): only {len(pe_rows_sorted_by_open_interest)} rows")
+                return None
+
             # Extract values of strikePrice, openInterest, and lastPrice from the rows with the highest, second highest, and third highest openInterest
             ce_highest_values = ce_rows_sorted_by_open_interest.iloc[0][['strikePrice', 'call_open_interest', 'call_ltp']].values
             ce_second_highest_values = ce_rows_sorted_by_open_interest.iloc[1][
@@ -788,8 +904,18 @@ class OptionChainData:
             # merge the two dataframes on strikePrice
             df_merge = pd.merge(df_ce_temp, df_pe_temp, on='strikePrice', suffixes=('_ce', '_pe'))
 
+            # Check if we have enough data for strangle calculation (BSE/SENSEX - need at least 11 rows)
+            if len(df_merge) < 11:
+                print(f"Insufficient data for strangle calculation for {symbolData} (BSE): only {len(df_merge)} rows")
+                return None
+
             df_merge_temp = df_merge.iloc[5:]
             df_merge_temp = df_merge_temp[:-5]
+
+            # Check if df_merge_temp is empty after slicing (BSE/SENSEX)
+            if df_merge_temp.empty:
+                print(f"Empty df_merge_temp after slicing for {symbolData} (BSE)")
+                return None
 
             #Get strike price which has minimium difference between lastPrice_ce and lastPrice_pe
             df_merge_temp['diff'] = abs(df_merge_temp['call_ltp'] - df_merge_temp['put_ltp'])
@@ -828,21 +954,22 @@ class OptionChainData:
             total_open_interest_ce = df_ce['call_open_interest'].sum()
             total_open_interest_pe = df_pe['put_open_interest'].sum()
 
-            pe_to_ce_ratio = total_open_interest_pe / total_open_interest_ce
+            # Use consistent approach: max() to avoid division by zero (BSE/SENSEX)
+            pe_to_ce_ratio = total_open_interest_pe / max(total_open_interest_ce, 1)
 
-            # Find the last prices for ATM CE and ATM PE
-            atm_ce_last_price = df_ce[df_ce['strikePrice'] == atm_ce_strike]['call_ltp'].values[0]
-            atm_pe_last_price = df_pe[df_pe['strikePrice'] == atm_pe_strike]['put_ltp'].values[0]
+            # Find the last prices for ATM CE and ATM PE (using safe access for BSE/SENSEX)
+            atm_ce_last_price = self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == atm_ce_strike, 'call_ltp', 0)
+            atm_pe_last_price = self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == atm_pe_strike, 'put_ltp', 0)
             if prev_atm_strike == 0:
                 prev_atm_ce_price = 0
                 prev_atm_pe_price = 0
                 prev_atm_next_ce_price = 0
                 prev_atm_pe_strike_price = 0
             else:
-                prev_atm_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike]['call_ltp'].values[0]
-                prev_atm_pe_price = df_pe[df_pe['strikePrice'] == prev_atm_strike]['put_ltp'].values[0]
-                prev_atm_next_ce_price = df_ce[df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]
-                prev_atm_pe_strike_price = df_pe[df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData))]['put_ltp'].values[0]
+                prev_atm_ce_price = self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == prev_atm_strike, 'call_ltp', 0)
+                prev_atm_pe_price = self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == prev_atm_strike, 'put_ltp', 0)
+                prev_atm_next_ce_price = self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == prev_atm_strike + (2 * get_strike_interval(symbolData)), 'call_ltp', 0)
+                prev_atm_pe_strike_price = self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == prev_atm_strike - (2 * get_strike_interval(symbolData)), 'put_ltp', 0)
 
             # Save data to a dictionary along with the current time
             result_dict = {
@@ -852,8 +979,8 @@ class OptionChainData:
                 'atm_strike': float(atm_ce_strike),
                 'atm_current_ce_price': float(atm_ce_last_price),
                 'atm_current_pe_price': float(atm_pe_last_price),
-                'atm_next_ce_price': float(df_ce[df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData))]['call_ltp'].values[0]),
-                'atm_next_pe_price': float(df_pe[df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData))]['put_ltp'].values[0]),
+                'atm_next_ce_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == atm_ce_strike + (2 * get_strike_interval(symbolData)), 'call_ltp', 0)),
+                'atm_next_pe_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == atm_pe_strike - (2 * get_strike_interval(symbolData)), 'put_ltp', 0)),
                 'prev_atm_strike': prev_atm_strike,
                 'prev_atm_ce_price': float(prev_atm_ce_price),
                 'prev_atm_pe_price': float(prev_atm_pe_price),
@@ -861,12 +988,12 @@ class OptionChainData:
                 'prev_atm_next_pe_price': float(prev_atm_pe_strike_price),
                 'ce_strangle_strike': float(ce_strangle_strike),
                 'pe_strangle_strike': float(pe_strangle_strike),
-                'ce_strangle_price': float(df_ce[df_ce['strikePrice'] == ce_strangle_strike]['call_ltp'].values[0]),
-                'pe_strangle_price': float(df_pe[df_pe['strikePrice'] == pe_strangle_strike]['put_ltp'].values[0]),
+                'ce_strangle_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == ce_strangle_strike, 'call_ltp', 0)),
+                'pe_strangle_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == pe_strangle_strike, 'put_ltp', 0)),
                 'prev_strangle_ce_strike': prev_strangle_ce_strike,
                 'prev_strangle_pe_strike': prev_strangle_pe_strike,
-                'prev_ce_strangle_price': float(df_ce[df_ce['strikePrice'] == prev_strangle_ce_strike]['call_ltp'].values[0]),
-                'prev_pe_strangle_price': float(df_pe[df_pe['strikePrice'] == prev_strangle_pe_strike]['put_ltp'].values[0]),
+                'prev_ce_strangle_price': float(self.safe_get_dataframe_value(df_ce, df_ce['strikePrice'] == prev_strangle_ce_strike, 'call_ltp', 0)),
+                'prev_pe_strangle_price': float(self.safe_get_dataframe_value(df_pe, df_pe['strikePrice'] == prev_strangle_pe_strike, 'put_ltp', 0)),
                 'ce_highest_strike': float(ce_highest_values[0]),
                 'ce_highest_open_interest': float(ce_highest_values[1]),
                 'ce_highest_last_price': float(ce_highest_values[2]),
