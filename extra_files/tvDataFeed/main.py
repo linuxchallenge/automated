@@ -10,6 +10,7 @@ import pandas as pd
 from websocket import create_connection
 import requests
 from urllib.parse import quote
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class TvDatafeed:
     __request_timeout = 10
     __max_retries = 3
     __retry_delay = 2
+    __token_file = Path.home() / 'temp' / 'data_collection' / 'token.txt'
     
     # User-Agent rotation for better evasion
     __user_agents = [
@@ -88,8 +90,31 @@ class TvDatafeed:
         self.ws_debug = False
         self.proxy = proxy
         self.random_user_agent = random_user_agent
+        
+        # Store credentials for auto-refresh
+        self.username = username
+        self.password = password
+        
+        # Track last token validation time
+        self.last_token_check = None
+        self.token_check_interval = 3600  # 1 hour in seconds
 
-        self.token = self.__auth(username, password)
+        # Try to load cached token first (before any login attempt)
+        cached_token = self.__load_token()
+        if cached_token and self.__validate_token(cached_token):
+            self.token = cached_token
+            logger.info("✓ Using cached token (skipped login)")
+            self.last_token_check = time.time()  # Mark as just checked
+        elif username and password:
+            # Need fresh login
+            self.token = self.__auth(username, password)
+            
+            # Save token if login successful
+            if self.token and self.token != "unauthorized_user_token":
+                self.__save_token(self.token)
+                self.last_token_check = time.time()
+        else:
+            self.token = None
 
         if self.token is None:
             self.token = "unauthorized_user_token"
@@ -100,6 +125,101 @@ class TvDatafeed:
         self.ws = None
         self.session = self.__generate_session()
         self.chart_session = self.__generate_chart_session()
+    
+    def __save_token(self, token):
+        """Save token to file"""
+        try:
+            # Create directory if it doesn't exist
+            self.__token_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write token
+            with open(self.__token_file, 'w') as f:
+                f.write(token)
+            
+            # Set secure permissions (owner read/write only)
+            import os
+            try:
+                os.chmod(self.__token_file, 0o600)
+            except:
+                pass  # May fail on Windows
+            
+            logger.info("Token saved to %s", self.__token_file)
+        except Exception as e:
+            logger.warning("Failed to save token: %s", e)
+    
+    def __load_token(self):
+        """Load token from file"""
+        try:
+            if self.__token_file.exists():
+                with open(self.__token_file, 'r') as f:
+                    token = f.read().strip()
+                if token:
+                    logger.debug("Token loaded from %s", self.__token_file)
+                    return token
+        except Exception as e:
+            logger.debug("Failed to load token: %s", e)
+        return None
+    
+    def __validate_token(self, token):
+        """Validate if token is still working"""
+        if not token or token == "unauthorized_user_token":
+            return False
+        
+        try:
+            # Quick validation: try to search for a symbol
+            # This is lightweight and doesn't require websocket connection
+            url = self.__search_url.format('AAPL', 'NASDAQ')
+            headers = {'User-Agent': self.__signin_headers['User-Agent']}
+            
+            # Use proxy if configured
+            proxies = self.proxy if hasattr(self, 'proxy') and self.proxy else None
+            
+            response = requests.get(url, headers=headers, proxies=proxies, timeout=5)
+            
+            if response.status_code == 200:
+                logger.debug("Token validation successful")
+                return True
+            else:
+                logger.debug("Token validation failed with status: %s", response.status_code)
+                return False
+        except Exception as e:
+            logger.debug("Token validation failed: %s", e)
+            return False
+    
+    def __check_and_refresh_token(self):
+        """
+        Check token validity periodically and refresh if needed.
+        Only checks once per hour to avoid overhead.
+        """
+        current_time = time.time()
+        
+        # Check if we need to validate (1 hour has passed)
+        if self.last_token_check is None or (current_time - self.last_token_check) >= self.token_check_interval:
+            logger.debug("Performing periodic token validation check (1 hour interval)")
+            
+            # Validate current token
+            if not self.__validate_token(self.token):
+                logger.warning("Token validation failed - token may be expired")
+                
+                # Try to refresh if credentials are available
+                if self.username and self.password:
+                    logger.info("Attempting automatic token refresh...")
+                    new_token = self.__auth(self.username, self.password)
+                    
+                    if new_token and new_token != "unauthorized_user_token":
+                        self.token = new_token
+                        self.__save_token(new_token)
+                        logger.info("✓ Token refreshed successfully")
+                        self.last_token_check = current_time
+                    else:
+                        logger.error("✗ Token refresh failed - continuing with existing token")
+                        # Don't update last_token_check so it will try again next time
+                else:
+                    logger.warning("Cannot refresh token - no credentials stored")
+                    self.last_token_check = current_time  # Avoid repeated checks
+            else:
+                logger.debug("Token validation successful")
+                self.last_token_check = current_time
 
     def __auth(self, username, password):
 
@@ -185,6 +305,7 @@ class TvDatafeed:
                             # Check if signin was successful
                             if 'user' in response_json and 'auth_token' in response_json['user']:
                                 token = response_json['user']['auth_token']
+                                logger.info(response_json)
                                 logger.info("Successfully signed in to TradingView")
                                 break
                             else:
@@ -358,6 +479,9 @@ class TvDatafeed:
         Returns:
             pd.Dataframe: dataframe with sohlcv as columns
         """
+        # Check and refresh token if needed (once per hour)
+        self.__check_and_refresh_token()
+        
         symbol = self.__format_symbol(
             symbol=symbol, exchange=exchange, contract=fut_contract
         )
