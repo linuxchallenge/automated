@@ -61,7 +61,7 @@ class commodity_data:
             print(f"Using credentials: {username}")
             print(f"Using credentials: {password}")
 
-            self.tv_obj = TvDatafeed(username, password)
+            self.tv_obj = TvDatafeed(username, password, random_user_agent=True)
 
             if self.tv_obj.token != 'unauthorized_user_token':
                 break
