@@ -1,0 +1,487 @@
+import datetime
+import enum
+import json
+import logging
+import random
+import re
+import string
+import time
+import pandas as pd
+from websocket import create_connection
+import requests
+from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
+
+
+class Interval(enum.Enum):
+    in_1_minute = "1"
+    in_3_minute = "3"
+    in_5_minute = "5"
+    in_15_minute = "15"
+    in_30_minute = "30"
+    in_45_minute = "45"
+    in_1_hour = "1H"
+    in_2_hour = "2H"
+    in_3_hour = "3H"
+    in_4_hour = "4H"
+    in_daily = "1D"
+    in_weekly = "1W"
+    in_monthly = "1M"
+
+
+class TvDatafeed:
+    __sign_in_url = 'https://www.tradingview.com/accounts/signin/'
+    __search_url = 'https://symbol-search.tradingview.com/symbol_search/?text={}&hl=1&exchange={}&lang=en&type=&domain=production'
+    __ws_headers = json.dumps({"Origin": "https://data.tradingview.com"})
+    __signin_headers = {
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Origin': 'https://www.tradingview.com',
+        'Referer': 'https://www.tradingview.com',
+        'Priority': 'u=0, i',
+        'Sec-Ch-Ua': '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0',
+        'X-Requested-With': 'XMLHttpRequest'
+    }
+    __ws_timeout = 5
+    __request_timeout = 10
+    __max_retries = 3
+    __retry_delay = 2
+    
+    # User-Agent rotation for better evasion
+    __user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+    ]
+
+    def __init__(
+        self,
+        username: str = None,
+        password: str = None,
+        proxy: dict = None,
+        random_user_agent: bool = True,
+    ) -> None:
+        """Create TvDatafeed object
+
+        Args:
+            username (str, optional): tradingview username. Defaults to None.
+            password (str, optional): tradingview password. Defaults to None.
+            proxy (dict, optional): proxy configuration dict with 'http' and/or 'https' keys. 
+                                   Example: {'http': 'http://user:pass@host:port', 'https': 'http://user:pass@host:port'}
+                                   Defaults to None.
+            random_user_agent (bool, optional): Use random user-agent for better evasion. Defaults to True.
+        """
+
+        self.ws_debug = False
+        self.proxy = proxy
+        self.random_user_agent = random_user_agent
+
+        self.token = self.__auth(username, password)
+
+        if self.token is None:
+            self.token = "unauthorized_user_token"
+            logger.warning(
+                "you are using nologin method, data you access may be limited"
+            )
+
+        self.ws = None
+        self.session = self.__generate_session()
+        self.chart_session = self.__generate_chart_session()
+
+    def __auth(self, username, password):
+
+        if (username is None or password is None):
+            token = None
+
+        else:
+            data = {"username": username,
+                    "password": password,
+                    "remember": "on"}
+            
+            token = None
+            session = requests.Session()
+            
+            # Set proxy if provided
+            if self.proxy:
+                session.proxies.update(self.proxy)
+                logger.info("Using proxy for signin: %s", list(self.proxy.keys()))
+            
+            # Select random user agent if enabled
+            user_agent = random.choice(self.__user_agents) if self.random_user_agent else self.__signin_headers['User-Agent']
+            logger.debug("Using User-Agent: %s", user_agent[:50] + "...")
+            
+            # First, load the TradingView homepage to get cookies and establish session
+            try:
+                logger.debug("Loading TradingView homepage to establish session...")
+                
+                # Add random delay (0.5-2 seconds) to mimic human behavior
+                initial_delay = random.uniform(0.5, 2.0)
+                logger.debug("Waiting %.2f seconds before loading homepage (human-like)", initial_delay)
+                time.sleep(initial_delay)
+                
+                homepage_response = session.get(
+                    'https://www.tradingview.com',
+                    headers={
+                        'User-Agent': user_agent,
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive',
+                        'Sec-Fetch-Dest': 'document',
+                        'Sec-Fetch-Mode': 'navigate',
+                        'Sec-Fetch-Site': 'none',
+                        'Sec-Fetch-User': '?1',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Cache-Control': 'max-age=0'
+                    },
+                    timeout=self.__request_timeout
+                )
+                logger.debug("Homepage loaded, status: %s, cookies: %s", 
+                           homepage_response.status_code, 
+                           len(session.cookies))
+                
+                # Add another human-like delay before signin
+                pre_signin_delay = random.uniform(1.0, 3.0)
+                logger.debug("Waiting %.2f seconds before signin attempt (human-like)", pre_signin_delay)
+                time.sleep(pre_signin_delay)
+                
+            except Exception as e:
+                logger.warning("Failed to load homepage (continuing anyway): %s", e)
+            
+            for attempt in range(1, self.__max_retries + 1):
+                try:
+                    logger.debug("Signin attempt %s/%s", attempt, self.__max_retries)
+                    
+                    # Update headers with selected user agent
+                    signin_headers = self.__signin_headers.copy()
+                    signin_headers['User-Agent'] = user_agent
+                    
+                    response = session.post(
+                        url=self.__sign_in_url, 
+                        data=data, 
+                        headers=signin_headers,
+                        timeout=self.__request_timeout
+                    )
+                    
+                    logger.debug("Response status code: %s", response.status_code)
+                    
+                    if response.status_code == 200:
+                        try:
+                            response_json = response.json()
+                            
+                            # Check if signin was successful
+                            if 'user' in response_json and 'auth_token' in response_json['user']:
+                                token = response_json['user']['auth_token']
+                                logger.info("Successfully signed in to TradingView")
+                                break
+                            else:
+                                # Check for error messages in response
+                                if 'error' in response_json:
+                                    logger.error("Signin failed: %s", response_json['error'])
+                                else:
+                                    logger.error("Signin failed: Unexpected response format - %s", response_json)
+                                    
+                        except json.JSONDecodeError as je:
+                            logger.error("Failed to parse JSON response: %s", je)
+                            logger.debug("Response text: %s", response.text[:500])  # Log first 500 chars
+                            
+                    elif response.status_code == 429:
+                        logger.warning("Rate limited (429). Waiting %s seconds before retry...", self.__retry_delay * attempt)
+                        time.sleep(self.__retry_delay * attempt)
+                        continue
+                        
+                    else:
+                        logger.error("Signin request failed with status code: %s", response.status_code)
+                        logger.debug("Response text: %s", response.text[:500])
+                        
+                except requests.exceptions.Timeout:
+                    logger.error("Signin request timed out after %s seconds", self.__request_timeout)
+                    
+                except requests.exceptions.ConnectionError as ce:
+                    logger.error("Connection error during signin: %s", ce)
+                    
+                except requests.exceptions.RequestException as re:
+                    logger.error("Request error during signin: %s", re)
+                    
+                except KeyError as ke:
+                    logger.error("Key error parsing response (check credentials): %s", ke)
+                    
+                except Exception as e:
+                    logger.error("Unexpected error during signin: %s - %s", type(e).__name__, e)
+                
+                # Wait before retrying (except on last attempt)
+                if attempt < self.__max_retries and token is None:
+                    # Add jitter to retry delay (±20%)
+                    jitter = random.uniform(0.8, 1.2)
+                    actual_delay = self.__retry_delay * jitter
+                    logger.info("Retrying in %.2f seconds...", actual_delay)
+                    time.sleep(actual_delay)
+
+        return token
+
+    def __create_connection(self):
+        logging.debug("creating websocket connection")
+        self.ws = create_connection(
+            "wss://data.tradingview.com/socket.io/websocket", headers=self.__ws_headers, timeout=self.__ws_timeout
+        )
+
+    @staticmethod
+    def __filter_raw_message(text):
+        try:
+            found = re.search('"m":"(.+?)",', text).group(1)
+            found2 = re.search('"p":(.+?"}"])}', text).group(1)
+
+            return found, found2
+        except AttributeError:
+            logger.error("error in filter_raw_message")
+
+    @staticmethod
+    def __generate_session():
+        stringLength = 12
+        letters = string.ascii_lowercase
+        random_string = "".join(random.choice(letters)
+                                for i in range(stringLength))
+        return "qs_" + random_string
+
+    @staticmethod
+    def __generate_chart_session():
+        stringLength = 12
+        letters = string.ascii_lowercase
+        random_string = "".join(random.choice(letters)
+                                for i in range(stringLength))
+        return "cs_" + random_string
+
+    @staticmethod
+    def __prepend_header(st):
+        return "~m~" + str(len(st)) + "~m~" + st
+
+    @staticmethod
+    def __construct_message(func, param_list):
+        return json.dumps({"m": func, "p": param_list}, separators=(",", ":"))
+
+    def __create_message(self, func, paramList):
+        return self.__prepend_header(self.__construct_message(func, paramList))
+
+    def __send_message(self, func, args):
+        m = self.__create_message(func, args)
+        if self.ws_debug:
+            print(m)
+        self.ws.send(m)
+
+    @staticmethod
+    def __create_df(raw_data, symbol):
+        try:
+            out = re.search('"s":\[(.+?)\}\]', raw_data).group(1)
+            x = out.split(',{"')
+            data = list()
+            volume_data = True
+
+            for xi in x:
+                xi = re.split("\[|:|,|\]", xi)
+                ts = datetime.datetime.fromtimestamp(float(xi[4]))
+
+                row = [ts]
+
+                for i in range(5, 10):
+
+                    # skip converting volume data if does not exists
+                    if not volume_data and i == 9:
+                        row.append(0.0)
+                        continue
+                    try:
+                        row.append(float(xi[i]))
+
+                    except ValueError:
+                        volume_data = False
+                        row.append(0.0)
+                        logger.debug('no volume data')
+
+                data.append(row)
+
+            data = pd.DataFrame(
+                data, columns=["datetime", "open",
+                               "high", "low", "close", "volume"]
+            ).set_index("datetime")
+            data.insert(0, "symbol", value=symbol)
+            return data
+        except AttributeError:
+            logger.error("no data, please check the exchange and symbol")
+
+    @staticmethod
+    def __format_symbol(symbol, exchange, contract: int = None):
+
+        if ":" in symbol:
+            pass
+        elif contract is None:
+            symbol = f"{exchange}:{symbol}"
+
+        elif isinstance(contract, int):
+            symbol = f"{exchange}:{symbol}{contract}!"
+
+        else:
+            raise ValueError("not a valid contract")
+
+        return symbol
+
+    def get_hist(
+        self,
+        symbol: str,
+        exchange: str = "NSE",
+        interval: Interval = Interval.in_daily,
+        n_bars: int = 10,
+        fut_contract: int = None,
+        extended_session: bool = False,
+    ) -> pd.DataFrame:
+        """get historical data
+
+        Args:
+            symbol (str): symbol name
+            exchange (str, optional): exchange, not required if symbol is in format EXCHANGE:SYMBOL. Defaults to None.
+            interval (str, optional): chart interval. Defaults to 'D'.
+            n_bars (int, optional): no of bars to download, max 5000. Defaults to 10.
+            fut_contract (int, optional): None for cash, 1 for continuous current contract in front, 2 for continuous next contract in front . Defaults to None.
+            extended_session (bool, optional): regular session if False, extended session if True, Defaults to False.
+
+        Returns:
+            pd.Dataframe: dataframe with sohlcv as columns
+        """
+        symbol = self.__format_symbol(
+            symbol=symbol, exchange=exchange, contract=fut_contract
+        )
+
+        interval = interval.value
+
+        self.__create_connection()
+
+        self.__send_message("set_auth_token", [self.token])
+        self.__send_message("chart_create_session", [self.chart_session, ""])
+        self.__send_message("quote_create_session", [self.session])
+        self.__send_message(
+            "quote_set_fields",
+            [
+                self.session,
+                "ch",
+                "chp",
+                "current_session",
+                "description",
+                "local_description",
+                "language",
+                "exchange",
+                "fractional",
+                "is_tradable",
+                "lp",
+                "lp_time",
+                "minmov",
+                "minmove2",
+                "original_name",
+                "pricescale",
+                "pro_name",
+                "short_name",
+                "type",
+                "update_mode",
+                "volume",
+                "currency_code",
+                "rchp",
+                "rtc",
+            ],
+        )
+
+        self.__send_message(
+            "quote_add_symbols", [self.session, symbol,
+                                  {"flags": ["force_permission"]}]
+        )
+        self.__send_message("quote_fast_symbols", [self.session, symbol])
+
+        self.__send_message(
+            "resolve_symbol",
+            [
+                self.chart_session,
+                "symbol_1",
+                '={"symbol":"'
+                + symbol
+                + '","adjustment":"splits","session":'
+                + ('"regular"' if not extended_session else '"extended"')
+                + "}",
+            ],
+        )
+        self.__send_message(
+            "create_series",
+            [self.chart_session, "s1", "s1", "symbol_1", interval, n_bars],
+        )
+        self.__send_message("switch_timezone", [
+                            self.chart_session, "exchange"])
+
+        raw_data = ""
+
+        logger.debug("getting data for %s...", symbol)
+        while True:
+            try:
+                result = self.ws.recv()
+                raw_data = raw_data + result + "\n"
+            except Exception as e:
+                logger.error(e)
+                break
+
+            if "series_completed" in result:
+                break
+
+        return self.__create_df(raw_data, symbol)
+
+    def search_symbol(self, text: str, exchange: str = ''):
+        url = self.__search_url.format(text, exchange)
+
+        symbols_list = []
+        try:
+            # Use proxy if configured
+            proxies = self.proxy if hasattr(self, 'proxy') and self.proxy else None
+            
+            resp = requests.get(url, timeout=self.__request_timeout, headers={
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }, proxies=proxies)
+            
+            if resp.status_code == 200:
+                symbols_list = json.loads(resp.text.replace(
+                    '</em>', '').replace('<em>', ''))
+                logger.debug("Found %s symbols for '%s'", len(symbols_list), text)
+            else:
+                logger.error("Symbol search failed with status code: %s", resp.status_code)
+                
+        except requests.exceptions.Timeout:
+            logger.error("Symbol search timed out after %s seconds", self.__request_timeout)
+        except requests.exceptions.RequestException as e:
+            logger.error("Request error during symbol search: %s", e)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse symbol search response: %s", e)
+        except Exception as e:
+            logger.error("Unexpected error during symbol search: %s - %s", type(e).__name__, e)
+
+        return symbols_list
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    tv = TvDatafeed()
+    print(tv.get_hist("CRUDEOIL", "MCX", fut_contract=1))
+    print(tv.get_hist("NIFTY", "NSE", fut_contract=1))
+    print(
+        tv.get_hist(
+            "EICHERMOT",
+            "NSE",
+            interval=Interval.in_1_hour,
+            n_bars=500,
+            extended_session=False,
+        )
+    )
