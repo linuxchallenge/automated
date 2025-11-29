@@ -94,6 +94,8 @@ class TvDatafeed:
         # Store credentials for auto-refresh
         self.username = username
         self.password = password
+
+        logger.info("Username: %s", self.username)
         
         # Track last token validation time
         self.last_token_check = None
@@ -101,11 +103,26 @@ class TvDatafeed:
 
         # Try to load cached token first (before any login attempt)
         cached_token = self.__load_token()
-        if cached_token and self.__validate_token(cached_token):
-            self.token = cached_token
-            logger.info("✓ Using cached token (skipped login)")
-            self.last_token_check = time.time()  # Mark as just checked
+        if cached_token:
+            logger.info("Found cached token, validating...")
+            if self.__validate_token(cached_token):
+                self.token = cached_token
+                logger.info("✓ Using cached token (skipped login)")
+                self.last_token_check = time.time()  # Mark as just checked
+            else:
+                logger.info("✗ Cached token validation failed, will perform fresh login")
+                if username and password:
+                    # Need fresh login
+                    self.token = self.__auth(username, password)
+                    
+                    # Save token if login successful
+                    if self.token and self.token != "unauthorized_user_token":
+                        self.__save_token(self.token)
+                        self.last_token_check = time.time()
+                else:
+                    self.token = None
         elif username and password:
+            logger.info("No cached token found, performing fresh login")
             # Need fresh login
             self.token = self.__auth(username, password)
             
@@ -161,30 +178,54 @@ class TvDatafeed:
         return None
     
     def __validate_token(self, token):
-        """Validate if token is still working"""
+        """
+        Validate if token is still working.
+        Instead of API call, just check if token exists and is not the unauthorized placeholder.
+        Real validation happens when websocket connection is made during get_hist.
+        """
         if not token or token == "unauthorized_user_token":
             return False
         
-        try:
-            # Quick validation: try to search for a symbol
-            # This is lightweight and doesn't require websocket connection
-            url = self.__search_url.format('AAPL', 'NASDAQ')
-            headers = {'User-Agent': self.__signin_headers['User-Agent']}
-            
-            # Use proxy if configured
-            proxies = self.proxy if hasattr(self, 'proxy') and self.proxy else None
-            
-            response = requests.get(url, headers=headers, proxies=proxies, timeout=5)
-            
-            if response.status_code == 200:
-                logger.debug("Token validation successful")
-                return True
-            else:
-                logger.debug("Token validation failed with status: %s", response.status_code)
-                return False
-        except Exception as e:
-            logger.debug("Token validation failed: %s", e)
+        # Basic JWT structure check (should have 3 parts)
+        parts = token.split('.')
+        if len(parts) != 3:
+            logger.debug("Token validation failed: Invalid JWT structure")
             return False
+        
+        # Try to decode and check expiry
+        try:
+            import base64
+            payload_part = parts[1]
+            # Add padding if needed
+            padding = len(payload_part) % 4
+            if padding:
+                payload_part += '=' * (4 - padding)
+            
+            payload = json.loads(base64.urlsafe_b64decode(payload_part))
+            
+            # Check if token is expired
+            if 'exp' in payload:
+                import datetime
+                exp_timestamp = payload['exp']
+                now_timestamp = datetime.datetime.now().timestamp()
+                
+                if now_timestamp >= exp_timestamp:
+                    logger.debug("Token validation failed: Token expired")
+                    return False
+                else:
+                    time_left = exp_timestamp - now_timestamp
+                    logger.debug("Token valid, expires in %.1f hours", time_left / 3600)
+                    return True
+            else:
+                # No expiry in token, assume valid
+                logger.debug("Token has no expiry field, assuming valid")
+                return True
+                
+        except Exception as e:
+            logger.debug("Token validation error: %s", e)
+            # If we can't decode, assume token is still usable
+            # Real validation will happen on websocket connection
+            return True
     
     def __check_and_refresh_token(self):
         """
@@ -213,10 +254,12 @@ class TvDatafeed:
                         self.last_token_check = current_time
                     else:
                         logger.error("✗ Token refresh failed - continuing with existing token")
-                        # Don't update last_token_check so it will try again next time
+                        # IMPORTANT: Update last_token_check even on failure to avoid hammering the API
+                        self.last_token_check = current_time
                 else:
                     logger.warning("Cannot refresh token - no credentials stored")
-                    self.last_token_check = current_time  # Avoid repeated checks
+                    # Update last_token_check to avoid repeated checks
+                    self.last_token_check = current_time
             else:
                 logger.debug("Token validation successful")
                 self.last_token_check = current_time
@@ -479,9 +522,6 @@ class TvDatafeed:
         Returns:
             pd.Dataframe: dataframe with sohlcv as columns
         """
-        # Check and refresh token if needed (once per hour)
-        self.__check_and_refresh_token()
-        
         symbol = self.__format_symbol(
             symbol=symbol, exchange=exchange, contract=fut_contract
         )
