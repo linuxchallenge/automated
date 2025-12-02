@@ -197,6 +197,13 @@ class TelegramNotifier:
 
 
 class cash_stratergy:
+    # Symbol mapping for special cases (CSV symbol -> NSE symbol)
+    SYMBOL_MAPPING = {
+        'M_M': 'M&M',          # Mahindra & Mahindra
+        'M&MFIN': 'M&MFIN',    # M&M Financial (already correct)
+        'L_T': 'LT',           # Larsen & Toubro
+    }
+
     def __init__(self):
         self.csv_path = "cash_stratergy.csv"
         self.remote_csv_url = "https://docs.google.com/spreadsheets/d/19y1fKqAZtMaCzUHEgKV15FLRSSAXLWVdq-kR1-TY6VY/export?format=csv"
@@ -219,6 +226,18 @@ class cash_stratergy:
         # Order retry tracking
         self._order_retry_count = {}  # {(account, symbol, order_type): retry_count}
         self._max_order_retries = 3
+
+    def _normalize_symbol(self, symbol):
+        """
+        Convert CSV symbols to NSE-compatible symbols
+        
+        Args:
+            symbol: Symbol from CSV (e.g., 'M_M', 'L_T')
+        
+        Returns:
+            NSE-compatible symbol (e.g., 'M&M', 'LT')
+        """
+        return self.SYMBOL_MAPPING.get(symbol, symbol)
 
     def _get_session(self):
         """Get or create a reusable session with automatic refresh"""
@@ -581,11 +600,15 @@ class cash_stratergy:
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and sl {row['sl']}")
             try:
                 symbol = row['symbol']
+                # Normalize symbol for NSE API (M_M -> M&M, etc.)
+                nse_symbol = self._normalize_symbol(symbol)
+                logger.info(f"Symbol mapping: {symbol} -> {nse_symbol}")
+
                 sleep(1)
                 try:
-                    last_price = self.get_nse_ltp_with_fallback(symbol)
+                    last_price = self.get_nse_ltp_with_fallback(nse_symbol)
                 except Exception as e:
-                    logger.error(f"Error fetching price for symbol {symbol}: {e}")
+                    logger.error(f"Error fetching price for symbol {symbol} (NSE: {nse_symbol}): {e}")
                     self.notifier.send_error(row['account'], symbol, "open", f"Price fetch failed: {e}")
                     continue
 
@@ -651,13 +674,15 @@ class cash_stratergy:
         for idx, row in data[data['status'] == 'open'].iterrows():
             try:
                 symbol = row['symbol']
-                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} and sl {row['sl']}")
+                # Normalize symbol for NSE API (M_M -> M&M, etc.)
+                nse_symbol = self._normalize_symbol(symbol)
+                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} (NSE: {nse_symbol}) and sl {row['sl']}")
                 sleep(1)
 
                 try:
-                    last_price = self.get_nse_ltp_with_fallback(symbol)
+                    last_price = self.get_nse_ltp_with_fallback(nse_symbol)
                 except Exception as e:
-                    logger.error(f"Error fetching price for symbol {symbol}: {e}")
+                    logger.error(f"Error fetching price for symbol {symbol} (NSE: {nse_symbol}): {e}")
                     self.notifier.send_error("dummy", symbol, "close", f"Price fetch failed: {e}")
                     continue
 
