@@ -719,6 +719,19 @@ class cash_stratergy:
             try:
                 logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
                 order_id = row['buy_order_id'] if row['status'] == 'open_pending' else row['close_order_id']
+
+                # Check for invalid order_id (e.g., -1 indicates failed order placement)
+                if order_id == -1 or pd.isna(order_id):
+                    logger.error(f"Invalid order_id ({order_id}) for row {row['sl_no']}, marking as rejected")
+                    order_type = 'open' if row['status'] == 'open_pending' else 'close'
+                    data.loc[idx, f'{order_type}_order_status'] = 'rejected'
+                    data.loc[idx, 'status'] = 'rejected'
+                    self.notifier.send_error(row['account'], row['symbol'], order_type,
+                                           f"Order failed - invalid order_id: {order_id}")
+                    # Save immediately to persist status change
+                    data.to_csv(self.csv_path, index=False)
+                    continue
+
                 status, final_price = place_order.order_status(row['account'], order_id, row['buy_price'])
 
                 if status == "Complete":
@@ -768,12 +781,30 @@ class cash_stratergy:
                     data.loc[idx, 'status'] = 'open' if row['status'] == 'open_pending' else 'close'
                     data.loc[idx, 'open_order_status' if row['status'] == 'open_pending' else 'close_order_status'] = 'Complete'
 
+                elif status in ["Rejected", "Cancelled", "Failed"]:
+                    # Handle rejected/failed orders
+                    logger.error(f"Order {order_id} for row {row['sl_no']} has status: {status}")
+                    order_type = 'open' if row['status'] == 'open_pending' else 'close'
+                    data.loc[idx, f'{order_type}_order_status'] = 'rejected'
+                    data.loc[idx, 'status'] = 'rejected'
+                    self.notifier.send_error(row['account'], row['symbol'], order_type,
+                                           f"Order {status.lower()} - order_id: {order_id}")
+                    # Save immediately to persist status change
+                    data.to_csv(self.csv_path, index=False)
+
+                else:
+                    # Order still pending or in unknown state
+                    logger.info(f"Order {order_id} for row {row['sl_no']} still pending with status: {status}")
+
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 logger.error(f"Error processing 'pending' row {row['sl_no']}: {e}")
-                data.loc[idx, 'open_order_status'] = 'rejected'
+                order_type = 'open' if row['status'] == 'open_pending' else 'close'
+                data.loc[idx, f'{order_type}_order_status'] = 'rejected'
                 data.loc[idx, 'status'] = 'rejected'
-                self.notifier.send_error(row['account'], row['symbol'], "pending", str(e)[:50])
+                self.notifier.send_error(row['account'], row['symbol'], order_type, str(e)[:50])
+                # Save immediately to persist status change
+                data.to_csv(self.csv_path, index=False)
 
     def execute_strategy(self, place_order, max_executions=2):
         """
