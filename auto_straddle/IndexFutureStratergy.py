@@ -28,7 +28,7 @@ import brokrage_calculator
 
 logger = logging.getLogger(__name__)
 
-symbol = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+symbol = ['NIFTY', 'BANKNIFTY']
 
 # Map symbol to lot
 symbol_to_lot = {

@@ -316,6 +316,12 @@ class fivepaise_api(object):
 
     def get_order_status(self, order_id):
         try:
+            # Early return for invalid order IDs
+            if order_id is None or order_id == 0 or order_id == -1:
+                print(f"Invalid order_id: {order_id}. Cannot check status.")
+                logger.error(f"Invalid order_id: {order_id}. Cannot check status.")
+                return "Rejected", -1
+
             #orderbook = self.obj.orderBook()['OrderBookDetail']
             print(order_id)
             try :
@@ -334,8 +340,20 @@ class fivepaise_api(object):
 
             orderbook = pd.DataFrame(orderbook)
 
-            # Check if order exists
-            matching_orders = orderbook[orderbook.BrokerOrderId == order_id]
+            # Find the correct column name for broker order ID
+            broker_order_col = None
+            for col in ['BrokerOrderId', 'BrokerOrderID', 'brokerOrderId', 'OrderId', 'ExchOrderID']:
+                if col in orderbook.columns:
+                    broker_order_col = col
+                    break
+
+            if broker_order_col is None:
+                print(f"BrokerOrderId column not found. Available columns: {orderbook.columns.tolist()}")
+                logger.error(f"BrokerOrderId column not found. Available columns: {orderbook.columns.tolist()}")
+                return -1, -1
+
+            # Check if order exists - use bracket notation to avoid AttributeError
+            matching_orders = orderbook[orderbook[broker_order_col] == order_id]
             if matching_orders.empty:
                 print(f"Order {order_id} not found in orderbook")
                 logger.warning(f"Order {order_id} not found in orderbook")

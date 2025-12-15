@@ -51,31 +51,37 @@ class PlaceOrder:
         # Convert qty to integer
         qty = int(qty)
 
-        print(f"Placing Sell order for account {account}: commodity {symbol}")
-        logging.info(f"Placing Sell order for commodity account {account} {symbol}")
+        print(f"Placing Buy order for account {account}: commodity {symbol}")
+        logging.info(f"Placing Buy order for commodity account {account} {symbol}")
         order_id = 0
         expiry_ret = '2021-07-29'
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'leelu'):
             order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'avanthi'):
             order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
         return order_id, expiry_ret
 
     def place_sell_orders_commodity(self, account, symbol, qty, expiry=None, isCommodity=True):
-        # Implementation of commodity buy orders
+        # Implementation of commodity sell orders
         # Convert qty to integer
         qty = int(qty)
 
@@ -86,17 +92,23 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'leelu'):
             order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'avanthi'):
             order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
@@ -128,15 +140,21 @@ class PlaceOrder:
 
         if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
             order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
             order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
                 order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 123456789
@@ -167,7 +185,9 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
                 order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
 
         return order_id, expiry_ret
@@ -190,17 +210,23 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
             order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         if (account == 'avanthi'):
             order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         logging.info(f"Order id for account: {order_id}")
@@ -225,17 +251,23 @@ class PlaceOrder:
         order_id = 0
         if (account == 'deepti'):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         if (account == 'leelu'):
             order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         if (account == 'avanthi'):
             order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
                 order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         logging.info(f"Order id for close account: {order_id}")
@@ -280,7 +312,9 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id = self.obj_1.place_order_cash(symbol, quantity, side)
-            if (order_id == -1):
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Cash order placement failed with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order_cash(symbol, quantity, side)
 
         logging.info(f"Order id for account: {order_id}")
