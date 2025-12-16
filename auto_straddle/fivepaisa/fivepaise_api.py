@@ -25,6 +25,9 @@ import TelegramSend
 
 logger = logging.getLogger(__name__)
 
+# Enable detailed diagnostics by setting environment variable: FIVEPAISA_DEBUG=1
+ENABLE_DIAGNOSTICS = True
+
 commodity_to_symbol = {
     'CRUDEOIL': 'CRUDEOILM',
     'NATURALGAS': 'NATGASMINI',
@@ -55,6 +58,8 @@ class fivepaise_api(object):
 
     def __init__(self, account):
         # create object of call
+        # Store account name to fix py5paisa library's shared class variables bug
+        self.account = account
 
         if account == 'leelu':
             cred={
@@ -101,6 +106,128 @@ class fivepaise_api(object):
             time.sleep(30)
 
         self.intializeSymbolTokenMap()
+
+        # Print diagnostics after initialization if enabled
+        if ENABLE_DIAGNOSTICS:
+            self._print_account_diagnostics()
+
+    def _print_account_diagnostics(self):
+        """Print diagnostic information about the account and FivePaisaClient state"""
+        separator = "="*80
+        print(f"\n{separator}")
+        print(f"DIAGNOSTIC INFO FOR ACCOUNT: {self.account}")
+        print(separator)
+
+        logger.info(f"[{self.account}] ════════════════════════════════════════════════════════════")
+        logger.info(f"[{self.account}] DIAGNOSTIC INFO FOR ACCOUNT: {self.account}")
+        logger.info(f"[{self.account}] ════════════════════════════════════════════════════════════")
+
+        # Account info
+        print(f"Account: {self.account}")
+        print(f"Object ID: {id(self)}")
+        print(f"FivePaisaClient ID: {id(self.obj)}")
+        print(f"Session ID: {id(self.session)}")
+
+        logger.info(f"[{self.account}] Account: {self.account}")
+        logger.info(f"[{self.account}] Object ID: {id(self)}")
+        logger.info(f"[{self.account}] FivePaisaClient ID: {id(self.obj)}")
+        logger.info(f"[{self.account}] Session ID: {id(self.session)}")
+
+        # Session token
+        session_display = f"{self.session[:50]}..." if self.session else "None"
+        print(f"Session Token: {session_display}")
+        logger.info(f"[{self.account}] Session Token: {session_display}")
+
+        # Client credentials
+        print(f"Client Code: {self.obj.client_code}")
+        print(f"APP_NAME: {self.obj.APP_NAME}")
+        print(f"APP_SOURCE: {self.obj.APP_SOURCE}")
+        print(f"USER_KEY: {self.obj.USER_KEY[:20]}...")
+
+        logger.info(f"[{self.account}] Client Code: {self.obj.client_code}")
+        logger.info(f"[{self.account}] APP_NAME: {self.obj.APP_NAME}")
+        logger.info(f"[{self.account}] APP_SOURCE: {self.obj.APP_SOURCE}")
+        logger.info(f"[{self.account}] USER_KEY: {self.obj.USER_KEY[:20]}...")
+
+        # Check login_check_payload
+        payload_client = self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')
+        payload_app = self.obj.login_check_payload.get('head', {}).get('appName', 'UNKNOWN')
+        payload_key = self.obj.login_check_payload.get('head', {}).get('key', 'UNKNOWN')[:20] + "..."
+
+        print("\nlogin_check_payload state:")
+        print(f"  LoginId (client_code): {payload_client}")
+        print(f"  appName: {payload_app}")
+        print(f"  key: {payload_key}")
+
+        logger.info(f"[{self.account}] login_check_payload state:")
+        logger.info(f"[{self.account}]   LoginId (client_code): {payload_client}")
+        logger.info(f"[{self.account}]   appName: {payload_app}")
+        logger.info(f"[{self.account}]   key: {payload_key}")
+
+        # Compare with expected
+        if self.account == 'leelu':
+            expected_client = credentials_leelu.CLIENTCODE
+        elif self.account == 'avanthi':
+            expected_client = credentials_avanthi.CLIENTCODE
+        else:
+            expected_client = "UNKNOWN"
+
+        match = "✓ CORRECT" if payload_client == expected_client else f"✗ WRONG (expected {expected_client})"
+        print(f"  Status: {match}")
+        print(f"{separator}\n")
+
+        logger.info(f"[{self.account}]   Status: {match}")
+        logger.info(f"[{self.account}] ════════════════════════════════════════════════════════════")
+
+        # Summary for easy scanning
+        logger.info(f"[{self.account}] SUMMARY: client_code={self.obj.client_code}, payload_client={payload_client}, status={match}")
+
+    def _fix_shared_payload_bug(self):
+        """
+        Fix py5paisa library's class-level shared variable bug.
+        The library has login_check_payload as a class variable that's shared
+        between all instances, causing "another client" errors.
+        This method updates it with the correct credentials before each order.
+        """
+        # Log the BEFORE state
+        old_client_code = self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')
+        logger.info(f"[{self.account}] BEFORE fix: login_check_payload has client_code={old_client_code}")
+
+        if self.account == 'leelu':
+            self.obj.login_check_payload = {
+                'head': {
+                    'requestCode': '5PLoginCheck',
+                    'key': credentials_leelu.USER_KEY,
+                    'appVer': '1.0',
+                    'appName': credentials_leelu.APP_NAME,
+                    'osName': 'WEB',
+                    'LoginId': credentials_leelu.CLIENTCODE
+                },
+                'body': {
+                    'RegistrationID': self.session
+                }
+            }
+            logger.info(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_leelu.CLIENTCODE}")
+        elif self.account == 'avanthi':
+            self.obj.login_check_payload = {
+                'head': {
+                    'requestCode': '5PLoginCheck',
+                    'key': credentials_avanthi.USER_KEY,
+                    'appVer': '1.0',
+                    'appName': credentials_avanthi.APP_NAME,
+                    'osName': 'WEB',
+                    'LoginId': credentials_avanthi.CLIENTCODE
+                },
+                'body': {
+                    'RegistrationID': self.session
+                }
+            }
+            logger.info(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_avanthi.CLIENTCODE}")
+
+        # Print diagnostics after fix if enabled
+        if ENABLE_DIAGNOSTICS:
+            print(f"\n[AFTER FIX for {self.account}]")
+            self._print_account_diagnostics()
 
     def download_csv(self, url):
         response = requests.get(url, timeout=50)
@@ -175,6 +302,16 @@ class fivepaise_api(object):
             return None
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, isCommodity=True):
+        logger.info(f"[{self.account}] 🔵 Placing COMMODITY order: {buy_sell} {symbol} qty={qty} expiry={expiry}")
+
+        # Print diagnostics before order if enabled
+        if ENABLE_DIAGNOSTICS:
+            print(f"\n[BEFORE COMMODITY ORDER for {self.account}]")
+            self._print_account_diagnostics()
+
+        # Fix py5paisa library's shared class variable bug before placing order
+        self._fix_shared_payload_bug()
+
         tokenInfo = self.get_commodity_symbol(commodity_to_symbol[symbol], expiry)
 
         print("five paise place order")
@@ -201,7 +338,12 @@ class fivepaise_api(object):
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-            logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+            logger.info(f"[{self.account}] ✅ COMMODITY Order placed: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+
+            # Check for "another client" error even on success
+            if 'another client' in str(order_id.get('Message', '')).lower():
+                logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
+                logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
         except Exception as e1:
             try:
                 time.sleep(2)
@@ -238,6 +380,16 @@ class fivepaise_api(object):
             pe_ce: Option type 'PE' or 'CE'
             isIntraday: True for intraday orders, False for delivery/positional orders
         """
+        logger.info(f"[{self.account}] 🟢 Placing OPTION order: {buy_sell} {symbol} {strike_price} {pe_ce} qty={qty} intraday={isIntraday}")
+
+        # Print diagnostics before order if enabled
+        if ENABLE_DIAGNOSTICS:
+            print(f"\n[BEFORE OPTION ORDER for {self.account}]")
+            self._print_account_diagnostics()
+
+        # Fix py5paisa library's shared class variable bug before placing order
+        self._fix_shared_payload_bug()
+
         tokenInfo = self.getTokenInfo(symbol, strike_price, pe_ce)
 
         if symbol == "SENSEX":
@@ -280,7 +432,12 @@ class fivepaise_api(object):
             )
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-            logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+            logger.info(f"[{self.account}] ✅ OPTION Order placed: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+
+            # Check for "another client" error even on success
+            if 'another client' in str(order_id.get('Message', '')).lower():
+                logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
+                logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
 
         except Exception as e1:
             try:
@@ -316,6 +473,11 @@ class fivepaise_api(object):
 
     def get_order_status(self, order_id):
         try:
+            logger.info(f"[{self.account}] 🔍 Checking order status for order_id={order_id}")
+
+            # Fix py5paisa library's shared class variable bug before checking status
+            self._fix_shared_payload_bug()
+
             # Early return for invalid order IDs
             if order_id is None or order_id == 0 or order_id == -1:
                 print(f"Invalid order_id: {order_id}. Cannot check status.")
@@ -369,6 +531,7 @@ class fivepaise_api(object):
                 order_ret = "Rejected"
             average_price = matching_orders['AveragePrice'].values[0]
 
+            logger.info(f"[{self.account}] 📊 Order status result: order_id={order_id} status={order_ret} price={average_price}")
             return order_ret, average_price
         except Exception as e:
             print(''.join(traceback.format_exception(e, value=e, tb=e.__traceback__)))

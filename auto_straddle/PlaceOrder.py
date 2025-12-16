@@ -10,6 +10,7 @@
 # pylint: disable=C0103
 # pylint: disable=C0325
 # pylint: disable=W0201
+# pylint: disable=W0621
 
 import logging
 import angel_one.angelone_api as angel_api
@@ -319,3 +320,68 @@ class PlaceOrder:
 
         logging.info(f"Order id for account: {order_id}")
         return order_id
+
+
+# Test code to simulate session expiry error
+if __name__ == "__main__":
+    import time
+    print("\n" + "="*80)
+    print("SESSION EXPIRY SIMULATION TEST")
+    print("="*80 + "\n")
+
+    print("Step 1: Creating PlaceOrder object and initializing accounts...")
+    place_order = PlaceOrder()
+    place_order.init_account('leelu')
+    place_order.init_account('avanthi')
+    print("✓ Both accounts initialized successfully\n")
+
+    print("Step 2: Placing immediate orders (should work)...")
+    print("\n--- Testing avanthi account (immediate order) ---")
+    # place_orders(account, atm_ce_strike, pe_ce, symbol, qty, intraday=True)
+    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 35)
+    print(f"Order ID: {order_id}")
+    if order_id > 0:
+        status, price = place_order.obj_3.get_order_status(order_id)
+        print(f"Order Status: {status}, Price: {price}")
+    else:
+        print(f"❌ Order failed with order_id: {order_id}")
+
+    print("\n--- Testing leelu account (immediate order) ---")
+    # place_orders(account, atm_ce_strike, pe_ce, symbol, qty, intraday=True)
+    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 35)
+    print(f"Order ID: {order_id}")
+    if order_id > 0:
+        status, price = place_order.obj_2.get_order_status(order_id)
+        print(f"Order Status: {status}, Price: {price}")
+    else:
+        print(f"❌ Order failed with order_id: {order_id}")
+
+    print("\n" + "="*80)
+    print("NOTE: To simulate session expiry error:")
+    print("1. Wait 60+ minutes after login")
+    print("2. Or manually set session to expire in fivepaise_api.py")
+    print("3. Then try placing orders again")
+    print("="*80 + "\n")
+
+    # Uncomment the following to wait and test session expiry
+    print("Waiting 5 seconds to simulate delay...")
+    time.sleep(5)
+    print("\nStep 3: Placing orders after delay...")
+    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 35)
+    print(f"Order ID after delay: {order_id}")
+    if order_id > 0:
+        status, price = place_order.obj_2.get_order_status(order_id)
+        print(f"Order Status: {status}, Price: {price}")
+    else:
+        print(f"❌ Session expired! Order failed with order_id: {order_id}")
+
+
+    time.sleep(10)
+    print("\nStep 4: Placing orders after delay...")
+    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 35)
+    print(f"Order ID after delay: {order_id}")
+    if order_id > 0:
+        status, price = place_order.obj_2.get_order_status(order_id)
+        print(f"Order Status: {status}, Price: {price}")
+    else:
+        print(f"❌ Session expired! Order failed with order_id: {order_id}")
