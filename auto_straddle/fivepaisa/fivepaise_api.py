@@ -229,6 +229,48 @@ class fivepaise_api(object):
             print(f"\n[AFTER FIX for {self.account}]")
             self._print_account_diagnostics()
 
+    def _refresh_session(self):
+        """
+        Refresh the session token by getting a new TOTP session.
+        This is needed when the session token is tied to the wrong account.
+        """
+        logger.warning(f"[{self.account}] 🔄 Refreshing session token due to 'another client' error")
+        
+        attempts = 3
+        while attempts > 0:
+            try:
+                if self.account == 'leelu':
+                    totp_pin = pyotp.TOTP(credentials_leelu.TOTP).now()
+                    new_session = self.obj.get_totp_session(credentials_leelu.CLIENTCODE, totp_pin, credentials_leelu.PIN)
+                    if new_session:
+                        self.session = new_session
+                        # Fix the payload with correct credentials and new session
+                        self._fix_shared_payload_bug()
+                        # Verify login
+                        if self.obj.Login_check() is not None:
+                            logger.info(f"[{self.account}] ✅ Session refreshed successfully")
+                            return True
+                elif self.account == 'avanthi':
+                    totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
+                    new_session = self.obj.get_totp_session(credentials_avanthi.CLIENTCODE, totp_pin, credentials_avanthi.PIN)
+                    if new_session:
+                        self.session = new_session
+                        # Fix the payload with correct credentials and new session
+                        self._fix_shared_payload_bug()
+                        logger.info(f"[{self.account}] ✅ Session refreshed successfully")
+                        return True
+            except Exception as e:
+                logger.error(f"[{self.account}] ❌ Error refreshing session: {e}")
+                import traceback
+                logger.error(f"[{self.account}] Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+            
+            attempts -= 1
+            if attempts > 0:
+                time.sleep(2)
+        
+        logger.error(f"[{self.account}] ❌ Failed to refresh session after 3 attempts")
+        return False
+
     def download_csv(self, url):
         response = requests.get(url, timeout=50)
         response.raise_for_status()  # Ensure the download was successful
@@ -344,6 +386,29 @@ class fivepaise_api(object):
             if 'another client' in str(order_id.get('Message', '')).lower():
                 logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
                 logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
+                
+                # Try refreshing the session and retrying once
+                logger.warning(f"[{self.account}] Attempting to refresh session and retry COMMODITY order...")
+                if self._refresh_session():
+                    # Retry the order after session refresh
+                    time.sleep(1)
+                    try:
+                        if isCommodity:
+                            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
+                                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+                        else:
+                            qty = qty * lot
+                            order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
+                                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                        logger.info(f"[{self.account}] ✅ COMMODITY Order placed after session refresh: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+                        
+                        # Check again for "another client" error
+                        if 'another client' in str(order_id.get('Message', '')).lower():
+                            logger.error(f"[{self.account}] ❌ Still getting 'another client' error after session refresh!")
+                    except Exception as retry_e:
+                        logger.error(f"[{self.account}] ❌ Error retrying COMMODITY order after session refresh: {retry_e}")
+                else:
+                    logger.error(f"[{self.account}] ❌ Could not refresh session, COMMODITY order will fail")
         except Exception as e1:
             try:
                 time.sleep(2)
@@ -438,6 +503,31 @@ class fivepaise_api(object):
             if 'another client' in str(order_id.get('Message', '')).lower():
                 logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
                 logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
+                
+                # Try refreshing the session and retrying once
+                logger.warning(f"[{self.account}] Attempting to refresh session and retry OPTION order...")
+                if self._refresh_session():
+                    # Retry the order after session refresh
+                    time.sleep(1)
+                    try:
+                        order_id = self.obj.place_order(
+                            OrderType=buy_sell,
+                            Exchange='N',
+                            ExchangeType='D',
+                            ScripCode=int(token),
+                            Qty=int(qty),
+                            Price=0,
+                            IsIntraday=isIntraday
+                        )
+                        logger.info(f"[{self.account}] ✅ OPTION Order placed after session refresh: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+                        
+                        # Check again for "another client" error
+                        if 'another client' in str(order_id.get('Message', '')).lower():
+                            logger.error(f"[{self.account}] ❌ Still getting 'another client' error after session refresh!")
+                    except Exception as retry_e:
+                        logger.error(f"[{self.account}] ❌ Error retrying OPTION order after session refresh: {retry_e}")
+                else:
+                    logger.error(f"[{self.account}] ❌ Could not refresh session, OPTION order will fail")
 
         except Exception as e1:
             try:
