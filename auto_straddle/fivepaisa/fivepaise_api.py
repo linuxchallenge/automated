@@ -84,6 +84,37 @@ class fivepaise_api(object):
             return
 
         self.obj = FivePaisaClient(cred=cred)
+        
+        # CRITICAL FIX: Immediately fix the shared class variable after creating FivePaisaClient
+        # This prevents the payload from being corrupted by another account's initialization
+        if account == 'leelu':
+            self.obj.login_check_payload = {
+                'head': {
+                    'requestCode': '5PLoginCheck',
+                    'key': credentials_leelu.USER_KEY,
+                    'appVer': '1.0',
+                    'appName': credentials_leelu.APP_NAME,
+                    'osName': 'WEB',
+                    'LoginId': credentials_leelu.CLIENTCODE
+                },
+                'body': {
+                    'RegistrationID': ''  # Will be set after getting session
+                }
+            }
+        elif account == 'avanthi':
+            self.obj.login_check_payload = {
+                'head': {
+                    'requestCode': '5PLoginCheck',
+                    'key': credentials_avanthi.USER_KEY,
+                    'appVer': '1.0',
+                    'appName': credentials_avanthi.APP_NAME,
+                    'osName': 'WEB',
+                    'LoginId': credentials_avanthi.CLIENTCODE
+                },
+                'body': {
+                    'RegistrationID': ''  # Will be set after getting session
+                }
+            }
 
         attempts = 5
         while attempts > 0:
@@ -92,15 +123,31 @@ class fivepaise_api(object):
 
                 self.session = self.obj.get_totp_session(credentials_leelu.CLIENTCODE,totp_pin,credentials_leelu.PIN)
                 if self.session:
+                    # CRITICAL FIX: Update payload with session immediately after getting it
+                    self.obj.login_check_payload['body']['RegistrationID'] = self.session
+                    self.obj.login_check_payload['head']['LoginId'] = credentials_leelu.CLIENTCODE
+                    self.obj.login_check_payload['head']['key'] = credentials_leelu.USER_KEY
+                    self.obj.login_check_payload['head']['appName'] = credentials_leelu.APP_NAME
+                    
                     if None is self.obj.Login_check():
                         print("Login failed")
                         continue
+                    # CRITICAL FIX: Fix payload again after Login_check (it might have been corrupted)
+                    self.obj.login_check_payload['head']['LoginId'] = credentials_leelu.CLIENTCODE
+                    self.obj.login_check_payload['head']['key'] = credentials_leelu.USER_KEY
+                    self.obj.login_check_payload['head']['appName'] = credentials_leelu.APP_NAME
+                    self.obj.login_check_payload['body']['RegistrationID'] = self.session
                     break
             if account == 'avanthi':
                 totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
 
                 self.session = self.obj.get_totp_session(credentials_avanthi.CLIENTCODE,totp_pin,credentials_avanthi.PIN)
                 if self.session:
+                    # CRITICAL FIX: Update payload with session immediately after getting it
+                    self.obj.login_check_payload['body']['RegistrationID'] = self.session
+                    self.obj.login_check_payload['head']['LoginId'] = credentials_avanthi.CLIENTCODE
+                    self.obj.login_check_payload['head']['key'] = credentials_avanthi.USER_KEY
+                    self.obj.login_check_payload['head']['appName'] = credentials_avanthi.APP_NAME
                     break
             attempts = attempts - 1
             time.sleep(30)
@@ -261,7 +308,6 @@ class fivepaise_api(object):
                         return True
             except Exception as e:
                 logger.error(f"[{self.account}] ❌ Error refreshing session: {e}")
-                import traceback
                 logger.error(f"[{self.account}] Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
             
             attempts -= 1
