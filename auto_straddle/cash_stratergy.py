@@ -457,6 +457,14 @@ class cash_stratergy:
         local_data.loc[mask, 'open_order_status'] = 'Complete'
         local_data.loc[mask, 'buy_order_id'] = None
         local_data.loc[mask, 'buy_price'] = row['price']
+        
+        # Update quantity if available in correction and missing locally
+        if 'quantity' in row and pd.notna(row['quantity']):
+            current_qty = local_data.loc[mask, 'quantity'].iloc[0]
+            if pd.isna(current_qty) or current_qty == 0:
+                local_data.loc[mask, 'quantity'] = row['quantity']
+                logger.info(f"Updated quantity from correction for row {row['sl_no']}: {row['quantity']}")
+
         local_data.loc[mask, 'open_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _handle_close_correction(self, local_data, row):
@@ -481,7 +489,12 @@ class cash_stratergy:
         try:
             # Ensure numeric values
             buy_price = float(local_row['buy_price'])
+            
+            # Get quantity from local row, fallback to remote if missing
             quantity = float(local_row['quantity'])
+            if (pd.isna(quantity) or quantity == 0) and 'quantity' in remote_row and pd.notna(remote_row['quantity']):
+                quantity = float(remote_row['quantity'])
+                
             sell_price = float(remote_row['price'])
 
             profit_loss = (sell_price - buy_price) * quantity
