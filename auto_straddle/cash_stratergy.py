@@ -556,9 +556,20 @@ class cash_stratergy:
             print("Local CSV not found. Creating a new one.")
             local_data = pd.DataFrame(columns=remote_data.columns)
 
-        # Step 3: Filter rows for today's date
+        # Step 3: Filter rows for today's date or missing rows
         today_date = datetime.now().date()
-        today_rows = remote_data[remote_data['date'].dt.date == today_date]
+
+        # Get existing sl_nos from local data for comparison
+        existing_sl_nos = set(local_data['sl_no'].dropna().unique()) if 'sl_no' in local_data.columns else set()
+
+        # 1. Today's rows (for updates to existing rows)
+        is_today = remote_data['date'].dt.date == today_date
+
+        # 2. Missing rows (newly added to remote, regardless of date)
+        is_missing = ~remote_data['sl_no'].isin(existing_sl_nos)
+
+        # Combine: Sync if it's today's data OR if it's not in our local file
+        today_rows = remote_data[is_today | is_missing]
 
         # Step 4: Sync rows
         for _, row in today_rows.iterrows():
