@@ -397,9 +397,9 @@ class cash_stratergy:
             print("Error fetching data from NSE")
             print(e)
 
-    def correct_rejected_orders(self):
+    def apply_corrections(self):
         """
-        Corrects rejected orders by re-executing them based on remote CSV data.
+        Applies corrections to orders based on remote CSV data.
 
         Returns:
             bool: True if successful, False otherwise
@@ -409,7 +409,7 @@ class cash_stratergy:
             remote_data = pd.read_csv(self.correct_rejected_orders_url)
             required_columns = ['sl_no', 'leg', 'account', 'symbol']
             if not all(col in remote_data.columns for col in required_columns):
-                logger.error("Remote CSV missing required columns")
+                logger.error("Remote correction CSV missing required columns")
                 return False
 
             # Load or create local CSV
@@ -443,11 +443,11 @@ class cash_stratergy:
 
             # Save updates
             local_data.to_csv(self.csv_path, index=False)
-            logger.info("Rejected orders corrected successfully")
+            logger.info("Order corrections applied successfully")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to correct rejected orders: {str(e)}")
+            logger.error(f"Failed to apply order corrections: {str(e)}")
             return False
 
     def _handle_open_correction(self, local_data, row):
@@ -554,7 +554,7 @@ class cash_stratergy:
                 logger.warning("Local CSV missing 'sl_no' column. Recreating with remote structure.")
                 local_data = pd.DataFrame(columns=remote_data.columns)
         except FileNotFoundError:
-            print("Local CSV not found. Creating a new one.")
+            logger.warning("Local CSV not found. Creating a new one.")
             local_data = pd.DataFrame(columns=remote_data.columns)
 
         # Step 3: Filter rows for today's date or missing rows
@@ -586,20 +586,20 @@ class cash_stratergy:
                 existing_cols = [col for col in update_cols if col in row.index]
                 if existing_cols:
                     local_data.loc[local_data['sl_no'] == sl_no, existing_cols] = row[existing_cols].values
-                print(f"Updated entry for sl_no: {sl_no}")
+                logger.info(f"Updated entry for sl_no: {sl_no}")
             else:
                 # Add new entry
                 # If status is blank/empty, set it to 'new' for new rows
                 if pd.isna(row.get('status')) or row.get('status') == '' or row.get('status') is None:
                     row['status'] = 'new'
-                    print(f"Added new entry for sl_no: {sl_no} with status set to 'new'")
+                    logger.info(f"Added new entry for sl_no: {sl_no} with status set to 'new'")
                 else:
-                    print(f"Added new entry for sl_no: {sl_no}")
+                    logger.info(f"Added new entry for sl_no: {sl_no}")
                 local_data = pd.concat([local_data, pd.DataFrame([row])], ignore_index=True)
 
         # Save the updated local CSV
         local_data.to_csv(self.csv_path, index=False)
-        print("Sync completed successfully.")
+        logger.info("Sync completed successfully.")
 
     def _can_retry_order(self, account, symbol, order_type):
         """Check if order can be retried based on retry count"""
@@ -660,10 +660,7 @@ class cash_stratergy:
                     if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
                         logger.error("Order placement failed after all retries")
                         self.notifier.send_error(row['account'], symbol, "open", "Order placement failed after retries")
-                        data.loc[idx, 'open_order_status'] = 'rejected'
-                        data.loc[idx, 'status'] = 'rejected'
-                        # Save immediately to prevent duplicate processing
-                        data.to_csv(self.csv_path, index=False)
+                        # Don't change status to rejected, keep it as 'new' to allow retry later
                         continue
 
                     logger.info(f"Order ID: {order_id}")
@@ -672,25 +669,17 @@ class cash_stratergy:
                     data.loc[idx, 'buy_order_id'] = order_id
                     data.loc[idx, 'buy_price'] = last_price
                     data.loc[idx, 'open_order_status'] = 'open_pending'
-                    data.loc[idx, 'status'] = 'open_pending'
+                    data.loc[idx, 'status'] = 'open' # Transition directly to open
                     data.loc[idx, 'quantity'] = quantity
 
                     # Save immediately after placing order to prevent duplicate processing
                     data.to_csv(self.csv_path, index=False)
-                    logger.info(f"Status updated to 'open_pending' for row {row['sl_no']}")
+                    logger.info(f"Status updated to 'open' for row {row['sl_no']}")
                 else:
                     logger.info(f"Skipping row {row['sl_no']} with symbol {symbol} - price {last_price} not > sl {row['sl']}")
-                    data.loc[idx, 'open_order_status'] = 'rejected'
-                    data.loc[idx, 'status'] = 'rejected'
-                    # Save immediately
-                    data.to_csv(self.csv_path, index=False)
 
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                data.loc[idx, 'open_order_status'] = 'rejected'
-                data.loc[idx, 'status'] = 'rejected'
-                # Save immediately
-                data.to_csv(self.csv_path, index=False)
                 logger.error(f"Error processing 'new' row {row['sl_no']}: {e}")
                 self.notifier.send_error(row['account'], symbol, "open", str(e))
 
@@ -698,6 +687,12 @@ class cash_stratergy:
         """Process rows with status 'open' - checking for close conditions"""
         for idx, row in data[data['status'] == 'open'].iterrows():
             try:
+                # Skip if a close order is already pending (has close_order_id)
+                if pd.notna(row.get('close_order_id')) and row['close_order_id'] != -1 and row.get('close_order_status') != 'rejected':
+                    # If we have an ID and it's not marked as rejected (internally), skip
+                    if row.get('close_order_status') != 'Complete':
+                        continue
+
                 symbol = row['symbol']
                 # Normalize symbol for NSE API (M_M -> M&M, etc.)
                 nse_symbol = self._normalize_symbol(symbol)
@@ -708,7 +703,7 @@ class cash_stratergy:
                     last_price = self.get_nse_ltp_with_fallback(nse_symbol)
                 except Exception as e:
                     logger.error(f"Error fetching price for symbol {symbol} (NSE: {nse_symbol}): {e}")
-                    self.notifier.send_error("dummy", symbol, "close", f"Price fetch failed: {e}")
+                    self.notifier.send_error(row['account'], symbol, "close", f"Price fetch failed: {e}")
                     continue
 
                 # Validate last_price is not None
@@ -749,54 +744,60 @@ class cash_stratergy:
                         # Update the row in the DataFrame
                         data.loc[idx, 'close_order_id'] = order_id
                         data.loc[idx, 'close_order_status'] = 'close_pending'
-                        data.loc[idx, 'status'] = 'close_pending'
+                        # Keep status as 'open'
                     else:
                         # Manual close required for non-API accounts
                         data.loc[idx, 'close_order_status'] = 'close_pending'
-                        data.loc[idx, 'status'] = 'close_pending'
+                        # Keep status as 'open'
                         self.notifier.send_manual_close_request(row['account'], symbol)
+
+                    # Save immediately after triggering close
+                    data.to_csv(self.csv_path, index=False)
 
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 logger.error(f"Error processing 'open' row {row['sl_no']}: {e}")
-                data.loc[idx, 'close_order_status'] = 'rejected'
-                data.loc[idx, 'status'] = 'rejected'
                 self.notifier.send_error(row['account'], symbol, "close", str(e))
 
     def _process_pending_orders(self, data, place_order):
-        """Process rows with status 'open_pending' or 'close_pending' - checking order status"""
-        for idx, row in data[data['status'].isin(['open_pending', 'close_pending'])].iterrows():
+        """Process rows with pending orders - checking order status"""
+        # Filter rows where either open or close is pending
+        mask = (data['open_order_status'] == 'open_pending') | (data['close_order_status'] == 'close_pending')
+        for idx, row in data[mask].iterrows():
             try:
-                logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and price {row['sl']}")
-                order_id = row['buy_order_id'] if row['status'] == 'open_pending' else row['close_order_id']
+                # Determine which order to check
+                is_open_pending = row['open_order_status'] == 'open_pending'
+                order_id = row['buy_order_id'] if is_open_pending else row['close_order_id']
+                order_type = 'open' if is_open_pending else 'close'
 
-                # Check for invalid order_id (e.g., -1 indicates failed order placement)
+                logger.info(f"Checking {order_type} order {order_id} for row {row['sl_no']} ({row['symbol']})")
+
+                # Check for invalid order_id
                 if order_id == -1 or pd.isna(order_id):
-                    logger.error(f"Invalid order_id ({order_id}) for row {row['sl_no']}, marking as rejected")
-                    order_type = 'open' if row['status'] == 'open_pending' else 'close'
+                    logger.error(f"Invalid order_id ({order_id}) for row {row['sl_no']}")
+                    # Internally mark as rejected so we can retry if needed, but don't set status to 'rejected'
                     data.loc[idx, f'{order_type}_order_status'] = 'rejected'
-                    data.loc[idx, 'status'] = 'rejected'
                     self.notifier.send_error(row['account'], row['symbol'], order_type,
                                            f"Order failed - invalid order_id: {order_id}")
-                    # Save immediately to persist status change
+                    # Save immediately to persist internal status change
                     data.to_csv(self.csv_path, index=False)
                     continue
 
                 status, final_price = place_order.order_status(row['account'], order_id, row['buy_price'])
 
                 if status == "Complete":
-                    if row['status'] == 'close_pending':
-                        # Calculate profit/loss
+                    if not is_open_pending:
+                        # Close order completed
                         data.loc[idx, 'sell_price'] = final_price
                         data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
 
                         # Send success notification
                         self.notifier.send_success(row['account'], row['symbol'], "p/l",
-                                                  f"{row['strategy']} {profit_loss}")
+                                                  f"{row.get('strategy', 'cash')} {profit_loss}")
 
                         brokarage_dict = brokrage_calculator.calculate_equity_delivery(
-                            row['buy_price'], row['sell_price'], row['quantity'])
+                            row['buy_price'], final_price, row['quantity'])
                         brokrage = brokarage_dict['total_charges']
 
                         pl_dict = {
@@ -805,7 +806,7 @@ class cash_stratergy:
                             'Symbol': row['symbol'],
                             'Quantity': row['quantity'],
                             'NumberofTrade': 1,
-                            'TotalPNL': profit_loss * 1,
+                            'TotalPNL': profit_loss,
                             'Brokerage': brokrage,
                             'CloseTime': datetime.now().strftime("%H:%M:%S"),
                             'Stratergy': 'cash_short',
@@ -824,19 +825,28 @@ class cash_stratergy:
 
                         df.to_csv(file_name, index=False)
 
-                    if row['status'] == 'open_pending':
+                        # Update internal order status
+                        data.loc[idx, 'close_order_status'] = 'Complete'
+
+                        # IMPORTANT: Only move to 'close' status for deepti account
+                        if row['account'] == 'deepti':
+                            data.loc[idx, 'status'] = 'close'
+                            logger.info(f"Row {row['sl_no']} moved to 'close' status (Account: deepti)")
+                        else:
+                            logger.info(f"Row {row['sl_no']} stays in 'open' status after successful close (Account: {row['account']})")
+                    else:
+                        # Open order completed
                         data.loc[idx, 'buy_price'] = final_price
                         data.loc[idx, 'open_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                    data.loc[idx, 'status'] = 'open' if row['status'] == 'open_pending' else 'close'
-                    data.loc[idx, 'open_order_status' if row['status'] == 'open_pending' else 'close_order_status'] = 'Complete'
+                        data.loc[idx, 'open_order_status'] = 'Complete'
+                        data.loc[idx, 'status'] = 'open'
+                        logger.info(f"Row {row['sl_no']} open order complete")
 
                 elif status in ["Rejected", "Cancelled", "Failed"]:
                     # Handle rejected/failed orders
                     logger.error(f"Order {order_id} for row {row['sl_no']} has status: {status}")
-                    order_type = 'open' if row['status'] == 'open_pending' else 'close'
                     data.loc[idx, f'{order_type}_order_status'] = 'rejected'
-                    data.loc[idx, 'status'] = 'rejected'
+                    # status remains 'new' (if open failed) or 'open' (if close failed)
                     self.notifier.send_error(row['account'], row['symbol'], order_type,
                                            f"Order {status.lower()} - order_id: {order_id}")
                     # Save immediately to persist status change
@@ -849,9 +859,7 @@ class cash_stratergy:
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 logger.error(f"Error processing 'pending' row {row['sl_no']}: {e}")
-                order_type = 'open' if row['status'] == 'open_pending' else 'close'
                 data.loc[idx, f'{order_type}_order_status'] = 'rejected'
-                data.loc[idx, 'status'] = 'rejected'
                 self.notifier.send_error(row['account'], row['symbol'], order_type, str(e)[:50])
                 # Save immediately to persist status change
                 data.to_csv(self.csv_path, index=False)
@@ -908,7 +916,7 @@ class cash_stratergy:
         else:
             return
 
-        self.correct_rejected_orders()
+        self.apply_corrections()
 
         # Load the CSV
         logger.info("Executing cash strategy.")
