@@ -444,7 +444,7 @@ class angelone_api(object):
             return -1
 
 
-    def place_order_sythetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+    def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         """
         Place an order for synthetic futures.
         Returns: (order_id, expiry_date) tuple or (-1, None) on failure
@@ -540,7 +540,7 @@ class angelone_api(object):
             return -1, None
 
         except Exception as e:
-            logger.error(f"Fatal error in place_order_sythetic_future: {e}")
+            logger.error(f"Fatal error in place_order_synthetic_future: {e}")
             traceback.print_exc()
             return -1, None
 
@@ -612,7 +612,7 @@ print(angel_obj)
 print("Object created")
 angel_obj.intializeSymbolTokenMap()
 print("Initialized")
-orderid = angel_obj.place_order_sythetic_future('BANKNIFTY', 30, 'BUY', 54500, 'PE')
+orderid = angel_obj.place_order_synthetic_future('BANKNIFTY', 30, 'BUY', 54500, 'PE')
 print(orderid)
 '''
 

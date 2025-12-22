@@ -14,7 +14,7 @@
 
 import logging
 import angel_one.angelone_api as angel_api
-import fivepaisa.fivepaise_api as fivepaise_api
+import fivepaisa.fivepaise_api as fivepaise_module
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ class PlaceOrder:
         if account == 'deepti':
             self.obj_1 = angel_api.angelone_api()
         if account == 'leelu':
-            self.obj_2 = fivepaise_api.fivepaise_api(account)
+            self.obj_2 = fivepaise_module.fivepaise_api(account)
         if account == 'avanthi':
-            self.obj_3 = fivepaise_api.fivepaise_api(account)
+            self.obj_3 = fivepaise_module.fivepaise_api(account)
 
 
     def place_buy_orders_commodity(self, account, symbol, qty, expiry=None, isCommodity=True):
@@ -167,9 +167,9 @@ class PlaceOrder:
         print(f"Order id for account: {order_id}")
         return order_id
 
-    def place_order_sythetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+    def place_order_synthetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         multiplication_factor = {
-            'NIFTY': 75,
+            'NIFTY': 65,
             'BANKNIFTY': 35,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
@@ -185,11 +185,25 @@ class PlaceOrder:
         expiry_ret = None
 
         if account == 'deepti':
-            order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+            order_id, expiry_ret = self.obj_1.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
                 logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
-                order_id, expiry_ret = self.obj_1.place_order_sythetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+                order_id, expiry_ret = self.obj_1.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+
+        if account == 'leelu':
+            order_id, expiry_ret = self.obj_2.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
+                order_id, expiry_ret = self.obj_2.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+
+        if account == 'avanthi':
+            order_id, expiry_ret = self.obj_3.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
+            # Retry if order_id is invalid (0, -1, or None)
+            if (order_id == -1 or order_id == 0 or order_id is None):
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
+                order_id, expiry_ret = self.obj_3.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
 
         return order_id, expiry_ret
 

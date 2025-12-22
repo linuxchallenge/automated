@@ -32,7 +32,7 @@ symbol = ['NIFTY', 'BANKNIFTY']
 
 # Map symbol to lot
 symbol_to_lot = {
-    'NIFTY': 75,
+    'NIFTY': 65,
     'BANKNIFTY': 35,
     'FINNIFTY': 65
 }
@@ -579,8 +579,8 @@ class IndexFutureStratergy:
                             if historic_data.iloc[-1]['close'] > bullish and alligator[0] == "uptrend":
                                 print("Enter long trade")
                                 self.logger.info("Enter long trade")
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "CE")
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "PE")
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "CE")
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE")
                                 if order_id_pe == -1 or order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order status is wrong", 0)
                                 else:
@@ -611,8 +611,8 @@ class IndexFutureStratergy:
                             if historic_data.iloc[-1]['close'] < bearish and alligator[0] == "downtrend":
                                 print ("Enter short trade")
                                 self.logger.info("Enter short trade")
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "CE")
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "PE")
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE")
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "PE")
                                 if order_id_pe == -1 or order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order status is wrong", 0)
                                 else:
@@ -653,13 +653,13 @@ class IndexFutureStratergy:
                                 # Set the price once
                                 current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
 
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
                                 current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
                                 if order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order CE close status is wrong", 0)
 
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
                                 current_trade.loc[row_number, 'exit_price_pe'] = 0
 
@@ -677,13 +677,13 @@ class IndexFutureStratergy:
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit short trade")
 
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
                                 current_trade.loc[row_number, 'exit_price_ce'] = 0
                                 if order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order CE close status is wrong", 0)
 
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
                                 current_trade.loc[row_number, 'exit_price_pe'] = historic_data.iloc[-1]['close']
                                 if order_id_pe == -1:
@@ -700,13 +700,13 @@ class IndexFutureStratergy:
                                 print ("Exit short trade " +  str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit short trade")
 
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
                                 current_trade.loc[row_number, 'exit_price_ce'] = 0
                                 if order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order CE close status is wrong", 0)
 
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
                                 current_trade.loc[row_number, 'exit_price_pe'] = historic_data.iloc[-1]['close']
                                 if order_id_pe == -1:
@@ -715,13 +715,13 @@ class IndexFutureStratergy:
                                 print ("Exit long trade " +  str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit long trade")
                                 strike_price = current_trade.loc[row_number, 'strike']
-                                order_id_ce, expiry = place_order.place_order_sythetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
                                 current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
                                 if order_id_ce == -1:
                                     self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Future Order CE close status is wrong", 0)
 
-                                order_id_pe, expiry = place_order.place_order_sythetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
                                 current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
                                 current_trade.loc[row_number, 'exit_price_pe'] = 0
                                 if order_id_pe == -1:

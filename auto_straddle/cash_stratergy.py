@@ -429,9 +429,10 @@ class cash_stratergy:
                         logger.warning(f"Row {row['sl_no']} not found in local CSV")
                         continue
 
-                    if row['leg'] == 'open':
+                    leg = str(row['leg']).lower().strip()
+                    if leg in ['open', 'buy']:
                         self._handle_open_correction(local_data, row)
-                    elif row['leg'] == 'close':
+                    elif leg in ['close', 'sell']:
                         self._handle_close_correction(local_data, row)
                     else:
                         logger.warning(f"Invalid leg value: {row['leg']} for sl_no {row['sl_no']}")

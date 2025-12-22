@@ -607,6 +607,114 @@ class fivepaise_api(object):
 
         return order_id['BrokerOrderID'], tokenInfo['Expiry']  # Changed to return tuple
 
+    def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
+        """
+        Place an order for synthetic futures.
+        Returns: (order_id, expiry_date) tuple or (-1, None) on failure
+        """
+        logger.info(f"[{self.account}] 🔵 Placing SYNTHETIC FUTURE order: {buy_sell} {symbol} {strike_price} {pe_ce} qty={qty} expiry={expiry}")
+
+        # Fix py5paisa library's shared class variable bug before placing order
+        self._fix_shared_payload_bug()
+
+        try:
+            # 1. GET TOKEN INFO
+            df = self.scrip_master_df
+            df = df[(df['SymbolRoot'] == symbol) & (df['StrikeRate'] == strike_price) & (df['ScripType'] == pe_ce)]
+
+            if df.empty:
+                logger.error(f"No matching contracts found for {symbol} {strike_price} {pe_ce}")
+                return -1, None
+
+            df = df.sort_values(by='Expiry')
+
+            # 2. DETERMINE EXPIRY
+            tokenInfo = None
+            today_str = datetime.now().strftime('%Y-%m-%d')
+
+            if expiry is not None:
+                # Use specified expiry
+                matching_expiry = df[df['Expiry'] == expiry]
+                if matching_expiry.empty:
+                    logger.error(f"No contract found for specified expiry {expiry}")
+                    return -1, None
+                tokenInfo = matching_expiry.iloc[0]
+            else:
+                # Find appropriate expiry - get the next available one at least 8 days out
+                today = datetime.now()
+                # Use .copy() to avoid SettingWithCopyWarning
+                df_copy = df.copy()
+                df_copy['ExpiryDate'] = pd.to_datetime(df_copy['Expiry'])
+                future_expiries = df_copy[df_copy['ExpiryDate'] > (today + pd.Timedelta(days=8))]
+
+                if future_expiries.empty:
+                    # If none > 8 days, just take the first one that is >= today
+                    valid_expiries = df[df['Expiry'] >= today_str]
+                    if valid_expiries.empty:
+                        logger.error(f"No valid future expiries found for {symbol}")
+                        return -1, None
+                    tokenInfo = valid_expiries.iloc[0]
+                else:
+                    tokenInfo = future_expiries.iloc[0]
+
+            # 3. PREPARE ORDER PARAMETERS
+            token = tokenInfo['ScripCode']
+            lot = int(tokenInfo['LotSize'])
+
+            if symbol == "SENSEX":
+                exchange = "B"
+            else:
+                exchange = "N"
+
+            logger.info(f"Selected contract: {tokenInfo['Name']}, scrip_code: {token}, expiry: {tokenInfo['Expiry']}")
+
+            if qty % lot != 0:
+                logger.error(f"Quantity {qty} not multiple of lot size {lot}")
+                return -1, None
+
+            if buy_sell == 'BUY':
+                order_type = 'B'
+            else:
+                order_type = 'S'
+
+            # 4. PLACE ORDER
+            order_id = self.obj.place_order(
+                OrderType=order_type,
+                Exchange=exchange,
+                ExchangeType='D',
+                ScripCode=int(token),
+                Qty=int(qty),
+                Price=0,
+                IsIntraday=False # Synthetic futures are usually positional
+            )
+
+            print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+            print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+            logger.info(f"[{self.account}] ✅ SYNTHETIC FUTURE Order placed: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+
+            # Check for "another client" error
+            if 'another client' in str(order_id.get('Message', '')).lower():
+                logger.error(f"[{self.account}] ❌ DETECTED 'another client' error during synthetic future order!")
+                if self._refresh_session():
+                    time.sleep(1)
+                    order_id = self.obj.place_order(
+                        OrderType=order_type,
+                        Exchange=exchange,
+                        ExchangeType='D',
+                        ScripCode=int(token),
+                        Qty=int(qty),
+                        Price=0,
+                        IsIntraday=False
+                    )
+                    logger.info(f"[{self.account}] ✅ SYNTHETIC FUTURE Order placed after refresh: order_id={order_id['BrokerOrderID']}")
+
+            return order_id['BrokerOrderID'], tokenInfo['Expiry']
+
+        except Exception as e:
+            logger.error(f"Fatal error in place_order_synthetic_future: {e}")
+            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            return -1, None
+
     def get_order_status(self, order_id):
         try:
             logger.info(f"[{self.account}] 🔍 Checking order status for order_id={order_id}")
@@ -685,6 +793,10 @@ orderid, expiry_gold = angel_obj.place_order_commodity('GOLD', 3, 'BUY', None)
 
 print(orderid)
 print(expiry_gold)
+
+orderid, expiry = angel_obj.place_order_synthetic_future('BANKNIFTY', 15, 'BUY', 52000, 'CE')
+
+print(f"Synthetic Future Order ID: {orderid}, Expiry: {expiry}")
 
 orderid, expiry = angel_obj.place_order_commodity('SILVER', 3, 'BUY', None)
 
