@@ -119,7 +119,7 @@ class PlaceOrder:
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 35,
+            'BANKNIFTY': 30,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50,
             'SENSEX': 20
@@ -170,7 +170,7 @@ class PlaceOrder:
     def place_order_synthetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         multiplication_factor = {
             'NIFTY': 65,
-            'BANKNIFTY': 35,
+            'BANKNIFTY': 30,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
@@ -210,7 +210,7 @@ class PlaceOrder:
     def place_orders_option_buy(self, account, atm_ce_strike, pe_ce, symbol, qty, buy_sell):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 35,
+            'BANKNIFTY': 30,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }
@@ -251,7 +251,7 @@ class PlaceOrder:
     def close_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 75,
-            'BANKNIFTY': 35,
+            'BANKNIFTY': 30,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50,
             'SENSEX': 20
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     print("Step 2: Placing immediate orders (should work)...")
     print("\n--- Testing avanthi account (immediate order) ---")
     # place_orders(account, atm_ce_strike, pe_ce, symbol, qty, intraday=True)
-    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 35)
+    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 30)
     print(f"Order ID: {order_id}")
     if order_id > 0:
         status, price = place_order.obj_3.get_order_status(order_id)
@@ -362,7 +362,7 @@ if __name__ == "__main__":
 
     print("\n--- Testing leelu account (immediate order) ---")
     # place_orders(account, atm_ce_strike, pe_ce, symbol, qty, intraday=True)
-    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 35)
+    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 30)
     print(f"Order ID: {order_id}")
     if order_id > 0:
         status, price = place_order.obj_2.get_order_status(order_id)
@@ -381,7 +381,7 @@ if __name__ == "__main__":
     print("Waiting 5 seconds to simulate delay...")
     time.sleep(5)
     print("\nStep 3: Placing orders after delay...")
-    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 35)
+    order_id = place_order.place_orders('leelu', 57000, 'PE', 'BANKNIFTY', 30)
     print(f"Order ID after delay: {order_id}")
     if order_id > 0:
         status, price = place_order.obj_2.get_order_status(order_id)
@@ -392,7 +392,7 @@ if __name__ == "__main__":
 
     time.sleep(10)
     print("\nStep 4: Placing orders after delay...")
-    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 35)
+    order_id = place_order.place_orders('avanthi', 57000, 'PE', 'BANKNIFTY', 30)
     print(f"Order ID after delay: {order_id}")
     if order_id > 0:
         status, price = place_order.obj_2.get_order_status(order_id)

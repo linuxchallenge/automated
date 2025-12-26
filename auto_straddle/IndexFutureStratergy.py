@@ -33,7 +33,7 @@ symbol = ['NIFTY', 'BANKNIFTY']
 # Map symbol to lot
 symbol_to_lot = {
     'NIFTY': 65,
-    'BANKNIFTY': 35,
+    'BANKNIFTY': 30,
     'FINNIFTY': 65
 }
 
