@@ -546,6 +546,20 @@ class angelone_api(object):
 
 
 
+    def get_ledger_balance(self):
+        """Fetch the ledger balance for the account"""
+        try:
+            res = self.obj.rmsLimit()
+            if res['status'] and 'data' in res:
+                # net is the available margin/ledger balance
+                balance = res['data'].get('net', 0)
+                logger.info(f"AngelOne Ledger balance: {balance}")
+                return float(balance)
+            return 0.0
+        except Exception as e:
+            logger.error(f"Error fetching AngelOne ledger balance: {e}")
+            return 0.0
+
     def get_order_status(self, order_id):
         try:
             # Convert orderid which is <class 'numpy.float64'> to int

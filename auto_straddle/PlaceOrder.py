@@ -288,6 +288,25 @@ class PlaceOrder:
         logging.info(f"Order id for close account: {order_id}")
         return order_id
 
+    def get_ledger_balance(self, account):
+        """Get the ledger balance for a specific account"""
+        print(f"Fetching ledger balance for account: {account}")
+        balance = 0.0
+        if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
+            balance = self.obj_1.get_ledger_balance()
+        elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
+            balance = self.obj_2.get_ledger_balance()
+        elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
+            balance = self.obj_3.get_ledger_balance()
+        elif account == 'dummy':
+            balance = 100000.0
+        else:
+            logging.error(f"Invalid account or API object not initialized: {account}")
+            return 0.0
+
+        print(f"Ledger balance for {account}: {balance}")
+        return balance
+
     def order_status(self, account, order_id, old_price):
         print(f"Order status for order id {order_id}")
         logging.info(f"Order status for order id {order_id}")

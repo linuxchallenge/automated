@@ -715,6 +715,22 @@ class fivepaise_api(object):
             print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             return -1, None
 
+    def get_ledger_balance(self):
+        """Fetch the ledger balance for the account"""
+        try:
+            self._fix_shared_payload_bug()
+            margin_data = self.obj.margin()
+            if margin_data and len(margin_data) > 0:
+                # margin() returns a list of dictionaries, usually one per segment
+                # Ledgerbalance is what the user is looking for
+                balance = margin_data[0].get('Ledgerbalance', 0)
+                logger.info(f"[{self.account}] Ledger balance: {balance}")
+                return float(balance)
+            return 0.0
+        except Exception as e:
+            logger.error(f"[{self.account}] Error fetching ledger balance: {e}")
+            return 0.0
+
     def get_order_status(self, order_id):
         try:
             logger.info(f"[{self.account}] 🔍 Checking order status for order_id={order_id}")

@@ -16,6 +16,8 @@ import pandas as pd
 import requests
 
 import brokrage_calculator
+from TelegramSend import telegram_send_api
+import configuration
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,6 +42,8 @@ class LedgerCalculator:
         self.valid_accounts = ['deepti', 'avanthi', 'leelu']  # Only these 3 accounts
         self.symboldf = None  # To be initialized on first use
         self.sheet_cache = {}  # Cache for Google Sheet DataFrames
+        self.ledger_csv_path = os.path.join(self.data_directory, "ledger_tracking.csv")
+        self._initialize_ledger_csv()
 
         # Multiplication factors for different instruments (lot sizes)
         # Lot sizes/multiplication factors grouped by strategy
@@ -98,6 +102,190 @@ class LedgerCalculator:
         """
         self.target_date = datetime.strptime(date_str, "%Y-%m-%d")
         # logger.info("Target date set to: %s", self.target_date.strftime('%Y-%m-%d'))
+
+    def _initialize_ledger_csv(self):
+        """Initialize the ledger tracking CSV if it doesn't exist"""
+        try:
+            if not os.path.exists(self.ledger_csv_path):
+                df = pd.DataFrame(columns=['date', 'account', 'ledger_got', 'ledger_computed', 'ledger_change', 'difference'])
+                df.to_csv(self.ledger_csv_path, index=False)
+                logger.info("Created ledger tracking CSV at %s", self.ledger_csv_path)
+        except Exception as e:
+            logger.error("Error initializing ledger CSV: %s", e)
+
+    def get_previous_ledger_got(self, account: str, target_date: str) -> float:
+        """
+        Get the ledger_got value from the previous trading day
+        
+        Args:
+            account: Account name
+            target_date: Target date in YYYY-MM-DD format
+            
+        Returns:
+            Previous ledger_got value or 0.0 if not found
+        """
+        try:
+            if not os.path.exists(self.ledger_csv_path):
+                return 0.0
+                
+            df = pd.read_csv(self.ledger_csv_path)
+            if df.empty:
+                return 0.0
+                
+            df['date'] = pd.to_datetime(df['date'])
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+            
+            # Filter for this account and dates before target
+            account_data = df[(df['account'] == account) & (df['date'] < target_dt)]
+            
+            if account_data.empty:
+                logger.info("No previous ledger data found for %s", account)
+                return 0.0
+            
+            # Get the most recent entry
+            latest = account_data.sort_values('date', ascending=False).iloc[0]
+            previous_value = float(latest['ledger_got'])
+            logger.info("Previous ledger for %s: %.2f", account, previous_value)
+            return previous_value
+        except Exception as e:
+            logger.error("Error getting previous ledger for %s: %s", account, e)
+            return 0.0
+
+    def update_ledger_tracking(self, target_date: str, account: str, ledger_got: float, 
+                              ledger_change: float, ledger_computed: float):
+        """
+        Update or add ledger tracking entry
+        
+        Args:
+            target_date: Date in YYYY-MM-DD format
+            account: Account name
+            ledger_got: Actual balance from API
+            ledger_change: Daily P&L change
+            ledger_computed: Expected balance (previous + change)
+        """
+        try:
+            df = pd.read_csv(self.ledger_csv_path)
+            
+            # Check if entry already exists
+            existing = df[(df['date'] == target_date) & (df['account'] == account)]
+            
+            if not existing.empty:
+                logger.info("Entry already exists for %s on %s, skipping update", account, target_date)
+                return
+            
+            # Calculate difference
+            difference = ledger_got - ledger_computed
+            
+            # Add new entry
+            new_entry = pd.DataFrame([{
+                'date': target_date,
+                'account': account,
+                'ledger_got': ledger_got,
+                'ledger_computed': ledger_computed,
+                'ledger_change': ledger_change,
+                'difference': difference
+            }])
+            
+            df = pd.concat([df, new_entry], ignore_index=True)
+            df.to_csv(self.ledger_csv_path, index=False)
+            
+            logger.info("Updated ledger tracking for %s: got=%.2f, computed=%.2f, diff=%.2f", account, ledger_got, ledger_computed, difference)
+            
+        except Exception as e:
+            logger.error("Error updating ledger tracking: %s", e)
+            logger.error(traceback.format_exc())
+
+    def generate_ledger_with_balance_check(self, target_date: str, place_order) -> Dict[str, Dict]:
+        """
+        Generate ledger report with actual balance verification
+        
+        Args:
+            target_date: Date in YYYY-MM-DD format
+            place_order: PlaceOrder instance to fetch actual balances
+            
+        Returns:
+            Dict with account -> {computed, actual, difference, strategies}
+        """
+        logger.info("Generating ledger with balance check for %s", target_date)
+        
+        # Calculate comprehensive ledger (computed changes)
+        ledger = self.calculate_comprehensive_ledger(target_date)
+        
+        result = {}
+        
+        for account in self.accounts:
+            if account == 'dummy':
+                logger.info("Skipping dummy account")
+                continue
+                
+            # Get computed total for this account
+            computed_change = ledger.get(account, {}).get('Total', 0)
+            
+            # Get previous day's ledger_got
+            previous_ledger = self.get_previous_ledger_got(account, target_date)
+            
+            # Compute expected ledger
+            ledger_computed = previous_ledger + computed_change
+            
+            # Get actual balance from API
+            try:
+                ledger_got = place_order.get_ledger_balance(account)
+                logger.info("Fetched actual balance for %s: %.2f", account, ledger_got)
+            except Exception as e:
+                logger.error("Error fetching balance for %s: %s", account, e)
+                ledger_got = 0.0
+            
+            # Update CSV
+            self.update_ledger_tracking(target_date, account, ledger_got, computed_change, ledger_computed)
+            
+            result[account] = {
+                'previous_balance': previous_ledger,
+                'computed_change': computed_change,
+                'computed_balance': ledger_computed,
+                'actual_balance': ledger_got,
+                'difference': ledger_got - ledger_computed,
+                'strategies': ledger.get(account, {})
+            }
+        
+        # Send Telegram notifications
+        self._send_telegram_notifications(target_date, result)
+        
+        return result
+
+    def _send_telegram_notifications(self, target_date: str, results: Dict[str, Dict]):
+        """Send Telegram notifications for all accounts"""
+        try:
+            telegram = telegram_send_api()
+            
+            for account, data in results.items():
+                message = f"""📊 Ledger Report - {target_date}
+Account: {account.upper()}
+
+💰 Previous Balance: ₹{data['previous_balance']:,.2f}
+📈 Computed Change: ₹{data['computed_change']:,.2f}
+🧮 Expected Balance: ₹{data['computed_balance']:,.2f}
+✅ Actual Balance: ₹{data['actual_balance']:,.2f}
+⚠️ Difference: ₹{data['difference']:,.2f}
+
+Strategy Breakdown:"""
+                
+                for strategy, amount in data['strategies'].items():
+                    if strategy != 'Total':
+                        message += f"\n  {strategy}: ₹{amount:,.2f}"
+                
+                # Get telegram group ID for this account
+                telegram_group = account + "_telegram"
+                group_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+                
+                if group_id:
+                    telegram.send_message(group_id, message)
+                    logger.info("Sent ledger report to %s", account)
+                else:
+                    logger.warning("No telegram group configured for %s", account)
+                    
+        except Exception as e:
+            logger.error("Error sending Telegram notifications: %s", e)
+            logger.error(traceback.format_exc())
 
     def fetch_account_details_from_google_sheets(self, url: str) -> pd.DataFrame:
         """

@@ -11,7 +11,7 @@
 
 import time
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import time as time_dt
 import logging
 import os
@@ -32,6 +32,7 @@ from NiftyPositionalStrategy import NiftyPositionalStrategy
 #from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # This sets up the logging
 from TelegramSend import telegram_send_api
+from ledger_calculation import LedgerCalculator
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ def read_csv_from_google_sheet(url, max_retries=3):
             return df
 
         except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed to read Google Sheet: {e}")
+            logging.error("Attempt %d failed to read Google Sheet: %s", attempt + 1, e)
             if attempt < max_retries - 1:
                 time.sleep(2)  # Wait before retry
             else:
@@ -148,7 +149,7 @@ def main():
         print(account_details)
 
     except Exception as e:
-        logging.error(f"Failed to read account details from Google Sheet: {e}")
+        logging.error("Failed to read account details from Google Sheet: %s", e)
         # Fallback to local file or exit
         print("Failed to read Google Sheet, using fallback data or exiting...")
         return
@@ -172,7 +173,7 @@ def main():
         print(nifty_position_account_details)
 
     except Exception as e:
-        logging.error(f"Failed to read one or more Google Sheets: {e}")
+        logging.error("Failed to read one or more Google Sheets: %s", e)
         # Handle fallback logic here
 
     # Append accounts with data from google sheet
@@ -228,6 +229,22 @@ def main():
         place_order.init_account(account)
 
     logging.info("After initializing all accounts")
+
+    # Import and initialize ledger calculator
+    ledger_calculator = LedgerCalculator()
+
+    # Calculate and track ledger for previous day
+    previous_day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    try:
+        logger.info("Starting ledger balance check for %s", previous_day)
+        # This now handles both CSV update and Telegram sending
+        ledger_calculator.generate_ledger_with_balance_check(previous_day, place_order)
+        logger.info("Ledger balance check completed successfully")
+
+    except Exception as e:
+        logger.error("Error in ledger calculation: %s", e)
+        logger.error(traceback.format_exc())
 
     index_future_stratergy = IndexFutureStratergy(accounts_index)
 
