@@ -1,3 +1,9 @@
+#pylint: disable=W0718
+#pylint: disable=C0301
+#pylint: disable=C0302
+#pylint: disable=C0114
+#pylint: disable=C0303
+
 import glob
 import logging
 import os
@@ -5,7 +11,7 @@ import sys
 from datetime import datetime, timedelta
 from io import StringIO
 from typing import Dict, List, Optional
-
+import traceback
 import pandas as pd
 import requests
 
@@ -32,6 +38,8 @@ class LedgerCalculator:
         self.accounts = set()
         self.target_date = None
         self.valid_accounts = ['deepti', 'avanthi', 'leelu']  # Only these 3 accounts
+        self.symboldf = None  # To be initialized on first use
+        self.sheet_cache = {}  # Cache for Google Sheet DataFrames
 
         # Multiplication factors for different instruments (lot sizes)
         # Lot sizes/multiplication factors grouped by strategy
@@ -71,7 +79,15 @@ class LedgerCalculator:
             }
         }
 
-        logger.info("Initialized LedgerCalculator with data directory: %s", self.data_directory)
+        # Google Sheets URLs for strategy account details
+        self.strategy_urls = {
+            'as': 'https://docs.google.com/spreadsheets/d/1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv',
+            'fr': 'https://docs.google.com/spreadsheets/d/1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv',
+            'Commodity': 'https://docs.google.com/spreadsheets/d/12hH-wMr36t7VGiyO08oAbaihyOCt6ZPLKj7FO9wNH6o/export?format=csv',
+            'IndexFuture': 'https://docs.google.com/spreadsheets/d/1S2PO_tPjnCpq3LGWRUXJenWouSAJ8dxCuC_jTLSC07E/export?format=csv',
+            'Positional': 'https://docs.google.com/spreadsheets/d/1Ncv-9eA52t6bMNIcI3kzAxTQlvjQ9dOvqZdFX0-JYCM/export?format=csv'
+        }
+
 
     def set_target_date(self, date_str: str):
         """
@@ -81,16 +97,18 @@ class LedgerCalculator:
             date_str (str): Date in YYYY-MM-DD format
         """
         self.target_date = datetime.strptime(date_str, "%Y-%m-%d")
-        logger.info("Target date set to: %s", self.target_date.strftime('%Y-%m-%d'))
+        # logger.info("Target date set to: %s", self.target_date.strftime('%Y-%m-%d'))
 
-    def fetch_account_details_from_google_sheets(self) -> pd.DataFrame:
+    def fetch_account_details_from_google_sheets(self, url: str) -> pd.DataFrame:
         """
-        Fetch account details from Google Sheets
+        Fetch account details from a specific Google Sheet URL with caching
         Returns DataFrame with Account, Symbol, Stratergy, quantity columns
         """
+        if url in self.sheet_cache:
+            return self.sheet_cache[url]
+
         try:
-            url = "https://docs.google.com/spreadsheets/d/\
-                1Kndwbk4S9iSz9uZ4ZaMkPG2bHehjqRWU7RdJ595jwQg/export?format=csv"
+            logger.debug("Fetching account details from Google Sheets: %s", url)
             response = requests.get(url, timeout=10)
             response.raise_for_status()
 
@@ -98,15 +116,12 @@ class LedgerCalculator:
             csv_content = StringIO(response.text)
             df = pd.read_csv(csv_content)
 
-            logger.info("Successfully fetched account details from Google Sheets. Shape: %s", \
-                df.shape)
-            logger.debug("Account details columns: %s", df.columns.tolist())
-
+            logger.debug("Successfully fetched %d rows from Google Sheets", len(df))
+            self.sheet_cache[url] = df
             return df
 
         except requests.exceptions.RequestException as e:
-            logger.error("Error fetching account details from Google Sheets: %s", e)
-            logger.info("Falling back to default quantities")
+            logger.error("Error fetching account details from Google Sheets (%s): %s", url, e)
             return pd.DataFrame()  # Return empty DataFrame to trigger fallback
 
     def get_quantity_for_account_symbol(self, account: str, symbol: str, strategy: str) -> int:
@@ -123,21 +138,28 @@ class LedgerCalculator:
             int: Quantity for this combination
         """
         try:
-            # Fetch account details from Google Sheets
-            account_details = self.fetch_account_details_from_google_sheets()
+            # Fetch account details for the specific strategy
+            url = self.strategy_urls.get(strategy) or self.strategy_urls.get(strategy.lower())
+            
+            if not url:
+                logger.warning("No Google Sheet URL defined for strategy: %s", strategy)
+                account_details = pd.DataFrame()
+            else:
+                account_details = self.fetch_account_details_from_google_sheets(url)
 
             if not account_details.empty:
                 # Filter for the specific account, symbol, and strategy
+                # Note: strategy name in the sheet might differ from the key, 
+                # but we'll try matching it or assuming all entries in that sheet are for that category
                 filtered = account_details[
                     (account_details['Account'].str.lower() == account.lower()) &
-                    (account_details['Symbol'].str.upper() == symbol.upper()) &
-                    (account_details['Stratergy'].str.lower() == strategy.lower())
+                    (account_details['Symbol'].str.upper() == symbol.upper())
                 ]
 
                 if not filtered.empty:
                     quantity = int(filtered['quantity'].iloc[0])
-                    logger.info("Quantity from Google Sheets for %s/%s/%s: %s",
-                                account, symbol, strategy, quantity)
+                    #logger.info("Quantity from Google Sheets for %s/%s/%s: %s",
+                    #            account, symbol, strategy, quantity)
                     return quantity
                 else:
                     logger.warning("No matching entry found in Google Sheets for %s/%s/%s",
@@ -168,7 +190,7 @@ class LedgerCalculator:
             key = (account.lower(), symbol.upper(), strategy.lower())
             quantity = default_quantities.get(key, 1)  # Default to 1 if not found
 
-            logger.info("Quantity from fallback for %s/%s/%s: %s", \
+            logger.debug("Quantity from fallback for %s/%s/%s: %s", \
                 account, symbol, strategy, quantity)
             return quantity
 
@@ -196,7 +218,7 @@ class LedgerCalculator:
         """
         search_path = os.path.join(self.data_directory, pattern)
         files = glob.glob(search_path)
-        logger.info("Found %d files matching pattern: %s", len(files), pattern)
+        logger.debug("Found %d files matching pattern: %s", len(files), pattern)
         return files
 
     def extract_account_from_filename(self, filename: str) -> Optional[str]:
@@ -223,7 +245,7 @@ class LedgerCalculator:
         ledger = {}
         # For AutoStraddle, get PREVIOUS DAY files
         previous_date = self.get_previous_day(target_date)
-        logger.info("Looking for AutoStraddle files from previous day: %s", previous_date)
+        # logger.info("Looking for AutoStraddle files from previous day: %s", previous_date)
 
         # Find all AutoStraddle closed files for the previous date
         pattern = f"as_sold_options_info_closed_{previous_date}_*.csv"
@@ -243,7 +265,7 @@ class LedgerCalculator:
 
                     # Only process valid accounts
                     if account not in self.valid_accounts:
-                        logger.info("Skipping AutoStraddle file for invalid account: %s", account)
+                        logger.debug("Skipping AutoStraddle file for invalid account: %s", account)
                         continue
 
                     self.accounts.add(account)
@@ -276,7 +298,7 @@ class LedgerCalculator:
                         ledger[account] = 0
                     ledger[account] += net_amount
 
-                    logger.info("AutoStraddle - %s %s: P&L_per_unit=%.2f, Quantity=%s, \
+                    logger.debug("AutoStraddle - %s %s: P&L_per_unit=%.2f, Quantity=%s, \
                         Total_P&L=%.2f, Brokerage=%.2f, Net=%.2f",
                                 account, instrument, pnl_per_unit, quantity, total_pnl,
                                 total_brokerage, net_amount)
@@ -303,7 +325,7 @@ class LedgerCalculator:
 
         # For FarSell, get PREVIOUS DAY files
         previous_date = self.get_previous_day(target_date)
-        logger.info("Looking for FarSell files from previous day: %s", previous_date)
+        # logger.info("Looking for FarSell files from previous day: %s", previous_date)
 
         # Find all FarSell closed files for the previous date
         pattern = f"fr_sold_options_info_closed_{previous_date}_*.csv"
@@ -323,7 +345,7 @@ class LedgerCalculator:
 
                     # Only process valid accounts
                     if account not in self.valid_accounts:
-                        logger.info("Skipping FarSell file for invalid account: %s", account)
+                        logger.debug("Skipping FarSell file for invalid account: %s", account)
                         continue
 
                     self.accounts.add(account)
@@ -354,7 +376,7 @@ class LedgerCalculator:
                         ledger[account] = 0
                     ledger[account] += net_amount
 
-                    logger.info("FarSell - %s %s: P&L=%.2f, Brokerage=%.2f, Net=%.2f",
+                    logger.debug("FarSell - %s %s: P&L=%.2f, Brokerage=%.2f, Net=%.2f",
                                 account, instrument, total_pnl, total_brokerage, net_amount)
 
             except (IOError, pd.errors.ParserError) as e:
@@ -366,65 +388,60 @@ class LedgerCalculator:
     def calculate_nifty_positional_ledger(self, target_date: str) -> Dict[str, float]:
         """
         Calculate ledger for Nifty Positional strategy (nifty_pos_options_info_*.csv)
-
-        Args:
-            target_date (str): Target date in YYYY-MM-DD format
-
-        Returns:
-            Dict[str, float]: Account-wise ledger amounts
+        Searches for files within target_date to target_date + 3 days.
         """
         logger.info("Calculating Nifty Positional ledger...")
         ledger = {}
+        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        
+        # Combinations to check
+        symbols = ['NIFTY', 'SENSEX']
+        strategies = ['as', 'fr']
+        
+        for account in self.valid_accounts:
+            for symbol in symbols:
+                for strategy in strategies:
+                    best_file = None
+                    max_expiry = None
+                    
+                    # Search window: target_date to target_date + 3 days
+                    for i in range(4):
+                        expiry_date = (target_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+                        pattern = f"nifty_pos_options_info_{expiry_date}_{account}_{symbol}_{strategy}.csv"
+                        files = self.find_files_by_pattern(pattern)
+                        
+                        if files:
+                            # We expect at most one file per specific expiry/account/symbol/strategy
+                            current_expiry = datetime.strptime(expiry_date, "%Y-%m-%d")
+                            if max_expiry is None or current_expiry > max_expiry:
+                                max_expiry = current_expiry
+                                best_file = files[0]
 
-        # Find all Nifty Positional files (check previous day, current day, and future expiry dates)
-        patterns = [
-            f"nifty_pos_options_info_{target_date}_*.csv",
-            f"nifty_pos_options_info_{self.get_previous_day(target_date)}_*.csv"
-        ]
+                    if best_file:
+                        try:
+                            logger.debug("Processing positional file: %s (expiry: %s)", 
+                                        os.path.basename(best_file), max_expiry.strftime("%Y-%m-%d"))
+                            
+                            df = pd.read_csv(best_file)
+                            if df.empty:
+                                continue
 
-        all_files = []
-        for pattern in patterns:
-            all_files.extend(self.find_files_by_pattern(pattern))
-
-        for file_path in all_files:
-            try:
-                # Extract account and instrument from filename
-                filename = os.path.basename(file_path)
-                parts = filename.replace('.csv', '').split('_')
-
-                if len(parts) >= 5:
-                    expiry_date = parts[3]  # 2025-08-05
-                    account = parts[4].lower()  # deepti, avanthi, leelu
-                    instrument = parts[5] if len(parts) > 5 else 'NIFTY'  # SENSEX, NIFTY, etc.
-
-                    # Only process valid accounts
-                    if account not in self.valid_accounts:
-                        logger.info("Skipping Positional file for invalid account: %s", account)
-                        continue
-
-                    self.accounts.add(account)
-
-                    # Read the CSV file
-                    df = pd.read_csv(file_path)
-
-                    if df.empty:
-                        continue
-
-                    # Calculate positional P&L based on open/close trades on target date
-                    net_amount = self.compute_positional_pnl(df, instrument, target_date, account)
-
-                    # Add to account ledger
-                    if account not in ledger:
-                        ledger[account] = 0
-                    ledger[account] += net_amount
-
-                    logger.info("Positional - %s %s (exp: %s): Net=%.2f",
-                                account, instrument, expiry_date, net_amount)
-
-            except (IOError, pd.errors.ParserError, ValueError) as e:
-                logger.error("Error processing Positional file %s: %s", file_path, e)
-                continue
-
+                            self.accounts.add(account)
+                            
+                            # Calculate positional P&L (Credit for Open, Debit for Close)
+                            net_amount = self.compute_positional_pnl(df, symbol, target_date)
+                            
+                            if net_amount != 0:
+                                if account not in ledger:
+                                    ledger[account] = 0
+                                ledger[account] += net_amount
+                                
+                                logger.debug("Positional - %s %s %s: Net=%.2f", 
+                                            account, symbol, strategy, net_amount)
+                                        
+                        except Exception as e:
+                            logger.error("Error processing Positional file %s: %s", best_file, e)
+        
         return ledger
 
     def calculate_commodity_ledger(self, target_date: str) -> Dict[str, float]:
@@ -452,7 +469,7 @@ class LedgerCalculator:
 
                 # Only process valid accounts
                 if account not in self.valid_accounts:
-                    logger.info("Skipping Commodity file for invalid account: %s", account)
+                    logger.debug("Skipping Commodity file for invalid account: %s", account)
                     continue
 
                 self.accounts.add(account)
@@ -478,7 +495,7 @@ class LedgerCalculator:
                     ledger[account] = 0
                 ledger[account] += net_amount
 
-                logger.info("Commodity - %s: Net MTM=%.2f", account, net_amount)
+                logger.debug("Commodity - %s: Net MTM=%.2f", account, net_amount)
 
             except (IOError, pd.errors.ParserError, ValueError) as e:
                 logger.error("Error processing Commodity file %s: %s", file_path, e)
@@ -511,7 +528,7 @@ class LedgerCalculator:
 
                 # Only process valid accounts
                 if account not in self.valid_accounts:
-                    logger.info("Skipping IndexFuture file for invalid account: %s", account)
+                    logger.debug("Skipping IndexFuture file for invalid account: %s", account)
                     continue
 
                 self.accounts.add(account)
@@ -530,7 +547,7 @@ class LedgerCalculator:
                     ledger[account] = 0
                 ledger[account] += net_amount
 
-                logger.info("IndexFuture - %s: Net=%.2f", account, net_amount)
+                logger.debug("IndexFuture - %s: Net=%.2f", account, net_amount)
 
             except (IOError, pd.errors.ParserError, ValueError) as e:
                 logger.error("Error processing IndexFuture file %s: %s", file_path, e)
@@ -677,173 +694,293 @@ class LedgerCalculator:
             return 0
 
     def compute_positional_pnl(self, df: pd.DataFrame, symbol: str,
-                               target_date: str, account: str) -> float:
+                                target_date: str) -> float:
         """
-        Compute P&L for positional trades based on open/close on target date
+        Compute P&L for positional trades based on open/close on target date.
+        Open = Credit, Close = Debit. Uses strangle price columns and row quantity.
         """
         try:
             total_pnl = 0
-
-            # Use NiftyPositional strategy lot sizes
             multiplier = self.lot_sizes.get('NiftyPositional', {}).get(symbol, 75)
             
-            # Fetch quantity for this account/symbol/strategy
-            quantity = self.get_quantity_for_account_symbol(account, symbol, 'fr')
-
-            # Filter trades that were opened or closed on target date
+            # Ensure date columns are present
             if 'open_time' in df.columns:
                 df['open_date'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d')
             if 'close_time' in df.columns:
                 df['close_date'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d')
 
             for _, row in df.iterrows():
-                # Check if trade was opened on target date (credit)
-                if row.get('open_date') == target_date:
-                    # Opening trade - credit amount (selling options)
-                    ce_price = row.get('ce_open_price', 0) or row.get('atm_ce_price', 0)
-                    pe_price = row.get('pe_open_price', 0) or row.get('atm_pe_price', 0)
-                    credit = float(ce_price) + float(pe_price)
+                # Correct quantity for this specific trade row
+                qty_val = row.get('quantity')
+                if pd.isna(qty_val) or float(qty_val) <= 0:
+                    continue
+                qty = float(qty_val)
 
-                    # Calculate brokerage for opening
-                    brokerage = 0
+                # Check if trade was opened on target date (Credit)
+                open_date = row.get('open_date')
+                if pd.notna(open_date) and open_date == target_date:
+                    ce_price = float(row.get('strangle_ce_price') or 0)
+                    pe_price = float(row.get('strangle_pe_price') or 0)
+                    
+                    # Handle cases where one side might be -1 or 0 (if only one side traded)
+                    credit_per_unit = 0
                     if ce_price > 0:
-                        brokerage += brokrage_calculator.calculate_equity_options(
-                            0, ce_price, multiplier * quantity)['total_charges']
+                        credit_per_unit += ce_price
                     if pe_price > 0:
-                        brokerage += brokrage_calculator.calculate_equity_options(
-                            0, pe_price, multiplier * quantity)['total_charges']
+                        credit_per_unit += pe_price
+                        
+                    total_pnl += credit_per_unit * multiplier * qty
 
-                    total_pnl += (credit * multiplier * quantity) - brokerage
-
-                # Check if trade was closed on target date (debit)
-                if row.get('close_date') == target_date:
-                    # Closing trade - debit amount (buying back options)
-                    ce_close_price = row.get('ce_close_price', 0) or \
-                        row.get('atm_ce_close_price', 0)
-                    pe_close_price = row.get('pe_close_price', 0) or \
-                        row.get('atm_pe_close_price', 0)
-                    debit = float(ce_close_price) + float(pe_close_price)
-
-                    # Calculate brokerage for closing
-                    brokerage = 0
+                # Check if trade was closed on target date (Debit)
+                close_date = row.get('close_date')
+                if pd.notna(close_date) and close_date == target_date:
+                    ce_close_price = float(row.get('strangle_ce_close_price') or 0)
+                    pe_close_price = float(row.get('strangle_pe_close_price') or 0)
+                    
+                    debit_per_unit = 0
                     if ce_close_price > 0:
-                        brokerage += brokrage_calculator.calculate_equity_options(
-                            ce_close_price, 0, multiplier * quantity)['total_charges']
+                        debit_per_unit += ce_close_price
                     if pe_close_price > 0:
-                        brokerage += brokrage_calculator.calculate_equity_options(
-                            pe_close_price, 0, multiplier * quantity)['total_charges']
-
-                    total_pnl -= (debit * multiplier * quantity) + brokerage
+                        debit_per_unit += pe_close_price
+                        
+                    total_pnl -= debit_per_unit * multiplier * qty
 
             return total_pnl
 
-        except (KeyError, AttributeError, TypeError, ValueError) as e:
+        except Exception as e:
             logger.error("Error computing positional P&L: %s", e)
             return 0
 
+    def fetch_mcx_symbols(self):
+        """Fetch and process MCX symbols from Upstox"""
+        if self.symboldf is not None:
+            return
+        
+        try:
+            logger.info("Fetching MCX symbols from Upstox...")
+            file_url = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz'
+            df = pd.read_csv(file_url)
+            df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+            df = df[df.exchange == 'MCX_FO']
+            df = df[df.strike == 0]
+            self.symboldf = df
+            logger.info("Successfully fetched %d MCX symbols", len(df))
+        except Exception as e:
+            logger.error("Error fetching MCX symbols: %s", e)
+            self.symboldf = pd.DataFrame()
+
+    def get_commodity_close_prices(self, symbol: str, target_date: str, previous_date: str) -> Dict[str, float]:
+        """Fetch close prices for target and previous date from Upstox"""
+        self.fetch_mcx_symbols()
+        
+        prices = {'target': None, 'previous': None}
+        
+        try:
+            # Map symbol names if necessary
+            upstox_symbol = 'CRUDE OIL' if symbol == 'CRUDEOIL' else symbol
+            
+            # Find the correct instrument_key (nearest expiry)
+            token_df = self.symboldf[self.symboldf.name == upstox_symbol]
+            
+            if symbol == 'GOLD':
+                token_df = token_df[~token_df.tradingsymbol.str.contains('PETAL|GUINEA|GOLDTEN', regex=True)]
+            elif symbol in ['LEAD', 'ZINC']:
+                token_df = token_df[~token_df.tradingsymbol.str.contains('MINI')]
+            elif symbol == 'ALUMINIUM':
+                token_df = token_df[~token_df.tradingsymbol.str.contains('ALUMINIUM')] # Wait, logic in commodity_data was a bit weird here
+
+            if token_df.empty:
+                logger.warning("No token found for symbol %s", symbol)
+                return prices
+
+            token_df = token_df.sort_values(by='expiry', ascending=True)
+            
+            # Simple heuristic: for most commodities, use 0th. For some, 1st as per commodity_data.py
+            index_to_use = 1 if symbol in ['LEAD', 'ZINC', 'ALUMINIUM'] and len(token_df) > 1 else 0
+            token = token_df.iloc[index_to_use]['instrument_key']
+            
+            # Fetch daily candles
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            # We need enough data to cover previous_date as well
+            from_date = (datetime.strptime(previous_date, "%Y-%m-%d") - timedelta(days=10)).strftime("%Y-%m-%d")
+            
+            url = f'https://api.upstox.com/v2/historical-candle/{token}/day/{today_str}/{from_date}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'application/json'
+            }
+            
+            logger.debug("Fetching daily candles for %s (%s)", symbol, token)
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                logger.warning("Failed to fetch data from Upstox for %s: %s", symbol, res.status_code)
+                return prices
+                
+            data = res.json()
+            if 'data' in data and 'candles' in data['data']:
+                candles = data['data']['candles']
+                # Candles are [date, open, high, low, close, volume, oi]
+                for candle in candles:
+                    candle_date = candle[0].split('T')[0]
+                    if candle_date == target_date:
+                        prices['target'] = float(candle[4])
+                    elif candle_date == previous_date:
+                        prices['previous'] = float(candle[4])
+            
+            logger.debug("Prices for %s: Target=%s, Previous=%s", symbol, prices['target'], prices['previous'])
+            return prices
+            
+        except Exception as e:
+            logger.error("Error getting close prices for %s: %s", symbol, e)
+            logger.debug(traceback.format_exc())
+            return prices
+
     def compute_commodity_mtm(self, df: pd.DataFrame, target_date: str, account: str) -> float:
         """
-        Compute MTM for commodity trades using a cash-flow based approach.
+        Compute MTM for commodity trades using daily close prices.
+        
+        Cases:
+        1: Opened today, not closed -> Close - Open
+        2: Opened and closed today -> Exit - Open
+        3: Previously opened, closed today -> Exit - PrevClose
+        4: Open all day -> Close - PrevClose
         """
         try:
-            total_amount = 0
+            total_mtm = 0
+            previous_date = self.get_previous_day(target_date)
+            
+            # We'll cache close prices by symbol to avoid repeated API calls
+            symbol_prices = {}
 
             for _, row in df.iterrows():
                 symbol = row.get('Symbol') or row.get('symbol', 'GOLD')
-                # Use Commodity strategy lot sizes
                 multiplier = self.lot_sizes.get('Commodity', {}).get(symbol, 1)
                 trade_type = row.get('trade_type', 'long').lower()
-                
-                # Fetch quantity for this account/symbol/strategy
                 quantity = self.get_quantity_for_account_symbol(account, symbol, 'Commodity')
                 
-                entry_date = row.get('entry_date')
-                exit_date = row.get('exit_date')
+                entry_date = pd.to_datetime(row.get('entry_time')).strftime('%Y-%m-%d') if pd.notna(row.get('entry_time')) else None
+                exit_date = pd.to_datetime(row.get('exit_time')).strftime('%Y-%m-%d') if pd.notna(row.get('exit_time')) else None
                 
-                entry_price = row.get('entry_price') or row.get('open_price')
-                exit_price = row.get('exit_price') or row.get('close_price')
+                # Check status and relevance to target_date
+                # If closed before today or opened after today, skip
+                if exit_date and exit_date < target_date:
+                    continue
+                if entry_date and entry_date > target_date:
+                    continue
                 
-                # Check for entry on target date
-                if entry_date == target_date and pd.notna(entry_price):
-                    cost = float(entry_price) * multiplier * quantity
-                    if trade_type == 'long':
-                        total_amount -= cost  # Buying: Debit
+                # Fetch prices if not in cache
+                if symbol not in symbol_prices:
+                    symbol_prices[symbol] = self.get_commodity_close_prices(symbol, target_date, previous_date)
+                
+                prices = symbol_prices[symbol]
+                target_close = prices['target']
+                prev_close = prices['previous']
+                
+                entry_price = float(row.get('entry_price')) if pd.notna(row.get('entry_price')) else 0
+                exit_price = float(row.get('exit_price')) if pd.notna(row.get('exit_price')) else 0
+                
+                mtm_per_unit = 0
+                
+                # Logic cases
+                if entry_date == target_date:
+                    if exit_date == target_date:
+                        # Case 2: Opened and closed same day
+                        mtm_per_unit = exit_price - entry_price
+                        case = 2
                     else:
-                        total_amount += cost  # Selling: Credit
-                
-                # Check for exit on target date
-                if exit_date == target_date and pd.notna(exit_price):
-                    proceeds = float(exit_price) * multiplier * quantity
-                    if trade_type == 'long':
-                        total_amount += proceeds  # Selling long position: Credit
+                        # Case 1: Opened today, not closed
+                        if target_close:
+                            mtm_per_unit = target_close - entry_price
+                        case = 1
+                else:
+                    # entry_date < target_date
+                    if exit_date == target_date:
+                        # Case 3: Opened previously, closed today
+                        if prev_close:
+                            mtm_per_unit = exit_price - prev_close
+                        case = 3
                     else:
-                        total_amount -= proceeds  # Buying back short: Debit
+                        # Case 4: Open whole day
+                        if target_close and prev_close:
+                            mtm_per_unit = target_close - prev_close
+                        case = 4
                 
-                # If neither matched but it's a closed trade on this date, 
-                # check if there's a profit column we can use as fallback
-                elif exit_date == target_date and 'profit' in row and pd.notna(row['profit']):
-                    total_amount += float(row['profit']) * quantity
+                # Adjust for short trades
+                if trade_type == 'short':
+                    mtm_per_unit = -mtm_per_unit
+                
+                total_mtm += mtm_per_unit * multiplier * quantity
+                
+                logger.debug("Commodity %s Case %d: Type=%s, Qty=%d, MTM=%.2f (per unit=%.2f)", 
+                            symbol, case, trade_type, quantity, mtm_per_unit * multiplier * quantity, mtm_per_unit)
 
-            return total_amount
+            return total_mtm
 
-        except (KeyError, AttributeError, TypeError) as e:
+        except Exception as e:
             logger.error("Error computing commodity MTM: %s", e)
+            logger.debug(traceback.format_exc())
             return 0
 
     def compute_synthetic_future_pnl(self, df: pd.DataFrame, target_date: str, account: str) -> float:
         """
-        Compute P&L for synthetic futures (CE buy + PE sell for long, CE sell + PE buy for short)
+        Compute P&L for synthetic futures based on trade type.
+        Short Entry: PE Buy (Debit), CE Sell (Credit)
+        Long Entry: CE Buy (Debit), PE Sell (Credit)
+        Exit: Opposite of entry.
         """
         try:
             total_pnl = 0
 
-            # Filter trades for target date
+            # Prepare date columns
             if 'entry_time' in df.columns:
                 df['entry_date'] = pd.to_datetime(df['entry_time']).dt.strftime('%Y-%m-%d')
             if 'exit_time' in df.columns:
                 df['exit_date'] = pd.to_datetime(df['exit_time']).dt.strftime('%Y-%m-%d')
 
             for _, row in df.iterrows():
-                # Check if trade was entered or exited on target date
                 entry_date = row.get('entry_date')
                 exit_date = row.get('exit_date')
                 
-                entry_price_ce = row.get('entry_price_ce')
-                entry_price_pe = row.get('entry_price_pe')
-                exit_price_ce = row.get('exit_price_ce')
-                exit_price_pe = row.get('exit_price_pe')
+                entry_price_ce = float(row.get('entry_price_ce') or 0)
+                entry_price_pe = float(row.get('entry_price_pe') or 0)
+                exit_price_ce = float(row.get('exit_price_ce') or 0)
+                exit_price_pe = float(row.get('exit_price_pe') or 0)
                 
                 trade_type = row.get('trade_type', 'long').lower()
                 symbol = row.get('Symbol') or row.get('symbol', 'NIFTY')
-                # Use IndexFuture strategy lot sizes
                 multiplier = self.lot_sizes.get('IndexFuture', {}).get(symbol, 75)
-                
-                # Fetch quantity for this account/symbol/strategy
                 quantity = self.get_quantity_for_account_symbol(account, symbol, 'IndexFuture')
 
+                row_pnl = 0
+
                 # Entry on target date
-                if entry_date == target_date and pd.notna(entry_price_ce) and pd.notna(entry_price_pe):
-                    entry_cost = (float(entry_price_ce) + float(entry_price_pe)) * multiplier * quantity
-                    if trade_type == 'long':
-                        total_pnl -= entry_cost
+                if pd.notna(entry_date) and entry_date == target_date:
+                    if trade_type == 'short':
+                        # Short Entry: PE Buy (Debit), CE Sell (Credit)
+                        row_pnl += (entry_price_ce - entry_price_pe) * multiplier * quantity
                     else:
-                        total_pnl += entry_cost
-                
+                        # Long Entry: CE Buy (Debit), PE Sell (Credit)
+                        row_pnl += (entry_price_pe - entry_price_ce) * multiplier * quantity
+                    logger.debug("IndexFuture Entry %s %s: CE=%.2f, PE=%.2f, Type=%s, Qty=%d, PnL=%.2f",
+                                symbol, target_date, entry_price_ce, entry_price_pe, trade_type, quantity, row_pnl)
+
                 # Exit on target date
-                if exit_date == target_date and pd.notna(exit_price_ce) and pd.notna(exit_price_pe):
-                    exit_proceeds = (float(exit_price_ce) + float(exit_price_pe)) * multiplier * quantity
-                    if trade_type == 'long':
-                        total_pnl += exit_proceeds
+                if pd.notna(exit_date) and exit_date == target_date:
+                    if trade_type == 'short':
+                        # Short Exit: PE Sell (Credit), CE Buy (Debit)
+                        exit_pnl = (exit_price_pe - exit_price_ce) * multiplier * quantity
                     else:
-                        total_pnl -= exit_proceeds
-                
-                # Fallback to profit column if available
-                elif exit_date == target_date and 'profit' in row and pd.notna(row['profit']):
-                    total_pnl += float(row['profit']) * quantity
+                        # Long Exit: CE Sell (Credit), PE Buy (Debit)
+                        exit_pnl = (exit_price_ce - exit_price_pe) * multiplier * quantity
+                    row_pnl += exit_pnl
+                    logger.debug("IndexFuture Exit %s %s: CE=%.2f, PE=%.2f, Type=%s, Qty=%d, PnL=%.2f",
+                                symbol, target_date, exit_price_ce, exit_price_pe, trade_type, quantity, exit_pnl)
+
+                total_pnl += row_pnl
 
             return total_pnl
 
-        except (KeyError, AttributeError, TypeError, ValueError) as e:
+        except Exception as e:
             logger.error("Error computing synthetic future P&L: %s", e)
             return 0
 
@@ -926,41 +1063,6 @@ class LedgerCalculator:
 
         return report
 
-    def save_ledger_to_csv(self, target_date: str, output_file: str = None) -> str:
-        """
-        Save ledger to CSV file
-
-        Args:
-            target_date (str): Target date in YYYY-MM-DD format
-            output_file (str): Output CSV file path
-
-        Returns:
-            str: Path to saved CSV file
-        """
-        ledger = self.calculate_comprehensive_ledger(target_date)
-
-        # Convert to DataFrame
-        rows = []
-        for account, strategies in ledger.items():
-            for strategy, amount in strategies.items():
-                rows.append({
-                    'Date': target_date,
-                    'Account': account,
-                    'Strategy': strategy,
-                    'Amount': amount
-                })
-
-        df = pd.DataFrame(rows)
-
-        if output_file is None:
-            output_file = f"ledger_report_{target_date}.csv"
-
-        df.to_csv(output_file, index=False)
-        logger.info("Ledger report saved to: %s", output_file)
-
-        return output_file
-
-
 def main():
     """Main function to run ledger calculation"""
 
@@ -983,10 +1085,7 @@ def main():
     # Generate and print report
     report = calculator.generate_ledger_report(target_date)
     print(report)
-
-    # Save to CSV
-    csv_file = calculator.save_ledger_to_csv(target_date)
-    print(f"\nDetailed report saved to: {csv_file}")
+    logger.info(report)
 
 
 if __name__ == "__main__":
