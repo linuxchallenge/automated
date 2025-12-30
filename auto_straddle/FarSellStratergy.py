@@ -526,8 +526,8 @@ class FarSellStratergy:
         try:
             # Define multiplication factors based on the symbol
             multiplication_factor = {
-                'NIFTY': 75,
-                'BANKNIFTY': 35,
+                'NIFTY': 65,
+                'BANKNIFTY': 30,
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
@@ -581,8 +581,8 @@ class FarSellStratergy:
         try:
             total_brokarage = 0
             price_dict = {
-                'NIFTY': 75,
-                'BANKNIFTY': 35, 
+                'NIFTY': 65,
+                'BANKNIFTY': 30, 
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50
             }
@@ -636,8 +636,8 @@ class FarSellStratergy:
         # Example: Close the trade if NIFTY spot_price has moved by 60, FINNIFTY by 60, and BANKNIFTY by 120
 
         multiplication_factor = {
-            'NIFTY': 75,
-            'BANKNIFTY': 35,
+            'NIFTY': 65,
+            'BANKNIFTY': 30,
             'FINNIFTY': 65,
             'MIDCPNIFTY': 50
         }

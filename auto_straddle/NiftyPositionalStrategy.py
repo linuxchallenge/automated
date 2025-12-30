@@ -397,7 +397,7 @@ class NiftyPositionalStrategy:
 
                 total_pl = total_ce_pl + total_pe_pl
                 if self.symbol == "NIFTY":
-                    total_pl = total_pl * 75
+                    total_pl = total_pl * 65
                 elif self.symbol == "SENSEX":
                     total_pl = total_pl * 20
 

@@ -49,22 +49,22 @@ class LedgerCalculator:
         # Lot sizes/multiplication factors grouped by strategy
         self.lot_sizes = {
             'AutoStraddle': {
-                'NIFTY': 75,
-                'BANKNIFTY': 35,
+                'NIFTY': 65,
+                'BANKNIFTY': 30,
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50,
                 'SENSEX': 10
             },
             'FarSell': {
-                'NIFTY': 75,
-                'BANKNIFTY': 35,
+                'NIFTY': 65,
+                'BANKNIFTY': 30,
                 'FINNIFTY': 65,
                 'MIDCPNIFTY': 50,
                 'SENSEX': 10
             },
             'IndexFuture': {
                 'NIFTY': 65,
-                'BANKNIFTY': 35,
+                'BANKNIFTY': 30,
                 'FINNIFTY': 65
             },
             'Commodity': {
@@ -78,7 +78,7 @@ class LedgerCalculator:
                 'SILVER': 5
             },
             'NiftyPositional': {
-                'NIFTY': 75,
+                'NIFTY': 65,
                 'SENSEX': 20
             }
         }
