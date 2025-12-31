@@ -13,6 +13,7 @@
 # pylint: disable=W0621
 
 import logging
+import pandas as pd
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_module
 
@@ -137,30 +138,36 @@ class PlaceOrder:
 
         print(f"Placing Sell order for account {account}: option with strike price {atm_ce_strike}")
         logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
-        order_id = 0
-
+        order_id = -1
         if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+            logging.info(f"API Response for {account} open order: {order_id}")
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+                logging.info(f"Retry API Response for {account} open order: {order_id}")
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
             order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
             order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
-            order_id = 123456789
+            order_id = 987654321
         else:
             logging.error(f"Invalid account or API object not initialized: {account}")
+            return -1
+
+        # Standardize result check
+        if order_id == -1 or order_id == 0 or order_id is None or pd.isna(order_id):
+            logging.error(f"Order failed to generate a valid ID for {account}")
             return -1
 
         logging.info(f"Order id for account: {order_id}")
@@ -263,27 +270,36 @@ class PlaceOrder:
 
         print(f"Closing order for account {account}: option with strike price {atm_ce_strike}")
         logging.info(f"Closing order for account {account}: option with strike price {atm_ce_strike} {symbol}")
-        order_id = 0
-        if (account == 'deepti'):
+        order_id = -1
+        if (account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
+            logging.info(f"API Response for {account} close order: {order_id}")
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
+                logging.info(f"Retry API Response for {account} close order: {order_id}")
 
-        if (account == 'leelu'):
+        elif (account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None):
             order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
-        if (account == 'avanthi'):
+        elif (account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None):
             order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             # Retry if order_id is invalid (0, -1, or None)
             if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed with order_id={order_id}, retrying...")
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
                 order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
+        elif (account == 'dummy'):
+            order_id = 123456789
+
+        # Standardize result check - ensure we don't return NaN/None to the strategy
+        if order_id == -1 or order_id == 0 or order_id is None or pd.isna(order_id):
+            logging.error(f"Close order failed to generate a valid ID for {account}")
+            return -1
 
         logging.info(f"Order id for close account: {order_id}")
         return order_id

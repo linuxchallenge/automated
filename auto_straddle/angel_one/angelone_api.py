@@ -551,8 +551,8 @@ class angelone_api(object):
         try:
             res = self.obj.rmsLimit()
             if res['status'] and 'data' in res:
-                # net is the available margin/ledger balance
-                balance = res['data'].get('net', 0)
+                # availablecash is the available margin/ledger balance
+                balance = res['data'].get('availablecash', 0)
                 logger.info(f"AngelOne Ledger balance: {balance}")
                 return float(balance)
             return 0.0
@@ -562,10 +562,18 @@ class angelone_api(object):
 
     def get_order_status(self, order_id):
         try:
-            # Convert orderid which is <class 'numpy.float64'> to int
-            order_id = int(order_id)
+            # Defensive check for NaN, None or non-numeric values
+            if pd.isna(order_id) or order_id is None or order_id == -1 or str(order_id).lower() == 'nan':
+                logger.error(f"Invalid order_id received for status check: {order_id}")
+                return "NotFound", -1
 
-            order_id = str(order_id)
+            # Convert to int safely - handles float strings and numpy types
+            try:
+                order_id = str(int(float(order_id)))
+            except (ValueError, TypeError):
+                logger.error(f"Could not convert order_id {order_id} to integer")
+                return "NotFound", -1
+
             try:
                 orderbook = self.obj.orderBook()['data']
             except Exception as e:

@@ -11,7 +11,7 @@
 
 import time
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime
 from datetime import time as time_dt
 import logging
 import os
@@ -233,13 +233,13 @@ def main():
     # Import and initialize ledger calculator
     ledger_calculator = LedgerCalculator()
 
-    # Calculate and track ledger for previous day
-    previous_day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Calculate and track ledger for current day
+    current_day = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        logger.info("Starting ledger balance check for %s", previous_day)
+        logger.info("Starting ledger balance check for %s", current_day)
         # This now handles both CSV update and Telegram sending
-        ledger_calculator.generate_ledger_with_balance_check(previous_day, place_order)
+        ledger_calculator.generate_ledger_with_balance_check(current_day, place_order)
         logger.info("Ledger balance check completed successfully")
 
     except Exception as e:
