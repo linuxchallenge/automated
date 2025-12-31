@@ -252,6 +252,12 @@ class angelone_api(object):
                     logging.error(f"Error executing place_order: {e1}")
                     return -1, -1
 
+            # Validate the order ID before returning
+            if orderid is None or orderid == '' or orderid == 0:
+                logger.error(f"AngelOne API returned invalid order ID: {orderid} for commodity {symbol}")
+                print(f"AngelOne API returned invalid order ID: {orderid}")
+                return -1, -1
+            
             return orderid, tokenInfo['expiry']
         except Exception as e:
             logging.error(f"Error executing place_order: {e}")
@@ -341,6 +347,12 @@ class angelone_api(object):
                     logging.error(f"Error executing place_order: {e1}")
                     return -1
 
+            # Validate the order ID before returning
+            if orderid is None or orderid == '' or orderid == 0:
+                logger.error(f"AngelOne API returned invalid order ID: {orderid} for {symbol}")
+                print(f"AngelOne API returned invalid order ID: {orderid}")
+                return -1
+            
             return orderid
         except Exception as e:
             logger.error(f"Error executing place_order: {e}")
@@ -435,6 +447,12 @@ class angelone_api(object):
                     print(f"Error executing place_order: {e1}")
                     return -1
 
+            # Validate the order ID before returning
+            if orderid is None or orderid == '' or orderid == 0:
+                logger.error(f"AngelOne API returned invalid order ID: {orderid} for option buy {symbol}")
+                print(f"AngelOne API returned invalid order ID: {orderid}")
+                return -1
+            
             return orderid
         except Exception as e:
             #print("Order placement failed: {}".format(e.message))
@@ -518,6 +536,13 @@ class angelone_api(object):
             for attempt in range(2):  # Try twice
                 try:
                     orderid = self.obj.placeOrder(orderparams)
+                    
+                    # Validate the order ID before returning
+                    if orderid is None or orderid == '' or orderid == 0:
+                        logger.error(f"AngelOne API returned invalid order ID: {orderid} for synthetic future {symbol}")
+                        print(f"AngelOne API returned invalid order ID: {orderid}")
+                        continue  # Try again if we have attempts left
+                    
                     logger.info(f"Order placed successfully: {orderid}")
                     return orderid, tokenInfo['expiry']
                 except requests.exceptions.Timeout:
