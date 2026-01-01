@@ -229,7 +229,10 @@ class LedgerCalculator:
             
             # Get actual balance from API
             try:
-                ledger_got = place_order.get_ledger_balance(account)
+                if place_order:
+                    ledger_got = place_order.get_ledger_balance(account)
+                else:
+                    ledger_got = 0.0
                 logger.info("Fetched actual balance for %s: %.2f", account, ledger_got)
             except Exception as e:
                 logger.error("Error fetching balance for %s: %s", account, e)
@@ -576,11 +579,16 @@ Strategy Breakdown:"""
     def calculate_nifty_positional_ledger(self, target_date: str) -> Dict[str, float]:
         """
         Calculate ledger for Nifty Positional strategy (nifty_pos_options_info_*.csv)
-        Searches for files within target_date to target_date + 3 days.
+        For Positional, we need to get PREVIOUS DAY trades (same as other strategies)
+        Searches for files within previous_date to previous_date + 3 days.
         """
         logger.info("Calculating Nifty Positional ledger...")
         ledger = {}
-        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        
+        # For Positional, get PREVIOUS DAY trades
+        previous_date = self.get_previous_day(target_date)
+        logger.info("Looking for Positional trades from previous day: %s", previous_date)
+        previous_dt = datetime.strptime(previous_date, "%Y-%m-%d")
         
         # Combinations to check
         symbols = ['NIFTY', 'SENSEX']
@@ -592,9 +600,9 @@ Strategy Breakdown:"""
                     best_file = None
                     max_expiry = None
                     
-                    # Search window: target_date to target_date + 3 days
+                    # Search window: previous_date to previous_date + 3 days
                     for i in range(4):
-                        expiry_date = (target_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+                        expiry_date = (previous_dt + timedelta(days=i)).strftime("%Y-%m-%d")
                         pattern = f"nifty_pos_options_info_{expiry_date}_{account}_{symbol}_{strategy}.csv"
                         files = self.find_files_by_pattern(pattern)
                         
@@ -616,8 +624,8 @@ Strategy Breakdown:"""
 
                             self.accounts.add(account)
                             
-                            # Calculate positional P&L (Credit for Open, Debit for Close)
-                            net_amount = self.compute_positional_pnl(df, symbol, target_date)
+                            # Calculate positional P&L (Credit for Open, Debit for Close) for PREVIOUS date
+                            net_amount = self.compute_positional_pnl(df, symbol, previous_date)
                             
                             if net_amount != 0:
                                 if account not in ledger:
@@ -635,6 +643,7 @@ Strategy Breakdown:"""
     def calculate_commodity_ledger(self, target_date: str) -> Dict[str, float]:
         """
         Calculate ledger for Commodity futures (Commodity-account.csv)
+        For Commodity, we need to get PREVIOUS DAY trades (same as other strategies)
 
         Args:
             target_date (str): Target date in YYYY-MM-DD format
@@ -644,6 +653,10 @@ Strategy Breakdown:"""
         """
         logger.info("Calculating Commodity ledger...")
         ledger = {}
+
+        # For Commodity, get PREVIOUS DAY trades
+        previous_date = self.get_previous_day(target_date)
+        logger.info("Looking for Commodity trades from previous day: %s", previous_date)
 
         # Find all Commodity files
         pattern = "Commodity-*.csv"
@@ -668,15 +681,15 @@ Strategy Breakdown:"""
                 if df.empty:
                     continue
 
-                # Filter trades for target date using entry_time or exit_time
+                # Filter trades for previous date using entry_time or exit_time
                 if 'entry_time' in df.columns:
                     df['entry_date'] = pd.to_datetime(df['entry_time']).dt.strftime('%Y-%m-%d')
                 if 'exit_time' in df.columns:
                     df['exit_date'] = pd.to_datetime(df['exit_time']).dt.strftime('%Y-%m-%d')
                 
-                # Check if trade was entered or exited on target date
+                # Check if trade was entered or exited on PREVIOUS date
                 # We need the full DF for compute_commodity_mtm to check both dates per row
-                net_amount = self.compute_commodity_mtm(df, target_date, account)
+                net_amount = self.compute_commodity_mtm(df, previous_date, account)
 
                 # Add to account ledger
                 if account not in ledger:
@@ -694,6 +707,7 @@ Strategy Breakdown:"""
     def calculate_index_future_ledger(self, target_date: str) -> Dict[str, float]:
         """
         Calculate ledger for Index Future synthetic strategy (IndexFuture-account.csv)
+        For IndexFuture, we need to get PREVIOUS DAY trades (same as AutoStraddle/FarSell)
 
         Args:
             target_date (str): Target date in YYYY-MM-DD format
@@ -703,6 +717,10 @@ Strategy Breakdown:"""
         """
         logger.info("Calculating Index Future ledger...")
         ledger = {}
+
+        # For IndexFuture, get PREVIOUS DAY trades
+        previous_date = self.get_previous_day(target_date)
+        logger.info("Looking for IndexFuture trades from previous day: %s", previous_date)
 
         # Find all Index Future files
         pattern = "IndexFuture-*.csv"
@@ -727,8 +745,8 @@ Strategy Breakdown:"""
                 if df.empty:
                     continue
 
-                # Calculate synthetic future P&L for target date
-                net_amount = self.compute_synthetic_future_pnl(df, target_date, account)
+                # Calculate synthetic future P&L for PREVIOUS date
+                net_amount = self.compute_synthetic_future_pnl(df, previous_date, account)
 
                 # Add to account ledger
                 if account not in ledger:
@@ -905,6 +923,7 @@ Strategy Breakdown:"""
                 qty = float(qty_val)
 
                 # Check if trade was opened on target date (Credit)
+                # Entry = Sell = Credit (count for ALL trades opened on target date)
                 open_date = row.get('open_date')
                 if pd.notna(open_date) and open_date == target_date:
                     ce_price = float(row.get('strangle_ce_price') or 0)
@@ -920,10 +939,15 @@ Strategy Breakdown:"""
                     total_pnl += credit_per_unit * multiplier * qty
 
                 # Check if trade was closed on target date (Debit)
+                # Exit = Buy to close = Debit (only count if close prices are valid)
                 close_date = row.get('close_date')
                 if pd.notna(close_date) and close_date == target_date:
                     ce_close_price = float(row.get('strangle_ce_close_price') or 0)
                     pe_close_price = float(row.get('strangle_pe_close_price') or 0)
+                    
+                    # Skip if both close prices are 0/empty (incomplete data)
+                    if ce_close_price == 0 and pe_close_price == 0:
+                        continue
                     
                     debit_per_unit = 0
                     if ce_close_price > 0:
@@ -1115,6 +1139,9 @@ Strategy Breakdown:"""
         Short Entry: PE Buy (Debit), CE Sell (Credit)
         Long Entry: CE Buy (Debit), PE Sell (Credit)
         Exit: Opposite of entry.
+        
+        Only processes rows where orders are successfully opened or closed,
+        and filters out unrealistic prices (e.g. index price recorded instead of option price).
         """
         try:
             total_pnl = 0
@@ -1126,6 +1153,15 @@ Strategy Breakdown:"""
                 df['exit_date'] = pd.to_datetime(df['exit_time']).dt.strftime('%Y-%m-%d')
 
             for _, row in df.iterrows():
+                # Check order states - skip if still pending
+                enter_state = str(row.get('enter_order_state', '')).lower()
+                exit_state = str(row.get('exit_order_state', '')).lower()
+                
+                # If it's a target date entry, we only care if it's successfully opened
+                # (either 'open' or already 'closed')
+                if enter_state not in ['open', 'close', 'closed']:
+                    continue
+
                 entry_date = row.get('entry_date')
                 exit_date = row.get('exit_date')
                 
@@ -1136,8 +1172,17 @@ Strategy Breakdown:"""
                 
                 trade_type = row.get('trade_type', 'long').lower()
                 symbol = row.get('Symbol') or row.get('symbol', 'NIFTY')
-                multiplier = self.lot_sizes.get('IndexFuture', {}).get(symbol, 75)
+                multiplier = self.lot_sizes.get('IndexFuture', {}).get(symbol, 65)
                 quantity = self.get_quantity_for_account_symbol(account, symbol, 'IndexFuture')
+
+                # Heuristic to detect Index price recorded as Option price
+                # Options for NIFTY/BANKNIFTY are rarely above 5000, 
+                # while index is 20000+.
+                if entry_price_ce > 5000 or entry_price_pe > 5000 or \
+                   exit_price_ce > 5000 or exit_price_pe > 5000:
+                    logger.warning("IndexFuture %s %s: Skipping row with unrealistic prices (CE=%.2f, PE=%.2f)",
+                                   account, symbol, entry_price_ce, entry_price_pe)
+                    continue
 
                 row_pnl = 0
 
@@ -1153,7 +1198,8 @@ Strategy Breakdown:"""
                                 symbol, target_date, entry_price_ce, entry_price_pe, trade_type, quantity, row_pnl)
 
                 # Exit on target date
-                if pd.notna(exit_date) and exit_date == target_date:
+                # Only check exit if it actually closed today
+                if pd.notna(exit_date) and exit_date == target_date and exit_state in ['close', 'closed']:
                     if trade_type == 'short':
                         # Short Exit: PE Sell (Credit), CE Buy (Debit)
                         exit_pnl = (exit_price_pe - exit_price_ce) * multiplier * quantity
@@ -1271,6 +1317,7 @@ def main():
     calculator = LedgerCalculator()
 
     # Generate and print report
+    #report = calculator.generate_ledger_with_balance_check(target_date, None)
     report = calculator.generate_ledger_report(target_date)
     print(report)
     logger.info(report)
