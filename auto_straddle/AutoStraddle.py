@@ -274,25 +274,23 @@ def main():
                 signal.alarm(300)
 
                 try:
+                    index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                try:
                     execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
                                              accounts, symbols, place_order, account_details, \
                                             index_future_stratergy)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-
-                try:
-                    index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
-                except Exception as e:
-                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-
 
                 try:
                     nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)

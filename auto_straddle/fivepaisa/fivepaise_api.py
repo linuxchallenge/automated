@@ -26,7 +26,7 @@ import TelegramSend
 logger = logging.getLogger(__name__)
 
 # Enable detailed diagnostics by setting environment variable: FIVEPAISA_DEBUG=1
-ENABLE_DIAGNOSTICS = True
+ENABLE_DIAGNOSTICS = False
 
 commodity_to_symbol = {
     'CRUDEOIL': 'CRUDEOILM',
@@ -238,7 +238,7 @@ class fivepaise_api(object):
         """
         # Log the BEFORE state
         old_client_code = self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')
-        logger.info(f"[{self.account}] BEFORE fix: login_check_payload has client_code={old_client_code}")
+        logger.debug(f"[{self.account}] BEFORE fix: login_check_payload has client_code={old_client_code}")
 
         if self.account == 'leelu':
             self.obj.login_check_payload = {
@@ -254,7 +254,7 @@ class fivepaise_api(object):
                     'RegistrationID': self.session
                 }
             }
-            logger.info(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_leelu.CLIENTCODE}")
+            logger.debug(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_leelu.CLIENTCODE}")
         elif self.account == 'avanthi':
             self.obj.login_check_payload = {
                 'head': {
@@ -269,7 +269,7 @@ class fivepaise_api(object):
                     'RegistrationID': self.session
                 }
             }
-            logger.info(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_avanthi.CLIENTCODE}")
+            logger.debug(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_avanthi.CLIENTCODE}")
 
         # Print diagnostics after fix if enabled
         if ENABLE_DIAGNOSTICS:

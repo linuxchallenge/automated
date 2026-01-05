@@ -167,6 +167,10 @@ class AutoStraddleStrategy:
                 self.store_sold_options_info(existing_sold_options_info, account, symbol)
 
                 self.send_error_message(account, symbol, error_message)
+                # If there was an error in order, rename the file so that it doesn't block future trades
+                if os.path.exists(sold_options_file_path):
+                    os.rename(sold_options_file_path,
+                             sold_options_file_path.replace("sold_options_info", "sold_options_info_error"))
                 return False
 
             self.store_sold_options_info(existing_sold_options_info, account, symbol)
@@ -841,21 +845,25 @@ class AutoStraddleStrategy:
 
         # If sold_options_info.shape[0] is 1 and loss greater than 0.2 times of self.loss_limit(symbol)
         # then reenter only if index_trend is in the same direction as option_chain_trend
-        if sold_options_info.shape[0] == 1 and profit_amount < 0.2 * self.loss_limit(symbol):
-            if index_trend == option_chain_trend:
-                logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
-                             profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
-                return True
-            return False
+        if sold_options_info.shape[0] == 1:
+            if profit_amount < 0.2 * self.loss_limit(symbol):
+                if index_trend == option_chain_trend:
+                    logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
+                                 profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
+                    return True
+                return False
+            return True
 
         # If sold_options_info.shape[0] is 2 or more and loss greater than 0.4 times of self.loss_limit(symbol)
         # then reenter only if index_trend is in the same direction as option_chain_trend
-        if sold_options_info.shape[0] >= 2 and profit_amount < 0.4 * self.loss_limit(symbol):
-            if index_trend == option_chain_trend:
-                logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
-                             profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
-                return True
-            return False
+        if sold_options_info.shape[0] >= 2:
+            if profit_amount < 0.4 * self.loss_limit(symbol):
+                if index_trend == option_chain_trend:
+                    logging.info(f"{symbol} index_trend: {index_trend}, option_chain_trend: {option_chain_trend}, \
+                                 profit_amount: {profit_amount}, loss_limit: {self.loss_limit(symbol)}")
+                    return True
+                return False
+            return True
 
         return False
 

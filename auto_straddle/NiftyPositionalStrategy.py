@@ -94,7 +94,7 @@ class NiftyPositionalStrategy:
             logging.error(f"Unknown symbol: {self.symbol}")
             return False
 
-        logging.info(f"Entry time check for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}, current_time={current_time}")
+        logging.debug(f"Entry time check for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}, current_time={current_time}")
 
         # Check if it's the correct number of days before expiry
         if days_to_expiry == dates_to_expiry:
@@ -115,7 +115,7 @@ class NiftyPositionalStrategy:
             logging.info(f"Allowing entry for {self.symbol} as we're past the ideal entry window (days_to_expiry={days_to_expiry} < required={dates_to_expiry})")
             return True
 
-        logging.info(f"Not entry time for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}")
+        logging.debug(f"Not entry time for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}")
         return False
 
     def should_exit_trade(self, option_chain_analyzer, sold_options_info):
@@ -164,7 +164,7 @@ class NiftyPositionalStrategy:
                 lower_boundary = atm_strike - (atm_straddle_sum * 0.75)
 
             # Log boundary information for debugging
-            logging.info(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
+            logging.debug(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
 
             if self.stratergy == "fr":
                 # Only check relevant boundaries based on which legs are active
@@ -264,7 +264,7 @@ class NiftyPositionalStrategy:
                 for STRATERGY_SEQ_KEY in STRATERGY_SEQ:
                     for account in self.accounts:
                         try:
-                            logging.info(f"Executing strategy for account: {account} {INDEX_SEQ_KEY} {STRATERGY_SEQ_KEY}")
+                            logging.debug(f"Executing strategy for account: {account} {INDEX_SEQ_KEY} {STRATERGY_SEQ_KEY}")
                             account_data = account_details[
                                 (account_details['Account'] == account) &
                                 (account_details['Symbol'] == INDEX_SEQ_KEY) &
@@ -771,12 +771,12 @@ class NiftyPositionalStrategy:
         error_message = ""
         sold_options_file_path = self.get_sold_options_file_path(account, self.symbol)
 
-        logging.info(f"Checking if trade is executed for account {account}")
+        logging.debug(f"Checking if trade is executed for account {account}")
 
         if os.path.exists(sold_options_file_path):
             existing_sold_options_info = self.read_existing_sold_options_info(sold_options_file_path)
 
-            logging.info("Checking pe order is executed or not")
+            logging.debug("Checking pe order is executed or not")
 
             # Check PE open order
             if existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open_pending':
@@ -822,7 +822,7 @@ class NiftyPositionalStrategy:
             # Check CE open order
             if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open_pending':
                 t.sleep(3)
-                logging.info("Checking ce order is executed or not")
+                logging.debug("Checking ce order is executed or not")
                 order_status, price = place_order_obj.order_status(account,
                             existing_sold_options_info.iloc[-1]['ce_open_order_id'],
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'strangle_ce_price'])
@@ -943,7 +943,7 @@ class NiftyPositionalStrategy:
                     logging.info(f"Trade for account {account} is now fully closed")
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
 
-            logging.info(f"Trade state updated for account {account}")
+            logging.debug(f"Trade state updated for account {account}")
 
             if error_in_order:
                 self.store_sold_options_info(existing_sold_options_info, account)
@@ -1018,7 +1018,7 @@ class NiftyPositionalStrategy:
         try:
             file_path = self.get_sold_options_file_path(account, self.symbol)
             info.to_csv(file_path, index=False)
-            logging.info(f"Trade information stored in {file_path}")
+            logging.debug(f"Trade information stored in {file_path}")
         except Exception as e:
             logging.error(f"Error storing trade information: {str(e)}")
             logging.error(traceback.format_exc())
