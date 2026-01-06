@@ -144,7 +144,7 @@ class LedgerCalculator:
             
             # Get the most recent entry
             latest = account_data.sort_values('date', ascending=False).iloc[0]
-            previous_value = float(latest['ledger_got'])
+            previous_value = float(latest['actual_balance'])
             logger.info("Previous ledger for %s: %.2f", account, previous_value)
             return previous_value
         except Exception as e:
