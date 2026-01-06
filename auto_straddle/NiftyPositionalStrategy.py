@@ -809,11 +809,11 @@ class NiftyPositionalStrategy:
                     else:
                         # Retry failed, mark as error
                         error_in_order = True
-                        error_message = error_message + f"PE open order rejected and retry failed for account {account}"
+                        error_message = error_message + f"PE open order rejected and retry failed for account {account} ({self.stratergy}) "
                 elif order_status in [-1, 'NotFound']:
                     # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + f"PE open order API error or not found for account {account}"
+                    error_message = error_message + f"PE open order API error or not found for account {account} ({self.stratergy}) "
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown PE open order status '{order_status}' for account {account}, continuing to wait")
@@ -852,11 +852,11 @@ class NiftyPositionalStrategy:
                     else:
                         # Retry failed, mark as error
                         error_in_order = True
-                        error_message = error_message + f"CE open order rejected and retry failed for account {account}"
+                        error_message = error_message + f"CE open order rejected and retry failed for account {account} ({self.stratergy}) "
                 elif order_status in [-1, 'NotFound']:
                     # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + f"CE open order API error or not found for account {account}"
+                    error_message = error_message + f"CE open order API error or not found for account {account} ({self.stratergy}) "
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown CE open order status '{order_status}' for account {account}, continuing to wait")
@@ -877,11 +877,11 @@ class NiftyPositionalStrategy:
                 elif order_status == 'Rejected':
                     # Order was rejected, mark as error
                     error_in_order = True
-                    error_message = error_message + f"PE close order rejected for account {account}"
+                    error_message = error_message + f"PE close order rejected for account {account} ({self.stratergy}) "
                 elif order_status in [-1, 'NotFound']:
                     # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + f"PE close order API error or not found for account {account}"
+                    error_message = error_message + f"PE close order API error or not found for account {account} ({self.stratergy}) "
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown PE close order status '{order_status}' for account {account}, continuing to wait")
@@ -903,11 +903,11 @@ class NiftyPositionalStrategy:
                 elif order_status == 'Rejected':
                     # Order was rejected, mark as error
                     error_in_order = True
-                    error_message = error_message + f"CE close order rejected for account {account}"
+                    error_message = error_message + f"CE close order rejected for account {account} ({self.stratergy}) "
                 elif order_status in [-1, 'NotFound']:
                     # API error or order not found, mark as error
                     error_in_order = True
-                    error_message = error_message + f"CE close order API error or not found for account {account}"
+                    error_message = error_message + f"CE close order API error or not found for account {account} ({self.stratergy}) "
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown CE close order status '{order_status}' for account {account}, continuing to wait")
@@ -1135,7 +1135,7 @@ class NiftyPositionalStrategy:
             chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
             # Send error message via Telegram
-            error_msg = f"Nifty Positional Strategy critical error: {account} {self.symbol} {error_message}"
+            error_msg = f"Nifty Positional Strategy critical error: {account} {self.symbol} ({self.stratergy}) {error_message}"
             telegram_api.send_message(chat_id, error_msg)
 
             # Update the last sent time

@@ -281,7 +281,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                         * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                                 self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                                  f"Short p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokarage}", \
+                                                  f"Commodity Strategy 🎯: Short p/l 💰 is {current_trade.loc[row_number, 'profit']:.2f} | Brokerage 💸 is {brokarage:.2f}", \
                                                 current_trade.loc[row_number, 'profit'], brokarage, quantity)
                             else:
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
@@ -289,7 +289,7 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'profit'] = (current_trade.loc[row_number, 'profit'] \
                                         * symbol_to_lot[current_trade.loc[row_number, 'Symbol']]) * quantity
                                 self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                                  f"Long p/l is {current_trade.loc[row_number, 'profit']} brokrage is {brokarage}", \
+                                                  f"Commodity Strategy 🎯: Long p/l 💰 is {current_trade.loc[row_number, 'profit']:.2f} | Brokerage 💸 is {brokarage:.2f}", \
                                                 current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                             current_trade.to_csv(file_name, index=False)

@@ -398,7 +398,7 @@ class IndexFutureStratergy:
                             profit = profit * symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity
                             current_trade.loc[row_number, 'profit'] = profit
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Short p/l is {current_trade.loc[row_number, 'profit']} brokarage is {brokarage}", \
+                                              f"Index Strategy 🎯: Short p/l 💰 is {profit:.2f} | Brokerage 💸 is {brokarage:.2f}", \
                                             current_trade.loc[row_number, 'profit'], brokarage, quantity)
                         else:
                             profit = 0
@@ -407,7 +407,7 @@ class IndexFutureStratergy:
                             profit = profit * symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity
                             current_trade.loc[row_number, 'profit'] = profit
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], \
-                                              f"Long p/l is {current_trade.loc[row_number, 'profit']} brokarage is {brokarage}", \
+                                              f"Index Strategy 🎯: Long p/l 💰 is {profit:.2f} | Brokerage 💸 is {brokarage:.2f}", \
                                             current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                         current_trade.to_csv(file_name, index=False)
