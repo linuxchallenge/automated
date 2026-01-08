@@ -151,6 +151,33 @@ class LedgerCalculator:
             logger.error("Error getting previous ledger for %s: %s", account, e)
             return 0.0
 
+    def _is_entry_already_tracked(self, target_date: str, account: str) -> bool:
+        """
+        Check if an entry for this date and account already exists in the tracking CSV
+        
+        Args:
+            target_date: Target date in YYYY-MM-DD format
+            account: Account name
+            
+        Returns:
+            True if entry exists, False otherwise
+        """
+        try:
+            if not os.path.exists(self.ledger_csv_path):
+                return False
+                
+            df = pd.read_csv(self.ledger_csv_path)
+            if df.empty:
+                return False
+                
+            # Filter for this date and account (case-insensitive)
+            existing = df[(df['date'] == target_date) & (df['account'].str.lower() == account.lower())]
+            
+            return not existing.empty
+        except Exception as e:
+            logger.error("Error checking if entry exists: %s", e)
+            return False
+
     def update_ledger_tracking(self, target_date: str, account: str, ledger_got: float, 
                               ledger_change: float, ledger_computed: float):
         """
@@ -226,6 +253,11 @@ class LedgerCalculator:
             
             # Compute expected ledger
             ledger_computed = previous_ledger + computed_change
+            
+            # Check if entry already exists before fetching balance and updating
+            if self._is_entry_already_tracked(target_date, account):
+                logger.info("Entry already exists for %s on %s, skipping balance fetch and notification", account, target_date)
+                continue
             
             # Get actual balance from API
             try:
