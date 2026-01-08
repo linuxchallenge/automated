@@ -13,6 +13,7 @@
 # pylint: disable=W0621
 
 import logging
+import time
 import pandas as pd
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_module
@@ -60,23 +61,32 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'leelu'):
             order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         if (account == 'avanthi'):
             order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
@@ -94,23 +104,32 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'leelu'):
             order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_2.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         if (account == 'avanthi'):
             order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_3.place_order_commodity(symbol, qty, 'SELL', expiry, isCommodity)
 
         logging.info(f"Order id for account: {order_id}")
@@ -142,23 +161,32 @@ class PlaceOrder:
         if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
             order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             logging.info(f"API Response for {account} open order: {order_id}")
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id = self.obj_1.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-                logging.info(f"Retry API Response for {account} open order: {order_id}")
+                logging.info(f"Retry {retry_count} API Response for {account} open order: {order_id}")
         elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
             order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
-                order_id, _  = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
-            order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retrying...")
-                order_id, _  = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+            order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 987654321
         else:
@@ -193,23 +221,32 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_1.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
 
         if account == 'leelu':
             order_id, expiry_ret = self.obj_2.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_2.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
 
         if account == 'avanthi':
             order_id, expiry_ret = self.obj_3.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Synthetic future order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id, expiry_ret = self.obj_3.place_order_synthetic_future(symbol, qty, buy_sell, strike_price, pe_ce, expiry)
 
         return order_id, expiry_ret
@@ -232,23 +269,32 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id = self.obj_1.place_order_option_buy(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         if (account == 'leelu'):
             order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id = self.obj_2.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         if (account == 'avanthi'):
             order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Option buy order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Option buy order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id = self.obj_3.place_order(symbol, qty, buy_sell, atm_ce_strike, pe_ce)
 
         logging.info(f"Order id for account: {order_id}")
@@ -274,24 +320,33 @@ class PlaceOrder:
         if (account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None):
             order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             logging.info(f"API Response for {account} close order: {order_id}")
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)  # Brief delay between retries
                 order_id = self.obj_1.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-                logging.info(f"Retry API Response for {account} close order: {order_id}")
+                logging.info(f"Retry {retry_count} API Response for {account} close order: {order_id}")
 
         elif (account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None):
             order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)  # Brief delay between retries
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         elif (account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None):
             order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)  # Brief delay between retries
                 order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 123456789
@@ -362,9 +417,12 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id = self.obj_1.place_order_cash(symbol, quantity, side)
-            # Retry if order_id is invalid (0, -1, or None)
-            if (order_id == -1 or order_id == 0 or order_id is None):
-                logging.warning(f"Cash order placement failed with order_id={order_id}, retrying...")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Cash order placement failed with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
                 order_id = self.obj_1.place_order_cash(symbol, quantity, side)
 
         logging.info(f"Order id for account: {order_id}")
@@ -373,7 +431,6 @@ class PlaceOrder:
 
 # Test code to simulate session expiry error
 if __name__ == "__main__":
-    import time
     print("\n" + "="*80)
     print("SESSION EXPIRY SIMULATION TEST")
     print("="*80 + "\n")

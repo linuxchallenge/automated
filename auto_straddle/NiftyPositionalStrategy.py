@@ -66,7 +66,7 @@ class NiftyPositionalStrategy:
             logging.error("SENSEX expiry date not found.")
             return None
         else:
-            logging.error(f"Invalid symbol: {self.symbol}. Expected 'NIFTY' or 'SENSEX'.")
+            logging.error("Invalid symbol: %s. Expected 'NIFTY' or 'SENSEX'.", self.symbol)
             return None
 
     def is_entry_time(self) -> bool:
@@ -91,10 +91,10 @@ class NiftyPositionalStrategy:
         elif self.symbol == "NIFTY":
             dates_to_expiry = 1  # Enter 2 days before expiry
         else:
-            logging.error(f"Unknown symbol: {self.symbol}")
+            logging.error("Unknown symbol: %s", self.symbol)
             return False
 
-        logging.debug(f"Entry time check for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}, current_time={current_time}")
+        logging.debug("Entry time check for %s: days_to_expiry=%s, required_days=%s, current_time=%s", self.symbol, days_to_expiry, dates_to_expiry, current_time)
 
         # Check if it's the correct number of days before expiry
         if days_to_expiry == dates_to_expiry:
@@ -112,13 +112,13 @@ class NiftyPositionalStrategy:
 
         # If fewer days than required, allow entry (catch-up logic)
         if days_to_expiry < dates_to_expiry:
-            logging.info(f"Allowing entry for {self.symbol} as we're past the ideal entry window (days_to_expiry={days_to_expiry} < required={dates_to_expiry})")
+            logging.info("Allowing entry for %s as we're past the ideal entry window (days_to_expiry=%s < required=%s)", self.symbol, days_to_expiry, dates_to_expiry)
             return True
 
-        logging.debug(f"Not entry time for {self.symbol}: days_to_expiry={days_to_expiry}, required_days={dates_to_expiry}")
+        logging.debug("Not entry time for %s: days_to_expiry=%s, required_days=%s", self.symbol, days_to_expiry, dates_to_expiry)
         return False
 
-    def should_exit_trade(self, option_chain_analyzer, sold_options_info):
+    def should_exit_trade(self, option_chain_analyzer, sold_options_info, account):
         """
         Check exit conditions:
         1. Exit if ATM strike + ATM straddle sum is greater than our sold CE strike
@@ -137,7 +137,7 @@ class NiftyPositionalStrategy:
 
             # Validate all required data is present
             if atm_ce_price is None or atm_pe_price is None or atm_strike is None:
-                logging.warning(f"Missing required price data for exit check: CE: {atm_ce_price}, PE: {atm_pe_price}, ATM: {atm_strike}")
+                logging.warning("Missing required price data for exit check: CE: %s, PE: %s, ATM: %s", atm_ce_price, atm_pe_price, atm_strike)
                 return False
 
             # Check if DataFrame is empty or lacks required data
@@ -164,7 +164,7 @@ class NiftyPositionalStrategy:
                 lower_boundary = atm_strike - (atm_straddle_sum * 0.75)
 
             # Log boundary information for debugging
-            logging.debug(f"Exit check - Upper: {upper_boundary}, CE Strike: {strangle_ce_strike}, Lower: {lower_boundary}, PE Strike: {strangle_pe_strike}")
+            logging.debug("Exit check - Upper: %s, CE Strike: %s, Lower: %s, PE Strike: %s", upper_boundary, strangle_ce_strike, lower_boundary, strangle_pe_strike)
 
             if self.stratergy == "fr":
                 # Only check relevant boundaries based on which legs are active
@@ -202,10 +202,152 @@ class NiftyPositionalStrategy:
                     )
                     return True
 
+            # Check stop loss exit condition
+            if self.should_exit_on_stop_loss(sold_options_info, option_chain_analyzer, account):
+                logging.info("Stop loss triggered for stratergy: %s account: %s symbol: %s", self.stratergy, account, self.symbol)
+                return True
+
             return False
 
         except Exception as e:
-            logging.error(f"Error in should_exit_trade: {str(e)}")
+            logging.error("Error in should_exit_trade: %s", e)
+            logging.error(traceback.format_exc())
+            return False
+
+    def compute_current_profit_loss(self, sold_options_info, option_chain_analyzer):
+        """
+        Compute current unrealized P/L points for open positions.
+        
+        P/L = (current_ltp - sell_price) for each active leg
+        Positive = loss (option value increased from when we sold)
+        Negative = profit (option value decreased from when we sold)
+        
+        Args:
+            sold_options_info: DataFrame with current trade info
+            option_chain_analyzer: Dictionary with current LTP values
+            
+        Returns:
+            float: Current P/L in points (negative = profit, positive = loss)
+        """
+        try:
+            if sold_options_info.empty:
+                return 0
+
+            trade = sold_options_info.iloc[-1]
+            ce_loss = 0
+            pe_loss = 0
+
+            # Get current LTP for our sold strikes from option_chain_analyzer
+            current_ce_ltp = option_chain_analyzer.get('prev_ce_strangle_price', 0)
+            current_pe_ltp = option_chain_analyzer.get('prev_pe_strangle_price', 0)
+
+            # For CE leg
+            if trade['strangle_ce_price'] != -1:
+                sell_price_ce = trade['strangle_ce_price']
+                ce_loss = current_ce_ltp - sell_price_ce
+                logging.info("CE P/L: sell=%s, current=%s, loss=%s", sell_price_ce, current_ce_ltp, ce_loss)
+
+            # For PE leg
+            if trade['strangle_pe_price'] != -1:
+                sell_price_pe = trade['strangle_pe_price']
+                pe_loss = current_pe_ltp - sell_price_pe
+                logging.info("PE P/L: sell=%s, current=%s, loss=%s", sell_price_pe, current_pe_ltp, pe_loss)
+
+            # Sum up the losses for active legs
+            total_loss_points = ce_loss + pe_loss
+
+            logging.info("Total loss points: %.2f", total_loss_points)
+            return total_loss_points
+
+        except Exception as e:
+            logging.error("Error computing current P/L points: %s", e)
+            logging.error(traceback.format_exc())
+            return 0
+
+    def get_last_trade_strikes(self, symbol, strategy):
+        """
+        Get existing trade strikes from any account for this symbol/strategy.
+        
+        Args:
+            symbol: index symbol
+            strategy: fr or as
+            
+        Returns:
+            tuple: (atm_strike, ce_strike, pe_strike)
+        """
+        for account in self.accounts:
+            # Construct file path manually as we haven't set self.stratergy/symbol yet globally
+            expiry_date = self.get_next_nifty_expiry().strftime("%Y-%m-%d")
+            file_path = f"csv/nifty_pos_options_info_{expiry_date}_{account}_{symbol}_{strategy}.csv"
+
+            if os.path.exists(file_path):
+                df = self.read_existing_sold_options_info(file_path)
+                if df is not None and not df.empty:
+                    last_row = df.iloc[-1]
+                    if last_row['trade_state'] == 'open':
+                        atm_strike = last_row.get('atm_strike', 0)
+                        ce_strike = last_row.get('strangle_ce_strike', 0)
+                        pe_strike = last_row.get('strangle_pe_strike', 0)
+                        return atm_strike, ce_strike, pe_strike
+
+        logging.info("No existing open trade found for symbol: %s strategy: %s", symbol, strategy)
+        return 0, 0, 0
+
+    def should_exit_on_stop_loss(self, sold_options_info, option_chain_analyzer, account):
+        """
+        Check if current loss exceeds stop loss limits per lot.
+        
+        Stop loss thresholds (per lot):
+        - fr strategy: 400
+        - as strategy: 2000
+        
+        Args:
+            sold_options_info: DataFrame with current trade info
+            option_chain_analyzer: Dictionary with current LTP values
+            
+        Returns:
+            bool: True if stop loss triggered, False otherwise
+        """
+        try:
+            if sold_options_info.empty:
+                return False
+
+            # Only check open trades
+            if sold_options_info.iloc[-1]['trade_state'] != 'open':
+                return False
+
+            # Define stop loss limits per lot for each strategy
+            stop_loss_limits = {
+                'fr': 400,
+                'as': 2000
+            }
+
+            stop_loss_limit = stop_loss_limits.get(self.stratergy, 400)
+
+            # Compute current loss in points
+            loss_points = self.compute_current_profit_loss(sold_options_info, option_chain_analyzer)
+
+            # Convert points to money based on lot size
+            lot_size = 65 if self.symbol == "NIFTY" else 20
+            current_loss_amount = loss_points * lot_size
+
+            logging.info("Stop loss check - Account: %s, Strategy: %s, Symbol: %s, "
+                         "Loss pts: %.2f, Loss amt: %.2f, Limit: %s",
+                         account, self.stratergy, self.symbol, loss_points, current_loss_amount, stop_loss_limit)
+
+            # If loss exceeds threshold, trigger exit
+            if current_loss_amount > stop_loss_limit:
+                logging.info(
+                    "Stop loss triggered - Strategy: %s, Symbol: %s, "
+                    "Current loss: %.2f (pts: %.2f) > Limit: %s",
+                    self.stratergy, self.symbol, current_loss_amount, loss_points, stop_loss_limit
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            logging.error("Error in stop loss check: %s", e)
             logging.error(traceback.format_exc())
             return False
 
@@ -229,7 +371,7 @@ class NiftyPositionalStrategy:
 
             required_columns = ['Account', 'Symbol', 'quantity', 'stratergy']
             if not all(col in account_details.columns for col in required_columns):
-                logging.error(f"Account details missing required columns: {required_columns}")
+                logging.error("Account details missing required columns: %s", required_columns)
                 return False
 
             current_time = datetime.now()
@@ -249,22 +391,33 @@ class NiftyPositionalStrategy:
             for INDEX_SEQ_KEY in INDEX_SEQ:
                 self.symbol = INDEX_SEQ_KEY
 
-                # Create OptionChainData object but then get the dictionary data from it
+                # Create OptionChainData object
                 try:
                     option_chain_obj = OptionChainData(INDEX_SEQ_KEY)
                     option_chain_obj.set_bse_expiry_date_pd(self.sensex_date_pd)
-                    # Get the actual data dictionary
-                    option_chain_analyzer = option_chain_obj.get_option_chain_info(0, 0, 0, INDEX_SEQ_KEY)
                 except Exception as e:
-                    logging.error(f"Failed to create or get data from OptionChainData: {str(e)}")
+                    logging.error("Failed to create OptionChainData: %s", e)
                     return False
 
-                # Loop through all accounts
+                # Loop through strategies
                 execution_results = []
                 for STRATERGY_SEQ_KEY in STRATERGY_SEQ:
+                    self.stratergy = STRATERGY_SEQ_KEY
+
+                    # Try to get existing strikes to fetch LTP
+                    prev_atm, prev_ce, prev_pe = self.get_last_trade_strikes(INDEX_SEQ_KEY, STRATERGY_SEQ_KEY)
+
+                    try:
+                        # Fetch analyzer with specific strikes if we have an open trade
+                        option_chain_analyzer = option_chain_obj.get_option_chain_info(prev_atm, prev_ce, prev_pe, INDEX_SEQ_KEY)
+                    except Exception as e:
+                        logging.error("Failed to get data from OptionChainData: %s", e)
+                        continue
+
+                    # Loop through all accounts
                     for account in self.accounts:
                         try:
-                            logging.debug(f"Executing strategy for account: {account} {INDEX_SEQ_KEY} {STRATERGY_SEQ_KEY}")
+                            logging.debug("Executing strategy for account: %s %s %s", account, INDEX_SEQ_KEY, STRATERGY_SEQ_KEY)
                             account_data = account_details[
                                 (account_details['Account'] == account) &
                                 (account_details['Symbol'] == INDEX_SEQ_KEY) &
@@ -272,11 +425,10 @@ class NiftyPositionalStrategy:
                             ]
 
                             if account_data.empty:
-                                logging.warning(f"No trading data found for account {account}  {self.symbol}")
+                                logging.warning("No trading data found for account %s  %s", account, self.symbol)
                                 continue
 
                             quantity = account_data['quantity'].values[0]
-                            self.stratergy = STRATERGY_SEQ_KEY
 
                             result = self._execute_for_account(
                                 account=account,
@@ -288,7 +440,7 @@ class NiftyPositionalStrategy:
                             execution_results.append(result)
 
                         except Exception as acc_error:
-                            logging.error(f"Error executing strategy for account {account}: {str(acc_error)}")
+                            logging.error("Error executing strategy for account %s: %s", account, acc_error)
                             self.send_error_message(account, str(acc_error))
                             execution_results.append(False)
                             continue
@@ -296,7 +448,7 @@ class NiftyPositionalStrategy:
             return all(execution_results)
 
         except Exception as e:
-            logging.error(f"Error in strategy execution: {str(e)}")
+            logging.error("Error in strategy execution: %s", e)
             logging.error(traceback.format_exc())
             return False
 
@@ -533,7 +685,7 @@ class NiftyPositionalStrategy:
             # No need to update close prices here as they should remain None until actual closing
 
             # Check exit conditions
-            if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info):
+            if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info, account):
                 self._close_position(
                     existing_sold_options_info,
                     account,
@@ -634,6 +786,7 @@ class NiftyPositionalStrategy:
             'expiry': self.get_next_nifty_expiry().strftime("%Y-%m-%d"),
             'strangle_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE'),
             'strangle_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE'),
+            'atm_strike': option_chain_analyzer['atm_strike'],
             'strangle_ce_close_price': None,
             'strangle_pe_close_price': None,
             'pe_open_order_id': -1,
@@ -910,7 +1063,7 @@ class NiftyPositionalStrategy:
                     error_message = error_message + f"CE close order API error or not found for account {account} ({self.stratergy}) "
                 else:
                     # Unknown status, log and continue waiting
-                    logging.warning(f"Unknown CE close order status '{order_status}' for account {account}, continuing to wait")
+                    logging.warning("Unknown CE close order status '%s' for account %s, continuing to wait", order_status, account)
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Add this section before storing results:
@@ -921,10 +1074,10 @@ class NiftyPositionalStrategy:
                 is_pe_ready = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
                               existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open')
 
-                logging.info(f"CE ready: {is_ce_ready}, PE ready: {is_pe_ready}")
+                logging.info("CE ready: %s, PE ready: %s", is_ce_ready, is_pe_ready)
 
                 if is_ce_ready and is_pe_ready:
-                    logging.info(f"All orders executed for account {account}, changing state to open")
+                    logging.info("All orders executed for account %s, changing state to open", account)
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'open'
                     self.store_sold_options_info(existing_sold_options_info, account)
 
@@ -940,10 +1093,10 @@ class NiftyPositionalStrategy:
 
                 # If both legs are closed (or weren't opened), update trade state to 'closed'
                 if ce_closed and pe_closed:
-                    logging.info(f"Trade for account {account} is now fully closed")
+                    logging.info("Trade for account %s is now fully closed", account)
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
 
-            logging.debug(f"Trade state updated for account {account}")
+            logging.debug("Trade state updated for account %s", account)
 
             if error_in_order:
                 self.store_sold_options_info(existing_sold_options_info, account)
@@ -957,7 +1110,7 @@ class NiftyPositionalStrategy:
 
     def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, place_order_obj, qty):
         """Close the trade"""
-        logging.info(f"Closing the trade for account {account}")
+        logging.info("Closing the trade for account %s", account)
         ce_order_id = -1
         pe_order_id = -1
 
@@ -999,11 +1152,11 @@ class NiftyPositionalStrategy:
 
                 return df
             else:
-                logging.warning(f"File not found: {file_path}")
+                logging.warning("File not found: %s", file_path)
                 return pd.DataFrame()  # Return empty DataFrame if file doesn't exist
 
         except Exception as e:
-            logging.error(f"Error reading trade information: {str(e)}")
+            logging.error("Error reading trade information: %s", e)
             logging.error(traceback.format_exc())
             return pd.DataFrame()
 
@@ -1018,9 +1171,9 @@ class NiftyPositionalStrategy:
         try:
             file_path = self.get_sold_options_file_path(account, self.symbol)
             info.to_csv(file_path, index=False)
-            logging.debug(f"Trade information stored in {file_path}")
+            logging.debug("Trade information stored in %s", file_path)
         except Exception as e:
-            logging.error(f"Error storing trade information: {str(e)}")
+            logging.error("Error storing trade information: %s", e)
             logging.error(traceback.format_exc())
             raise
 
@@ -1045,7 +1198,7 @@ class NiftyPositionalStrategy:
 
             return existing_sold_options_info
         except Exception as e:
-            logging.error(f"Error updating trade information: {str(e)}")
+            logging.error("Error updating trade information: %s", e)
             logging.error(traceback.format_exc())
             raise
 
@@ -1099,7 +1252,7 @@ class NiftyPositionalStrategy:
             )
 
         except Exception as e:
-            logging.error(f"Error in closing position: {str(e)}")
+            logging.error("Error in closing position: %s", e)
             logging.error(traceback.format_exc())
             raise
 
@@ -1122,7 +1275,7 @@ class NiftyPositionalStrategy:
                 time_since_last = current_time - self.last_error_sent[error_key]
                 if time_since_last < timedelta(hours=1):
                     # Skip sending, but still log
-                    logging.info(f"Throttling error message for {account} {self.symbol}: {error_message} (last sent {time_since_last} ago)")
+                    logging.info("Throttling error message for %s %s: %s (last sent %s ago)", account, self.symbol, error_message, time_since_last)
                     return
 
             # Get file paths
@@ -1140,7 +1293,7 @@ class NiftyPositionalStrategy:
 
             # Update the last sent time
             self.last_error_sent[error_key] = current_time
-            logging.info(f"Error message sent for {account} {self.symbol}: {error_message}")
+            logging.info("Error message sent for %s %s: %s", account, self.symbol, error_message)
 
             # Handle error file creation and renaming
             if os.path.exists(sold_options_file_path):
@@ -1157,7 +1310,7 @@ class NiftyPositionalStrategy:
             logging.error(error_msg)
 
         except Exception as e:
-            logging.error(f"Error in sending error message: {str(e)}")
+            logging.error("Error in sending error message: %s", e)
             logging.error(traceback.format_exc())
 
     def is_expiry_day_closing_time(self) -> bool:
@@ -1171,7 +1324,7 @@ class NiftyPositionalStrategy:
             # Check if time is at or after 3:15 PM (giving more time)
             closing_time = current_time.time() >= time(15, 22)
             if closing_time:
-                logging.info(f"Expiry day closing condition met. Current time: {current_time.time()}")
+                logging.info("Expiry day closing condition met. Current time: %s", current_time.time())
             return closing_time
         return False
 
