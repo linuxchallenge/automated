@@ -39,7 +39,8 @@ class TvDatafeed:
         'Accept': 'application/json, text/javascript, */*; q=0.01',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        # Content-Type removed - let requests set it for multipart/form-data
+        # 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Origin': 'https://www.tradingview.com',
         'Referer': 'https://www.tradingview.com',
         'Priority': 'u=0, i',
@@ -270,9 +271,12 @@ class TvDatafeed:
             token = None
 
         else:
-            data = {"username": username,
-                    "password": password,
-                    "remember": "on"}
+            # Use tuple format for multipart/form-data (None = no filename)
+            data = {
+                "username": (None, username),
+                "password": (None, password),
+                "remember": (None, "true")
+            }
             
             token = None
             session = requests.Session()
@@ -334,7 +338,8 @@ class TvDatafeed:
                     
                     response = session.post(
                         url=self.__sign_in_url, 
-                        data=data, 
+                        files=data,  # multipart/form-data
+                        
                         headers=signin_headers,
                         timeout=self.__request_timeout
                     )

@@ -10,7 +10,9 @@
 # pylint: disable=C0200
 # pylint: disable=C0413
 # pylint: disable=W0718
+import json
 import logging
+import os
 import random
 import time
 from datetime import datetime, timedelta
@@ -36,21 +38,18 @@ class commodity_data:
         self.tv_obj = None
         self.tv_error = 0
 
-        #username = 'cool_adi52002@rediffmail.com'
-        #password = 'CrazyTrading12@'
-        #username = 'demand_adi3890@rediffmail.com'
-        #password = 'CrazyTradingToday12@'
-
-        # Have multiple set of credentials stored in a list
-        credentials = [
-            {'username': 'bocaki6537@tiervio.com', 'password': 'TradingIsAmazing1@'},
-            {'username': 'muhume@citmo.net', 'password': 'WhatAWorldThisIs1@'},
-            {'username': 'mifxda4u6w@hellomailo.net', 'password': 'TheCruelTradingWord3$'},
-            {'username': '3mvzbkoy61@gonetor.com', 'password': 'TodayIsAmazingDay1@'},
-            {'username': 'hgggg', 'password': 'TodayWasAmazingDay7@'},
-            {'username': 'cool_adi52002@rediffmail.com', 'password':'CrazyTrading12@'},
-            {'username': 'demand_adi3890@rediffmail.com', 'password':'CrazyTradingToday12@'}
-        ]
+        # Load credentials from external file
+        credentials_file = os.path.join(os.path.dirname(__file__), 'tv_credentials.json')
+        try:
+            with open(credentials_file, 'r', encoding='utf-8') as f:
+                credentials = json.load(f)
+            logging.info(f"Loaded {len(credentials)} credentials from {credentials_file}")
+        except FileNotFoundError:
+            logging.error(f"Credentials file not found: {credentials_file}")
+            credentials = []
+        except json.JSONDecodeError as e:
+            logging.error(f"Error parsing credentials file: {e}")
+            credentials = []
 
         # Initialize the tv datafeed
         # Randomly choose a set of credentials
