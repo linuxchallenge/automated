@@ -162,7 +162,7 @@ def get_nse_session():
 
 def get_historical_data(index_name, from_date, to_date, session=None, max_retries=3):
     """
-    Fetch historical data for a given index from NSE API
+    Fetch historical data for a given index from NSE API using chunked requests to bypass limits.
 
     Args:
         index_name (str): Name of the index (e.g., "NIFTY 50", "NIFTY 100")
@@ -174,138 +174,109 @@ def get_historical_data(index_name, from_date, to_date, session=None, max_retrie
     Returns:
         pd.DataFrame: Historical data with columns [Date, Open, High, Low, Close]
     """
-    for attempt in range(max_retries):
-        try:
-            if session is None:
-                session = get_nse_session()
+    start_dt = datetime.strptime(from_date, '%d-%m-%Y')
+    end_dt = datetime.strptime(to_date, '%d-%m-%Y')
+    
+    # NSE historicalOR API often limits to ~70 records (approx 3-4 months)
+    # We fetch in 80-day chunks to be safe and cover the full range
+    chunk_size = 80
+    all_dfs = []
+    
+    current_start = start_dt
+    while current_start < end_dt:
+        current_end = min(current_start + timedelta(days=chunk_size), end_dt)
+        f_str = current_start.strftime('%d-%m-%Y')
+        t_str = current_end.strftime('%d-%m-%Y')
+        
+        chunk_success = False
+        for attempt in range(max_retries):
+            try:
                 if session is None:
-                    return None
+                    session = get_nse_session()
+                    if session is None:
+                        return None
 
-            # URL encode the index name
-            encoded_index = quote(index_name)
-            url = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={encoded_index}&from={from_date}&to={to_date}"
+                encoded_index = quote(index_name)
+                url = f"https://www.nseindia.com/api/historicalOR/indicesHistory?indexType={encoded_index}&from={f_str}&to={t_str}"
 
-            print(f"Attempt {attempt + 1}: Fetching data for {index_name}  {url}")
+                # print(f"Chunk {f_str} to {t_str} (Attempt {attempt + 1})")
 
-            # Ensure we have the proper headers for this request
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Referer": "https://www.nseindia.com/market-data/india-indices",
-                "X-Requested-With": "XMLHttpRequest",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache"
-            }
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "keep-alive",
+                    "Referer": "https://www.nseindia.com/market-data/india-indices",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Sec-Fetch-Dest": "empty",
+                    "Sec-Fetch-Mode": "cors",
+                    "Sec-Fetch-Site": "same-origin",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache"
+                }
 
-            response = session.get(url, headers=headers, timeout=30)
+                response = session.get(url, headers=headers, timeout=30)
 
-            if response.status_code == 401:
-                print(f"Authentication required for {index_name}. Creating new session...")
-                session = get_nse_session()
-                if session:
-                    response = session.get(url, headers=headers, timeout=30)
-                else:
+                if response.status_code == 401:
+                    session = get_nse_session()
+                    if session: response = session.get(url, headers=headers, timeout=30)
+                    else: continue
+
+                if response.status_code in [403, 429]:
+                    time.sleep(2 if response.status_code == 403 else 5)
                     continue
 
-            if response.status_code == 403:
-                print(f"Access forbidden for {index_name}. Waiting before retry...")
-                time.sleep(2)
-                continue
-
-            if response.status_code == 429:
-                print(f"Rate limited for {index_name}. Waiting before retry...")
-                time.sleep(5)
-                continue
-
-            response.raise_for_status()
-
-            # Handle potential compression issues
-            try:
+                response.raise_for_status()
                 data = response.json()
-            except ValueError as json_error:
-                print(f"JSON parsing error for {index_name}: {json_error}")
-                print(f"Response content type: {response.headers.get('content-type')}")
-                print(f"Response encoding: {response.headers.get('content-encoding')}")
-                print(f"Raw response (first 100 chars): {response.content[:100]}")
 
-                # Try to decode manually if it's compressed
-                if response.headers.get('content-encoding') == 'br':
-                    try:
-                        import brotli
-                        decompressed = brotli.decompress(response.content)
-                        data = json.loads(decompressed.decode('utf-8'))
-                        print(f"Successfully decompressed Brotli content for {index_name}")
-                    except Exception as decomp_error:
-                        print(f"Brotli decompression failed: {decomp_error}")
-                        if attempt < max_retries - 1:
-                            time.sleep(1)
-                            continue
-                        return None
-                else:
+                if 'data' not in data or not data['data']:
                     if attempt < max_retries - 1:
                         time.sleep(1)
                         continue
-                    return None
+                    break
 
-            if 'data' not in data or 'indexCloseOnlineRecords' not in data['data']:
-                print(f"No data structure found for {index_name}")
+                records = data['data']
+                df_chunk = pd.DataFrame(records)
+                
+                # Rename and select columns
+                df_chunk = df_chunk.rename(columns={
+                    'EOD_TIMESTAMP': 'Date',
+                    'EOD_OPEN_INDEX_VAL': 'Open',
+                    'EOD_HIGH_INDEX_VAL': 'High',
+                    'EOD_LOW_INDEX_VAL': 'Low',
+                    'EOD_CLOSE_INDEX_VAL': 'Close'
+                })
+                df_chunk = df_chunk[['Date', 'Open', 'High', 'Low', 'Close']]
+                df_chunk['Date'] = pd.to_datetime(df_chunk['Date'], format='%d-%b-%Y')
+                
+                all_dfs.append(df_chunk)
+                chunk_success = True
+                break
+
+            except Exception as e:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
-                return None
+        
+        current_start = current_end + timedelta(days=1)
+        # Small delay between chunks to avoid rate limiting
+        if current_start < end_dt:
+            time.sleep(0.5)
 
-            records = data['data']['indexCloseOnlineRecords']
+    if not all_dfs:
+        print(f"✗ Failed to fetch any data for {index_name}")
+        return None
 
-            if not records:
-                print(f"Empty records for {index_name}")
-                return None
+    # Merge all chunks, remove duplicates, and sort
+    df = pd.concat(all_dfs).drop_duplicates(subset=['Date']).sort_values('Date').reset_index(drop=True)
+    
+    # Final check: is the range sufficient?
+    # records_needed = (end_dt - start_dt).days * 0.6  # Rough estimate of trading days
+    
+    print(f"✓ Successfully fetched {len(df)} records for {index_name} ({df['Date'].iloc[0].strftime('%Y-%m-%d')} to {df['Date'].iloc[-1].strftime('%Y-%m-%d')})")
+    return df
 
-            # Convert to DataFrame
-            df = pd.DataFrame(records)
-
-            # Rename columns for consistency
-            df = df.rename(columns={
-                'EOD_TIMESTAMP': 'Date',
-                'EOD_OPEN_INDEX_VAL': 'Open',
-                'EOD_HIGH_INDEX_VAL': 'High',
-                'EOD_LOW_INDEX_VAL': 'Low',
-                'EOD_CLOSE_INDEX_VAL': 'Close'
-            })
-
-            # Select only required columns
-            df = df[['Date', 'Open', 'High', 'Low', 'Close']]
-
-            # Convert Date to datetime
-            df['Date'] = pd.to_datetime(df['Date'], format='%d-%b-%Y')
-
-            # Sort by date (oldest first)
-            df = df.sort_values('Date').reset_index(drop=True)
-
-            print(f"✓ Successfully fetched {len(df)} records for {index_name}")
-            return df
-
-        except requests.exceptions.RequestException as e:
-            print(f"Network error for {index_name} (attempt {attempt + 1}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-                continue
-        except (ValueError, KeyError) as e:
-            print(f"Data parsing error for {index_name}: {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error for {index_name}: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(1)
-                continue
-
-    print(f"✗ Failed to fetch data for {index_name} after {max_retries} attempts")
-    return None
 
 
 def calculate_relative_strength(index_data, benchmark_data, period_days):
