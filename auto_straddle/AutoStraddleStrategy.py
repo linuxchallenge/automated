@@ -7,6 +7,7 @@
 # pylint: disable=C0115
 # pylint: disable=C0103
 # pylint: disable=W0105
+# pylint: disable=C0302
 
 
 
@@ -51,6 +52,9 @@ class AutoStraddleStrategy:
         self.symbols = symbols
         # Variable stores if NSO is open or not
         self.nso_open = None
+        # Cache for expiry dates
+        self.expiry_dates = {}
+        self._fetch_expiry_dates()
 
     def loss_limit(self, symbol):
         if symbol == "NIFTY":
@@ -63,6 +67,55 @@ class AutoStraddleStrategy:
             return -750
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -2000
+
+    def _fetch_expiry_dates(self):
+        """Fetch expiry dates from Upstox API and cache them"""
+        try:
+            fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
+            symboldf = pd.read_json(fileurl)
+
+            # Filter for NSE FO segment
+            nse_fo = symboldf[(symboldf['exchange'] == 'NSE') & (symboldf['segment'] == 'NSE_FO')]
+
+            # Get expiry dates for each symbol
+            for symbol in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                symbol_data = nse_fo[nse_fo['trading_symbol'].str.startswith(symbol)]
+                if not symbol_data.empty:
+                    expiry_dates = sorted(symbol_data['expiry'].unique())
+                    if expiry_dates:
+                        # Convert to datetime and get the nearest expiry
+                        nearest_expiry = pd.to_datetime(expiry_dates[0], unit='ms').date()
+                        self.expiry_dates[symbol] = nearest_expiry
+                        logging.info(f"Fetched expiry for {symbol}: {nearest_expiry}")
+
+        except Exception as e:
+            logging.error(f"Error fetching expiry dates: {e}")
+            # Fallback to empty dict, will use weekday-based logic as backup
+
+    def is_expiry_day(self, symbol):
+        """Check if today is expiry day for the given symbol"""
+        today = datetime.now().date()
+        expiry_date = self.expiry_dates.get(symbol)
+        if expiry_date:
+            return today == expiry_date
+        # Fallback to weekday-based check if API fetch failed
+        expiry_weekday = {"NIFTY": 3, "BANKNIFTY": 2, "FINNIFTY": 1, "MIDCPNIFTY": 0}
+        return datetime.now().weekday() == expiry_weekday.get(symbol, -1)
+
+    def can_enter_new_trade(self, symbol):
+        """Check if new trades can be entered based on time restrictions"""
+        current_time = datetime.now().time()
+        if self.is_expiry_day(symbol):
+            # On expiry day, don't enter after 2:15 PM
+            if current_time > time(14, 15):
+                logging.info(f"Not entering new trade for {symbol} - expiry day after 2:15 PM")
+                return False
+        else:
+            # On other days, don't enter after 2:30 PM
+            if current_time > time(14, 30):
+                logging.info(f"Not entering new trade for {symbol} - after 2:30 PM")
+                return False
+        return True
 
     def isBearish(self, option_chain_analyzer):
         if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
@@ -84,7 +137,7 @@ class AutoStraddleStrategy:
         id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
         # Send profit loss over telegramsend send_message
-        x.send_message(id1, f"Auto straddle critical error far sell {account} {symbol} {error_message}")
+        x.send_message(id1, f"❌ Auto Straddle: {symbol} | {error_message}")
 
         if os.path.exists(sold_options_file_path):
             # Since trade is closed rename the file to sold_options_info_error
@@ -110,7 +163,7 @@ class AutoStraddleStrategy:
         # status, price = place_order_obj.get_order_status(order_id)
         # return True if the order is executed, else False
         error_in_order = False
-        error_message = ""
+        error_messages = []
         sold_options_file_path = self.get_sold_options_file_path(account, symbol)
         if os.path.exists(sold_options_file_path):
             # If the file exists, read its contents and populate sold_options_info
@@ -124,7 +177,8 @@ class AutoStraddleStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_price'] = price
                 else:
                     error_in_order = True
-                    error_message = error_message + "Error in pe open order"
+                    pe_strike = existing_sold_options_info.iloc[-1]['atm_pe_strike']
+                    error_messages.append(f"PE Entry {order_status} | Strike: {pe_strike}")
 
             if existing_sold_options_info.iloc[-1]['ce_open_state'] == 'open':
 
@@ -137,7 +191,8 @@ class AutoStraddleStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_price'] = price
                 else:
                     error_in_order = True
-                    error_message = error_message + "Error in ce open order"
+                    ce_strike = existing_sold_options_info.iloc[-1]['atm_ce_strike']
+                    error_messages.append(f"CE Entry {order_status} | Strike: {ce_strike}")
 
             if existing_sold_options_info.iloc[-1]['pe_close_state'] == 'open':
                 order_status, price = place_order_obj.order_status(account,
@@ -148,7 +203,8 @@ class AutoStraddleStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
                 else:
                     error_in_order = True
-                    error_message = error_message + "Error in pe close order"
+                    pe_strike = existing_sold_options_info.iloc[-1]['atm_pe_strike']
+                    error_messages.append(f"PE Exit {order_status} | Strike: {pe_strike}")
 
             if existing_sold_options_info.iloc[-1]['ce_close_state'] == 'open':
                 t.sleep(3) # Sleep for 3 seconds
@@ -160,12 +216,14 @@ class AutoStraddleStrategy:
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
                 else:
                     error_in_order = True
-                    error_message = error_message + "Error in ce close order"
+                    ce_strike = existing_sold_options_info.iloc[-1]['atm_ce_strike']
+                    error_messages.append(f"CE Exit {order_status} | Strike: {ce_strike}")
 
             if error_in_order:
 
                 self.store_sold_options_info(existing_sold_options_info, account, symbol)
 
+                error_message = " | ".join(error_messages)
                 self.send_error_message(account, symbol, error_message)
                 # If there was an error in order, rename the file so that it doesn't block future trades
                 if os.path.exists(sold_options_file_path):
@@ -366,6 +424,10 @@ class AutoStraddleStrategy:
                             logging.info(f"Auto Straddle trade closed for account {account} {symbol} \
                                 {option_chain_analyzer['spot_price']} {option_chain_analyzer['pe_to_ce_ratio']}")
                     elif existing_sold_options_info.iloc[-1]['trade_state'] == 'closed':
+                        # Check time restrictions before re-entering
+                        if not self.can_enter_new_trade(symbol):
+                            self.store_sold_options_info(existing_sold_options_info, account, symbol)
+                            return
                         # Check if the conditions to re-enter the trade are met
                         if self.should_reenter_trade(existing_sold_options_info, index_future_stratergy, option_chain_analyzer):
                             # Re-enter the trade
@@ -397,10 +459,11 @@ class AutoStraddleStrategy:
                             if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                                 # Place only CE order
                                 sold_options_info['atm_pe_price'] = -1
-                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike + (2 * get_strike_interval(symbol)), 'CE', symbol, quantity)
+                                ce_strike = atm_ce_strike + (2 * get_strike_interval(symbol))
+                                sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strike, 'CE', symbol, quantity)
 
                                 if sold_options_info['ce_open_order_id'] == -1:
-                                    error_message = "Error in placing ce open order"
+                                    error_message = f"Re-entry CE Order Failed | Strike: {ce_strike} | Qty: {quantity} | Bearish"
                                     self.send_error_message(account, symbol, error_message)
                                     return
                                 sold_options_info['pe_open_order_id'] = -1
@@ -409,10 +472,11 @@ class AutoStraddleStrategy:
                             elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                                 # Place only PE order
                                 sold_options_info['atm_ce_price'] = -1
-                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - (2 * get_strike_interval(symbol)), 'PE', symbol, quantity)
+                                pe_strike = atm_pe_strike - (2 * get_strike_interval(symbol))
+                                sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strike, 'PE', symbol, quantity)
 
                                 if sold_options_info['pe_open_order_id'] == -1:
-                                    error_message = "Error in placing pe open order"
+                                    error_message = f"Re-entry PE Order Failed | Strike: {pe_strike} | Qty: {quantity} | Bullish"
                                     self.send_error_message(account, symbol, error_message)
                                     return
                                 sold_options_info['ce_open_order_id'] = -1
@@ -423,14 +487,14 @@ class AutoStraddleStrategy:
                                 sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
 
                                 if sold_options_info['ce_open_order_id'] == -1:
-                                    error_message = "Error in placing ce open order"
+                                    error_message = f"Re-entry CE Order Failed | Strike: {atm_ce_strike} | Qty: {quantity} | Neutral"
                                     self.send_error_message(account, symbol, error_message)
                                     return
                                 t.sleep(2) # Sleep for 2 seconds
 
                                 sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
                                 if sold_options_info['pe_open_order_id'] == -1:
-                                    error_message = "Error in placing pe open order"
+                                    error_message = f"Re-entry PE Order Failed | Strike: {atm_pe_strike} | Qty: {quantity} | Neutral"
                                     self.send_error_message(account, symbol, error_message)
                                     return
 
@@ -443,6 +507,10 @@ class AutoStraddleStrategy:
                                 [existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
 
                 else:
+                    # Check time restrictions before entering new trade
+                    if not self.can_enter_new_trade(symbol):
+                        return
+
                     try:
                         index_trend = index_future_stratergy.get_index_trend(symbol)
                         if self.check_bullish_option_chain(option_chain_analyzer, symbol):
@@ -492,10 +560,10 @@ class AutoStraddleStrategy:
                     if self.check_bearish_option_chain(option_chain_analyzer, symbol):
                         # Place only CE order
                         sold_options_info['atm_pe_price'] = -1
-                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account,
-                                                 atm_ce_strike + (2 * get_strike_interval(symbol)), 'CE', symbol, quantity)
+                        ce_strike = atm_ce_strike + (2 * get_strike_interval(symbol))
+                        sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, ce_strike, 'CE', symbol, quantity)
                         if sold_options_info['ce_open_order_id'] == -1:
-                            error_message = "Error in placing ce open order"
+                            error_message = f"Entry CE Order Failed | Strike: {ce_strike} | Qty: {quantity} | Bearish"
                             self.send_error_message(account, symbol, error_message)
                             return
                         sold_options_info['pe_open_order_id'] = -1
@@ -503,9 +571,10 @@ class AutoStraddleStrategy:
                     elif self.check_bullish_option_chain(option_chain_analyzer, symbol):
                         # Place only PE order
                         sold_options_info['atm_ce_price'] = -1
-                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike - (2 * get_strike_interval(symbol)), 'PE', symbol, quantity)
+                        pe_strike = atm_pe_strike - (2 * get_strike_interval(symbol))
+                        sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, pe_strike, 'PE', symbol, quantity)
                         if sold_options_info['pe_open_order_id'] == -1:
-                            error_message = "Error in placing pe open order"
+                            error_message = f"Entry PE Order Failed | Strike: {pe_strike} | Qty: {quantity} | Bullish"
                             self.send_error_message(account, symbol, error_message)
                             return
                         sold_options_info['ce_open_order_id'] = -1
@@ -514,14 +583,14 @@ class AutoStraddleStrategy:
                         # Place both CE and PE orders
                         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(account, atm_pe_strike, 'PE', symbol, quantity)
                         if sold_options_info['pe_open_order_id'] == -1:
-                            error_message = "Error in placing pe open order"
+                            error_message = f"Entry PE Order Failed | Strike: {atm_pe_strike} | Qty: {quantity} | Neutral"
                             self.send_error_message(account, symbol, error_message)
                             return
                         t.sleep(2) # Sleep for 2 seconds
 
                         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(account, atm_ce_strike, 'CE', symbol, quantity)
                         if sold_options_info['ce_open_order_id'] == -1:
-                            error_message = "Error in placing ce open order"
+                            error_message = f"Entry CE Order Failed | Strike: {atm_ce_strike} | Qty: {quantity} | Neutral"
                             self.send_error_message(account, symbol, error_message)
                             return
 
@@ -753,13 +822,13 @@ class AutoStraddleStrategy:
         if pe_price != -1:
             pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', symbol, qty)
             if pe_order_id == -1:
-                error_message = "Error in placing pe close order"
+                error_message = f"Exit PE Order Failed | Strike: {pe_strike} | Qty: {qty}"
                 self.send_error_message(account, symbol, error_message)
                 return -1, -1
         if ce_price != -1:
             ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', symbol, qty)
             if ce_order_id == -1:
-                error_message = "Error in placing ce close order"
+                error_message = f"Exit CE Order Failed | Strike: {ce_strike} | Qty: {qty}"
                 self.send_error_message(account, symbol, error_message)
                 return -1, -1
         # Update the trade state
