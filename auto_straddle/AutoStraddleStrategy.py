@@ -273,7 +273,7 @@ class AutoStraddleStrategy:
                         self.close_trade(account, existing_sold_options_info.iloc[-1]['atm_pe_strike'], \
                                          existing_sold_options_info.iloc[-1]['atm_ce_strike'],\
                                               existing_sold_options_info.iloc[-1]['atm_pe_price'],
-                                         existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity)
+                                         existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity, "Market Closing")
 
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                         existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
@@ -398,15 +398,19 @@ class AutoStraddleStrategy:
                         profit_or_loss = self.compute_profit_loss(existing_sold_options_info, symbol)
 
                         # Check if the conditions to close the trade are met
-                        if self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol) \
-                                or profit_or_loss < self.loss_limit(symbol):
+                        should_close, reason = self.should_close_trade(option_chain_analyzer, existing_sold_options_info.iloc[-1], symbol)
+                        if not should_close and profit_or_loss < self.loss_limit(symbol):
+                            should_close = True
+                            reason = "Total Loss Limit Reached"
+
+                        if should_close:
                             # Close the trade
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_order_id'], \
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_order_id'] = \
                                 self.close_trade(account, existing_sold_options_info.iloc[-1]['atm_pe_strike'], \
                                              existing_sold_options_info.iloc[-1]['atm_ce_strike'], \
                                                 existing_sold_options_info.iloc[-1]['atm_pe_price'],
-                                             existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity)
+                                             existing_sold_options_info.iloc[-1]['atm_ce_price'], symbol, place_order_obj, quantity, reason)
 
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'open'
                             existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'open'
@@ -782,41 +786,41 @@ class AutoStraddleStrategy:
             if abs(option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= get_movement(symbol):
                 logging.info(
                     f"Closing the trade for account {symbol} {option_chain_analyzer['spot_price']} from {sold_options_info['atm_strike']}")
-                return True
+                return True, "Spot Price Movement"
 
             if (((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) + \
             (sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price'])) * multiplication_factor.get(symbol)) \
                   < (self.loss_limit(symbol) / 3):
-                return True
+                return True, "Partial Loss Limit Reached"
 
         if sold_options_info['atm_ce_price'] == -1:
             if (sold_options_info['atm_strike'] - option_chain_analyzer['spot_price'] ) > get_movement(symbol):
-                return True
+                return True, "Spot Price Movement"
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) >= 2 * get_movement(symbol):
-                return True
+                return True, "Spot Price Movement"
 
             if ((sold_options_info['atm_pe_price'] - sold_options_info['atm_pe_close_price']) * multiplication_factor.get(symbol)) \
                   < (self.loss_limit(symbol) / 3):
-                return True
+                return True, "Partial Loss Limit Reached"
 
-            return False
+            return False, ""
 
         if sold_options_info['atm_pe_price'] == -1:
             if (option_chain_analyzer['spot_price'] - sold_options_info['atm_strike']) > get_movement(symbol):
-                return True
+                return True, "Spot Price Movement"
             if (sold_options_info['atm_strike'] - option_chain_analyzer['spot_price']) >= 2 * get_movement(symbol):
-                return True
+                return True, "Spot Price Movement"
 
             if ((sold_options_info['atm_ce_price'] - sold_options_info['atm_ce_close_price']) * multiplication_factor.get(symbol)) \
                   < (self.loss_limit(symbol) / 3):
-                return True
+                return True, "Partial Loss Limit Reached"
 
-        return False
+        return False, ""
 
-    def close_trade(self, account, pe_strike, ce_strike, pe_price, ce_price, symbol, place_order_obj, qty):
+    def close_trade(self, account, pe_strike, ce_strike, pe_price, ce_price, symbol, place_order_obj, qty, reason="Unknown"):
         # Close the trade logic goes here
-        print(f"Closing the trade for account {account}" , str(symbol) , str(pe_price) , str(ce_price) , str(ce_strike) , str(pe_strike))
-        logging.info(f"Closing the trade for account {account}")
+        print(f"Closing the trade for account {account} Reason: {reason}" , str(symbol) , str(pe_price) , str(ce_price) , str(ce_strike) , str(pe_strike))
+        logging.info(f"Closing the trade for account {account} Reason: {reason}")
         ce_order_id = -1
         pe_order_id = -1
         if pe_price != -1:
