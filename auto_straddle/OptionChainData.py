@@ -841,10 +841,13 @@ class OptionChainData:
             pe_parsed_data = []
             for entry in option_chain:
                 try:
+                    # Note: BSE API uses 'Open_Interest' for PE and 'C_Open_Interest' for CE
+                    pe_oi = entry.get('Open_Interest', '0')
+                    pe_oi = int(pe_oi) if pe_oi and pe_oi.strip() else 0
                     pe_parsed_data.append({
                         'strikePrice': float(entry.get('Strike_Price', '0').replace(',', '')),
-                        'put_open_interest': int(entry.get('Open_Interest', '0')),
-                        'put_ltp': float(entry.get('Last_Trd_Price', '0'))
+                        'put_open_interest': pe_oi,
+                        'put_ltp': float(entry.get('Last_Trd_Price', '0') or '0')
                     })
                 except (ValueError, TypeError, AttributeError):
                     pass
@@ -859,10 +862,13 @@ class OptionChainData:
             ce_parsed_data = []
             for entry in option_chain:
                 try:
+                    # Note: BSE API uses 'C_Open_Interest' for CE and 'Open_Interest' for PE
+                    ce_oi = entry.get('C_Open_Interest', '0')
+                    ce_oi = int(ce_oi) if ce_oi and ce_oi.strip() else 0
                     ce_parsed_data.append({
                         'strikePrice': float(entry.get('Strike_Price', '0').replace(',', '')),
-                        'call_open_interest': int(entry.get('Open_Interest', '0')),
-                        'call_ltp': float(entry.get('C_Last_Trd_Price', '0'))
+                        'call_open_interest': ce_oi,
+                        'call_ltp': float(entry.get('C_Last_Trd_Price', '0') or '0')
                     })
                 except (ValueError, TypeError, AttributeError):
                     pass
@@ -1026,71 +1032,48 @@ class OptionChainData:
             return None
 
 
-"""
-symbol = "SENSEX"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.extract_options_data_bse(0, 0, 0, symbol)
-print("BSE data \n")
-print(option_chain_info)
 
-option_chain_info =option_chain_analyzer.extract_options_data_groww(0, 0, 0, symbol)
-print("Groww data \n")
-print(option_chain_info)
+if __name__ == "__main__":
+    symbol = "SENSEX"
+    option_chain_analyzer = OptionChainData(symbol)
 
+    # Fetch BSE expiry date for SENSEX
+    fileurl = 'https://assets.upstox.com/market-quote/instruments/exchange/complete.json.gz'
+    symboldf = pd.read_json(fileurl)
+    symboldf = symboldf[(symboldf['exchange'] == 'BSE') & (symboldf['segment'] == 'BSE_FO')]
+    expiry_dates = sorted(symboldf['expiry'].unique())[:1]
+    bse_expiry_date = pd.to_datetime(expiry_dates, unit='ms')[0]
+    option_chain_analyzer.set_bse_expiry_date_pd(bse_expiry_date)
+    print(f"BSE Expiry Date: {bse_expiry_date}")
 
-# Example usage:
-symbol = "NIFTY"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
+    bse_data = option_chain_analyzer.extract_options_data_bse(0, 0, 0, symbol)
+    print("=" * 80)
+    print("BSE DATA")
+    print("=" * 80)
+    print(f"pe_to_ce_ratio: {bse_data['pe_to_ce_ratio']:.4f}")
+    print(f"spot_price: {bse_data['spot_price']}")
+    print(f"atm_strike: {bse_data['atm_strike']}")
+    print(f"atm_ce_price: {bse_data['atm_current_ce_price']}, atm_pe_price: {bse_data['atm_current_pe_price']}")
+    print(f"\nHighest OI:")
+    print(f"  CE: Strike {bse_data['ce_highest_strike']}, OI {bse_data['ce_highest_open_interest']}")
+    print(f"  PE: Strike {bse_data['pe_highest_strike']}, OI {bse_data['pe_highest_open_interest']}")
 
-# You can then access the information using option_chain_info
-print(option_chain_info)
+    groww_data = option_chain_analyzer.extract_options_data_groww(0, 0, 0, symbol)
+    print("\n" + "=" * 80)
+    print("GROWW DATA")
+    print("=" * 80)
+    print(f"pe_to_ce_ratio: {groww_data['pe_to_ce_ratio']:.4f}")
+    print(f"spot_price: {groww_data['spot_price']}")
+    print(f"atm_strike: {groww_data['atm_strike']}")
+    print(f"atm_ce_price: {groww_data['atm_current_ce_price']}, atm_pe_price: {groww_data['atm_current_pe_price']}")
+    print(f"\nHighest OI:")
+    print(f"  CE: Strike {groww_data['ce_highest_strike']}, OI {groww_data['ce_highest_open_interest']}")
+    print(f"  PE: Strike {groww_data['pe_highest_strike']}, OI {groww_data['pe_highest_open_interest']}")
 
-symbol = "BANKNIFTY"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(0, 0, 0, symbol)
-print("Bank Nifty data \n")
-# You can then access the information using option_chain_info
-print(option_chain_info)
-
-
-symbol = "FINNIFTY"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info = option_chain_analyzer.get_option_chain_info(0,0,0, symbol)
-
-# You can then access the information using option_chain_info
-print(option_chain_info)
-
-symbol = "NIFTY"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info_groww = option_chain_analyzer.extract_options_data_groww(22400, 23300, 22300, symbol)
-print("Groww data \n")
-print(option_chain_info_groww)
-
-option_chain_info = option_chain_analyzer.get_option_chain_info_nse(22400, 23300, 22300, symbol)
-print("NSE data \n")
-print(option_chain_info)
-
-print("\n \n")
-
-# find difference between two dictionaries
-diff = {k: option_chain_info[k] for k in option_chain_info if option_chain_info[k] != option_chain_info_groww[k]}
-print(diff)
-
-
-symbol = "MIDCPNIFTY"
-option_chain_analyzer = OptionChainData(symbol)
-option_chain_info_groww = option_chain_analyzer.extract_options_data_groww(12650, 12200, 12800, symbol)
-print("Groww data \n")
-print(option_chain_info_groww)
-
-option_chain_info = option_chain_analyzer.get_option_chain_info_nse(12650, 12200, 12800, symbol)
-print("NSE data \n")
-print(option_chain_info)
-
-print("\n \n")
-
-# find difference between two dictionaries
-diff = {k: option_chain_info[k] for k in option_chain_info if option_chain_info[k] != option_chain_info_groww[k]}
-print(diff)
-"""
+    print("\n" + "=" * 80)
+    print("COMPARISON")
+    print("=" * 80)
+    print(f"pe_to_ce_ratio: BSE={bse_data['pe_to_ce_ratio']:.4f}, Groww={groww_data['pe_to_ce_ratio']:.4f}, Diff={abs(bse_data['pe_to_ce_ratio'] - groww_data['pe_to_ce_ratio']):.4f}")
+    print(f"spot_price: BSE={bse_data['spot_price']}, Groww={groww_data['spot_price']}, Diff={abs(bse_data['spot_price'] - groww_data['spot_price']):.2f}")
+    print(f"atm_ce_price: BSE={bse_data['atm_current_ce_price']}, Groww={groww_data['atm_current_ce_price']}")
+    print(f"atm_pe_price: BSE={bse_data['atm_current_pe_price']}, Groww={groww_data['atm_current_pe_price']}")

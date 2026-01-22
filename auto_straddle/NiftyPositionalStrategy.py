@@ -799,22 +799,37 @@ class NiftyPositionalStrategy:
             'ce_close_state': 'None'
         }
 
+        # Get PE/CE ratio for decision
+        pe_to_ce_ratio = option_chain_analyzer['pe_to_ce_ratio']
+        ce_strike = self.get_option_strike(option_chain_analyzer, 'CE')
+        pe_strike = self.get_option_strike(option_chain_analyzer, 'PE')
+
+        # Log decision parameters
+        logging.info(f"Nifty Positional: {account} {self.symbol} ({self.stratergy}) - "
+                    f"PE/CE Ratio: {pe_to_ce_ratio:.2f}, ATM: {option_chain_analyzer['atm_strike']}, "
+                    f"CE Strike: {ce_strike}, PE Strike: {pe_strike}, Qty: {quantity}")
+
         # Place orders based on PE/CE ratio
-        if option_chain_analyzer['pe_to_ce_ratio'] < 0.7:
+        if pe_to_ce_ratio < 0.7:
             # Bearish - Place only CE
+            logging.info(f"Nifty Positional: {account} {self.symbol} ({self.stratergy}) - "
+                        f"BEARISH (ratio {pe_to_ce_ratio:.2f} < 0.7) → Placing CE only at {ce_strike}")
             sold_options_info = self.place_ce_only(
-                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'CE'), quantity, place_order_obj
+                sold_options_info, account, ce_strike, quantity, place_order_obj
             )
-        elif option_chain_analyzer['pe_to_ce_ratio'] > 1.4:
+        elif pe_to_ce_ratio > 1.4:
             # Bullish - Place only PE
+            logging.info(f"Nifty Positional: {account} {self.symbol} ({self.stratergy}) - "
+                        f"BULLISH (ratio {pe_to_ce_ratio:.2f} > 1.4) → Placing PE only at {pe_strike}")
             sold_options_info = self.place_pe_only(
-                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'PE'), quantity, place_order_obj
+                sold_options_info, account, pe_strike, quantity, place_order_obj
             )
         else:
             # Neutral - Place both
+            logging.info(f"Nifty Positional: {account} {self.symbol} ({self.stratergy}) - "
+                        f"NEUTRAL (0.7 <= ratio {pe_to_ce_ratio:.2f} <= 1.4) → Placing both legs")
             sold_options_info = self.place_both_legs(
-                sold_options_info, account, self.get_option_strike(option_chain_analyzer, 'CE'),
-                self.get_option_strike(option_chain_analyzer, 'PE'), quantity, place_order_obj
+                sold_options_info, account, ce_strike, pe_strike, quantity, place_order_obj
             )
 
         return sold_options_info
@@ -826,7 +841,7 @@ class NiftyPositionalStrategy:
             account, ce_strike, 'CE', self.symbol, quantity, False)
 
         if sold_options_info['ce_open_order_id'] == -1:
-            error_message = "Error in placing ce open order"
+            error_message = f"Entry CE Order Failed | Strike: {ce_strike} | Qty: {quantity} | Bearish"
             self.send_error_message(account, error_message)
             return None
 
@@ -842,7 +857,7 @@ class NiftyPositionalStrategy:
             account, pe_strike, 'PE', self.symbol, quantity, False)
 
         if sold_options_info['pe_open_order_id'] == -1:
-            error_message = "Error in placing pe open order"
+            error_message = f"Entry PE Order Failed | Strike: {pe_strike} | Qty: {quantity} | Bullish"
             self.send_error_message(account, error_message)
             return None
 
@@ -857,7 +872,7 @@ class NiftyPositionalStrategy:
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
             account, ce_strike, 'CE', self.symbol, quantity, False)
         if sold_options_info['ce_open_order_id'] == -1:
-            error_message = "Error in placing ce open order"
+            error_message = f"Entry CE Order Failed | Strike: {ce_strike} | Qty: {quantity} | Neutral"
             self.send_error_message(account, error_message)
             return None
 
@@ -867,7 +882,7 @@ class NiftyPositionalStrategy:
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
             account, pe_strike, 'PE', self.symbol, quantity, False)
         if sold_options_info['pe_open_order_id'] == -1:
-            error_message = "Error in placing pe open order"
+            error_message = f"Entry PE Order Failed | Strike: {pe_strike} | Qty: {quantity} | Neutral"
             self.send_error_message(account, error_message)
             return None
 
@@ -1110,21 +1125,21 @@ class NiftyPositionalStrategy:
 
     def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, place_order_obj, qty):
         """Close the trade"""
-        logging.info("Closing the trade for account %s", account)
+        logging.info("Closing the trade for account %s %s (%s)", account, self.symbol, self.stratergy)
         ce_order_id = -1
         pe_order_id = -1
 
         if strangle_pe_price != -1:
             pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', self.symbol, qty, False)
             if pe_order_id == -1:
-                error_message = "Error in placing pe close order"
+                error_message = f"Exit PE Order Failed | Strike: {pe_strike} | Qty: {qty}"
                 self.send_error_message(account, error_message)
                 return -1, -1
 
         if strangle_ce_price != -1:
             ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', self.symbol, qty, False)
             if ce_order_id == -1:
-                error_message = "Error in placing ce close order"
+                error_message = f"Exit CE Order Failed | Strike: {ce_strike} | Qty: {qty}"
                 self.send_error_message(account, error_message)
                 return -1, -1
 
@@ -1288,7 +1303,7 @@ class NiftyPositionalStrategy:
             chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
             # Send error message via Telegram
-            error_msg = f"Nifty Positional Strategy critical error: {account} {self.symbol} ({self.stratergy}) {error_message}"
+            error_msg = f"❌ Nifty Positional: {self.symbol} ({self.stratergy}) | {error_message}"
             telegram_api.send_message(chat_id, error_msg)
 
             # Update the last sent time
