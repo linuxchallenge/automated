@@ -717,7 +717,13 @@ class cash_stratergy:
                 if pd.isna(profit_target):
                     profit_target = float('inf')
 
+                logger.info(f"Row {row['sl_no']} ({symbol}): last_price={last_price}, sl={row['sl']}, profit_target={profit_target}")
+
                 if last_price <= row['sl'] or last_price >= profit_target:
+                    reason = "Stop Loss" if last_price <= row['sl'] else "Profit Target"
+                    logger.info(f"Exit triggered for {symbol} (Row {row['sl_no']}). Reason: {reason}. "
+                                f"Price: {last_price}, SL: {row['sl']}, Profit Target: {profit_target}")
+
                     if row['account'] == "deepti":
                         # Try to place close order with retry logic
                         order_id = None
