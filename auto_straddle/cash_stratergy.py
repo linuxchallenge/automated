@@ -132,6 +132,7 @@ class TelegramNotifier:
 
     def send_error(self, account, symbol, error_type, details=""):
         """Send error notification with deduplication"""
+        account = str(account)  # Ensure account is string for concatenation
         message = f"Cash strategy {error_type} error {account} {symbol}"
         if details:
             message += f": {details}"
@@ -154,6 +155,7 @@ class TelegramNotifier:
 
     def send_success(self, account, symbol, message_type, details):
         """Send success notification"""
+        account = str(account)  # Ensure account is string for concatenation
         message = f"Cash strategy {message_type} {account} {symbol} {details}"
 
         telegram_group = account + "_telegram"
@@ -173,6 +175,7 @@ class TelegramNotifier:
 
     def send_manual_close_request(self, account, symbol):
         """Send manual close request for accounts without API access"""
+        account = str(account)  # Ensure account is string for concatenation
         # Handle account routing
         if account in ["sharekhan", "anvitha", "adithya"]:
             telegram_group = "deepti_telegram"
