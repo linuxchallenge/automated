@@ -52,20 +52,20 @@ logger = logging.getLogger(__name__)
 class NSEPriceCache:
     """Thread-safe cache for NSE price data with TTL and rate limiting"""
 
-    def __init__(self, ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60):
+    def __init__(self, ttl_seconds=120, rate_limit_calls=20, rate_limit_period=60):
         """
         Initialize cache with TTL and rate limiting
 
         Args:
-            ttl_seconds: Time-to-live for cached entries (default: 60s)
-            rate_limit_calls: Maximum API calls allowed in the period
+            ttl_seconds: Time-to-live for cached entries (default: 120s - increased to reduce API calls)
+            rate_limit_calls: Maximum API calls allowed in the period (default: 20)
             rate_limit_period: Time period for rate limiting in seconds
         """
         self._cache = {}  # {symbol: {'price': float, 'timestamp': datetime}}
         self._lock = threading.Lock()
         self.ttl = timedelta(seconds=ttl_seconds)
 
-        # Rate limiting
+        # Rate limiting - increased to 20 calls per 60 seconds
         self._call_timestamps = []  # List of recent API call timestamps
         self.rate_limit_calls = rate_limit_calls
         self.rate_limit_period = timedelta(seconds=rate_limit_period)
@@ -137,8 +137,11 @@ class TelegramNotifier:
         if details:
             message += f": {details}"
 
-        # Get Telegram group ID
-        telegram_group = account + "_telegram"
+        # Get Telegram group ID - route certain accounts to deepti
+        if account in ["sharekhan", "anvitha", "adithya"]:
+            telegram_group = "deepti_telegram"
+        else:
+            telegram_group = account + "_telegram"
         chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
         if not chat_id:
@@ -158,7 +161,11 @@ class TelegramNotifier:
         account = str(account)  # Ensure account is string for concatenation
         message = f"Cash strategy {message_type} {account} {symbol} {details}"
 
-        telegram_group = account + "_telegram"
+        # Route certain accounts to deepti
+        if account in ["sharekhan", "anvitha", "adithya"]:
+            telegram_group = "deepti_telegram"
+        else:
+            telegram_group = account + "_telegram"
         chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
 
         if not chat_id:
@@ -379,6 +386,100 @@ class cash_stratergy:
             output = s.get("http://nseindia.com",headers=headers)
             output = s.get(payload,headers=headers).json()
         return output
+
+    def get_bse_ltp(self, symbol, max_retries=3, use_cache=True):
+        """
+        Fetch BSE Last Traded Price for a symbol using Yahoo Finance
+        
+        BSE stocks are available on Yahoo Finance with .BO suffix
+        
+        Args:
+            symbol: Stock symbol
+            max_retries: Maximum retry attempts
+            use_cache: Whether to use cached prices
+            
+        Returns:
+            float: Last traded price
+            
+        Raises:
+            ValueError: If fetching price fails
+        """
+        cache_key = f"BSE_{symbol}"
+        
+        # Check cache first
+        if use_cache:
+            cached_price = self.price_cache.get(cache_key)
+            if cached_price is not None:
+                return cached_price
+        
+        yahoo_headers = {
+            "accept": "application/json",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        # Yahoo Finance uses .BO suffix for BSE stocks
+        yahoo_symbol = f"{symbol}.BO"
+        
+        for attempt in range(max_retries):
+            try:
+                # Yahoo Finance chart API
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
+                
+                self.price_cache.record_call()
+                response = requests.get(url, headers=yahoo_headers, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'chart' in data and 'result' in data['chart'] and data['chart']['result']:
+                        result = data['chart']['result'][0]
+                        meta = result.get('meta', {})
+                        price = meta.get('regularMarketPrice')
+                        
+                        if price:
+                            # Cache the result
+                            self.price_cache.set(cache_key, float(price))
+                            logger.info(f"BSE price for {symbol} (Yahoo: {yahoo_symbol}): {price}")
+                            return float(price)
+                        else:
+                            logger.warning(f"No price in Yahoo response for {symbol}")
+                    else:
+                        error_msg = data.get('chart', {}).get('error', {}).get('description', 'Unknown error')
+                        logger.warning(f"Yahoo Finance error for {symbol}: {error_msg}")
+                else:
+                    logger.warning(f"Yahoo Finance returned status {response.status_code} for {symbol}")
+                    
+            except Exception as e:
+                logger.warning(f"Error fetching BSE price for {symbol} (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    
+        raise ValueError(f"Failed to fetch BSE price for {symbol} after {max_retries} attempts")
+
+    def get_ltp_with_fallback(self, symbol, exchange='NSE'):
+        """
+        Fetch LTP based on exchange with fallback
+        
+        Args:
+            symbol: Stock symbol
+            exchange: Exchange code ('NSE' or 'BSE')
+            
+        Returns:
+            float: Last traded price or None if all methods fail
+            
+        Raises:
+            ValueError: If all methods fail
+        """
+        exchange = str(exchange).upper().strip() if exchange else 'NSE'
+        
+        if exchange == 'BSE':
+            try:
+                return self.get_bse_ltp(symbol, max_retries=3)
+            except Exception as e:
+                logger.error(f"Failed to fetch BSE price for {symbol}: {e}")
+                raise
+        else:
+            # Default to NSE
+            return self.get_nse_ltp_with_fallback(symbol)
 
     def nse_custom_function_secfno(self, symbol,attribute="lastPrice"):
         current_time = datetime.now()
@@ -628,15 +729,16 @@ class cash_stratergy:
             logger.info(f"Processing row {row['sl_no']} with symbol {row['symbol']} and sl {row['sl']}")
             try:
                 symbol = row['symbol']
-                # Normalize symbol for NSE API (M_M -> M&M, etc.)
-                nse_symbol = self._normalize_symbol(symbol)
-                logger.info(f"Symbol mapping: {symbol} -> {nse_symbol}")
+                exchange = row.get('exchange', 'NSE')  # Default to NSE if not specified
+                # Normalize symbol for API (M_M -> M&M, etc.)
+                normalized_symbol = self._normalize_symbol(symbol)
+                logger.info(f"Symbol mapping: {symbol} -> {normalized_symbol} (Exchange: {exchange})")
 
                 sleep(1)
                 try:
-                    last_price = self.get_nse_ltp_with_fallback(nse_symbol)
+                    last_price = self.get_ltp_with_fallback(normalized_symbol, exchange)
                 except Exception as e:
-                    logger.error(f"Error fetching price for symbol {symbol} (NSE: {nse_symbol}): {e}")
+                    logger.error(f"Error fetching price for symbol {symbol} ({exchange}: {normalized_symbol}): {e}")
                     self.notifier.send_error(row['account'], symbol, "open", f"Price fetch failed: {e}")
                     continue
 
@@ -697,15 +799,16 @@ class cash_stratergy:
                         continue
 
                 symbol = row['symbol']
-                # Normalize symbol for NSE API (M_M -> M&M, etc.)
-                nse_symbol = self._normalize_symbol(symbol)
-                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} (NSE: {nse_symbol}) and sl {row['sl']}")
+                exchange = row.get('exchange', 'NSE')  # Default to NSE if not specified
+                # Normalize symbol for API (M_M -> M&M, etc.)
+                normalized_symbol = self._normalize_symbol(symbol)
+                logger.info(f"Processing row {row['sl_no']} with symbol {symbol} ({exchange}: {normalized_symbol}) and sl {row['sl']}")
                 sleep(1)
 
                 try:
-                    last_price = self.get_nse_ltp_with_fallback(nse_symbol)
+                    last_price = self.get_ltp_with_fallback(normalized_symbol, exchange)
                 except Exception as e:
-                    logger.error(f"Error fetching price for symbol {symbol} (NSE: {nse_symbol}): {e}")
+                    logger.error(f"Error fetching price for symbol {symbol} ({exchange}: {normalized_symbol}): {e}")
                     self.notifier.send_error(row['account'], symbol, "close", f"Price fetch failed: {e}")
                     continue
 
@@ -779,18 +882,25 @@ class cash_stratergy:
                 order_id = row['buy_order_id'] if is_open_pending else row['close_order_id']
                 order_type = 'open' if is_open_pending else 'close'
 
-                logger.info(f"Checking {order_type} order {order_id} for row {row['sl_no']} ({row['symbol']})")
-
-                # Check for invalid order_id
+                # Check for invalid order_id - this can happen for non-API accounts
+                # where close_pending is set but no order was actually placed
                 if order_id == -1 or pd.isna(order_id):
-                    logger.error(f"Invalid order_id ({order_id}) for row {row['sl_no']}")
-                    # Internally mark as rejected so we can retry if needed, but don't set status to 'rejected'
-                    data.loc[idx, f'{order_type}_order_status'] = 'rejected'
-                    self.notifier.send_error(row['account'], row['symbol'], order_type,
-                                           f"Order failed - invalid order_id: {order_id}")
-                    # Save immediately to persist internal status change
-                    data.to_csv(self.csv_path, index=False)
-                    continue
+                    # For non-API accounts with close_pending but no order_id,
+                    # this is expected (manual close request was sent)
+                    # Don't spam notifications - just skip silently or log once
+                    if row['account'] not in ['deepti']:  # Non-API accounts
+                        logger.debug(f"Skipping row {row['sl_no']} - non-API account with manual close pending")
+                        continue
+                    else:
+                        # For API accounts, this is an error - mark as rejected
+                        logger.error(f"Invalid order_id ({order_id}) for row {row['sl_no']}")
+                        data.loc[idx, f'{order_type}_order_status'] = 'rejected'
+                        self.notifier.send_error(row['account'], row['symbol'], order_type,
+                                               f"Order failed - invalid order_id: {order_id}")
+                        data.to_csv(self.csv_path, index=False)
+                        continue
+
+                logger.info(f"Checking {order_type} order {order_id} for row {row['sl_no']} ({row['symbol']})")
 
                 status, final_price = place_order.order_status(row['account'], order_id, row['buy_price'])
 

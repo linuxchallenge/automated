@@ -271,14 +271,16 @@ def main():
                 # Get current time
                 current_time = datetime.now().second
 
+                # Reset alarm for index future strategy
                 signal.alarm(300)
-
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Reset alarm for option strategy
+                signal.alarm(300)
                 try:
                     execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
                                              accounts, symbols, place_order, account_details, \
@@ -286,12 +288,17 @@ def main():
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                # Reset alarm for commodity strategy
+                signal.alarm(300)
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Reset alarm for nifty position strategy
+                signal.alarm(300)
                 try:
                     nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)
                 except Exception as e:
@@ -305,7 +312,13 @@ def main():
                 #    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 #    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
-                cash_stratergy_obj.execute_strategy(place_order)
+                # Reset alarm before cash strategy (can take long due to rate limiting)
+                signal.alarm(300)
+                try:
+                    cash_stratergy_obj.execute_strategy(place_order)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
