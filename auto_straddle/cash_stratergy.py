@@ -7,7 +7,7 @@
 # pylint: disable=C0115
 # pylint: disable=C0103
 # pylint: disable=W0105
-
+# pylint: disable=C0302
 
 from datetime import datetime, timedelta
 import os
@@ -240,10 +240,10 @@ class cash_stratergy:
     def _normalize_symbol(self, symbol):
         """
         Convert CSV symbols to NSE-compatible symbols
-        
+
         Args:
             symbol: Symbol from CSV (e.g., 'M_M', 'L_T')
-        
+
         Returns:
             NSE-compatible symbol (e.g., 'M&M', 'LT')
         """
@@ -390,51 +390,51 @@ class cash_stratergy:
     def get_bse_ltp(self, symbol, max_retries=3, use_cache=True):
         """
         Fetch BSE Last Traded Price for a symbol using Yahoo Finance
-        
+
         BSE stocks are available on Yahoo Finance with .BO suffix
-        
+
         Args:
             symbol: Stock symbol
             max_retries: Maximum retry attempts
             use_cache: Whether to use cached prices
-            
+
         Returns:
             float: Last traded price
-            
+
         Raises:
             ValueError: If fetching price fails
         """
         cache_key = f"BSE_{symbol}"
-        
+
         # Check cache first
         if use_cache:
             cached_price = self.price_cache.get(cache_key)
             if cached_price is not None:
                 return cached_price
-        
+
         yahoo_headers = {
             "accept": "application/json",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        
+
         # Yahoo Finance uses .BO suffix for BSE stocks
         yahoo_symbol = f"{symbol}.BO"
-        
+
         for attempt in range(max_retries):
             try:
                 # Yahoo Finance chart API
                 url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
-                
+
                 self.price_cache.record_call()
                 response = requests.get(url, headers=yahoo_headers, timeout=10)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     if 'chart' in data and 'result' in data['chart'] and data['chart']['result']:
                         result = data['chart']['result'][0]
                         meta = result.get('meta', {})
                         price = meta.get('regularMarketPrice')
-                        
+
                         if price:
                             # Cache the result
                             self.price_cache.set(cache_key, float(price))
@@ -447,30 +447,30 @@ class cash_stratergy:
                         logger.warning(f"Yahoo Finance error for {symbol}: {error_msg}")
                 else:
                     logger.warning(f"Yahoo Finance returned status {response.status_code} for {symbol}")
-                    
+
             except Exception as e:
                 logger.warning(f"Error fetching BSE price for {symbol} (attempt {attempt + 1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
                     time.sleep(2)
-                    
+
         raise ValueError(f"Failed to fetch BSE price for {symbol} after {max_retries} attempts")
 
     def get_ltp_with_fallback(self, symbol, exchange='NSE'):
         """
         Fetch LTP based on exchange with fallback
-        
+
         Args:
             symbol: Stock symbol
             exchange: Exchange code ('NSE' or 'BSE')
-            
+
         Returns:
             float: Last traded price or None if all methods fail
-            
+
         Raises:
             ValueError: If all methods fail
         """
         exchange = str(exchange).upper().strip() if exchange else 'NSE'
-        
+
         if exchange == 'BSE':
             try:
                 return self.get_bse_ltp(symbol, max_retries=3)

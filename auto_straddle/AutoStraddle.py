@@ -33,6 +33,7 @@ from NiftyPositionalStrategy import NiftyPositionalStrategy
 import logging_config  # This sets up the logging
 from TelegramSend import telegram_send_api
 from ledger_calculation import LedgerCalculator
+from update_cash_sl import run_cash_sl_update
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -258,6 +259,9 @@ def main():
     # Set an alarm to trigger SIGALRM after 300 seconds
     signal.alarm(300)
 
+    # Flag to track if Cash SL update has run today (runs at 11:10 PM)
+    cash_sl_updated_today = False
+
     try:
         while True:
             try:
@@ -319,6 +323,23 @@ def main():
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                # Run Cash SL Update at 11:10 PM daily
+                if time_dt(23, 10) <= current_time_dt <= time_dt(23, 15):
+                    if not cash_sl_updated_today:
+                        logging.info("Running Cash SL Update at 11:10 PM")
+                        signal.alarm(600)  # 10 minutes for SL update
+                        try:
+                            run_cash_sl_update(dry_run=False)
+                            cash_sl_updated_today = True
+                            logging.info("Cash SL Update completed successfully")
+                        except Exception as e:
+                            logging.error(f"Cash SL Update failed: {e}")
+                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                # Reset the flag at midnight
+                if current_time_dt < time_dt(0, 5):
+                    cash_sl_updated_today = False
 
                 # Sleep for a specified interval (e.g., 1 minutes)
                 after_loop_time = datetime.now().second
