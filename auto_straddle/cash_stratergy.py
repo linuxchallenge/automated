@@ -237,6 +237,21 @@ class cash_stratergy:
         self._order_retry_count = {}  # {(account, symbol, order_type): retry_count}
         self._max_order_retries = 3
 
+        # Resumable execution state
+        self._resume_state = {
+            'phase': None,  # 'new', 'open', 'pending', or None (complete)
+            'last_sl_no': None,  # Last processed sl_no
+            'start_time': None
+        }
+        self._time_budget_seconds = 60  # 1 minute budget per call
+
+    def _is_time_budget_exceeded(self):
+        """Check if execution time budget is exceeded"""
+        if self._resume_state['start_time'] is None:
+            return False
+        elapsed = (datetime.now() - self._resume_state['start_time']).total_seconds()
+        return elapsed >= self._time_budget_seconds
+
     def _normalize_symbol(self, symbol):
         """
         Convert CSV symbols to NSE-compatible symbols
@@ -788,14 +803,39 @@ class cash_stratergy:
                 logger.error(f"Error processing 'new' row {row['sl_no']}: {e}")
                 self.notifier.send_error(row['account'], symbol, "open", str(e))
 
-    def _process_open_positions(self, data, place_order):
-        """Process rows with status 'open' - checking for close conditions"""
-        for idx, row in data[data['status'] == 'open'].iterrows():
+    def _process_open_positions(self, data, place_order, resume_from_sl_no=None):
+        """Process rows with status 'open' - checking for close conditions
+
+        Args:
+            data: DataFrame with position data
+            place_order: PlaceOrder instance
+            resume_from_sl_no: If provided, skip rows until after this sl_no (for resumption)
+
+        Returns:
+            tuple: (last_processed_sl_no, completed_all) - sl_no of last processed row and whether all rows were completed
+        """
+        open_rows = data[data['status'] == 'open']
+        should_skip = resume_from_sl_no is not None
+        last_sl_no = None
+
+        for idx, row in open_rows.iterrows():
+            # Resume logic - skip until we pass the resume point
+            if should_skip:
+                if row['sl_no'] == resume_from_sl_no:
+                    should_skip = False  # Found resume point, process next rows
+                continue
+
+            # Check time budget before processing
+            if self._is_time_budget_exceeded():
+                logger.info(f"Time budget exceeded, pausing at row {row['sl_no']}")
+                return last_sl_no, False  # Not completed
+
             try:
                 # Skip if a close order is already pending (has close_order_id)
                 if pd.notna(row.get('close_order_id')) and row['close_order_id'] != -1 and row.get('close_order_status') != 'rejected':
                     # If we have an ID and it's not marked as rejected (internally), skip
                     if row.get('close_order_status') != 'Complete':
+                        last_sl_no = row['sl_no']
                         continue
 
                 symbol = row['symbol']
@@ -810,12 +850,14 @@ class cash_stratergy:
                 except Exception as e:
                     logger.error(f"Error fetching price for symbol {symbol} ({exchange}: {normalized_symbol}): {e}")
                     self.notifier.send_error(row['account'], symbol, "close", f"Price fetch failed: {e}")
+                    last_sl_no = row['sl_no']
                     continue
 
                 # Validate last_price is not None
                 if last_price is None:
                     logger.error(f"Got None price for symbol {symbol}, skipping close check")
                     self.notifier.send_error(row['account'], symbol, "close", "Price is None")
+                    last_sl_no = row['sl_no']
                     continue
 
                 # Validate profit_target exists and is not NaN
@@ -849,6 +891,7 @@ class cash_stratergy:
                         if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
                             logger.error("Close order placement failed after all retries")
                             self.notifier.send_error(row['account'], symbol, "close", "Order placement failed after retries")
+                            last_sl_no = row['sl_no']
                             continue
 
                         logger.info(f"Order ID: {order_id}")
@@ -866,10 +909,15 @@ class cash_stratergy:
                     # Save immediately after triggering close
                     data.to_csv(self.csv_path, index=False)
 
+                last_sl_no = row['sl_no']
+
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 logger.error(f"Error processing 'open' row {row['sl_no']}: {e}")
                 self.notifier.send_error(row['account'], symbol, "close", str(e))
+                last_sl_no = row['sl_no']
+
+        return last_sl_no, True  # Completed all rows
 
     def _process_pending_orders(self, data, place_order):
         """Process rows with pending orders - checking order status"""
@@ -986,6 +1034,8 @@ class cash_stratergy:
     def execute_strategy(self, place_order, max_executions=2):
         """
         Executes the cash strategy based on the CSV file and strategy rules.
+        Supports resumable execution - if time budget is exceeded, saves state
+        and resumes from where it left off on the next call.
 
         Args:
             place_order (PlaceOrder): Instance of PlaceOrder to handle orders.
@@ -1011,29 +1061,39 @@ class cash_stratergy:
         elif self.nso_open is False:
             return
 
+        # Check if we're resuming from a previous execution
+        is_resuming = self._resume_state.get('phase') is not None
+
         # Determine if the function can execute based on the time of day
+        # Always allow if resuming from a previous execution
         now = datetime.now()
         if datetime.strptime("09:27:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("09:33:00", "%H:%M:%S").time():
             logger.info(f"Execution tracker morning count: {self.execution_tracker['morning']}")
             print(f"Execution tracker morning count: {self.execution_tracker['morning']}")
-            # Check morning executions limit:
-            if self.execution_tracker["morning"] >= max_executions:
+            # Check morning executions limit (but allow if resuming)
+            if self.execution_tracker["morning"] >= max_executions and not is_resuming:
                 logger.info("Maximum exceeded.")
                 return
-            self.execution_tracker["morning"] += 1
+            if not is_resuming:
+                self.execution_tracker["morning"] += 1
         elif datetime.strptime("15:16:00", "%H:%M:%S").time() <= now.time() <= datetime.strptime("15:26:00", "%H:%M:%S").time():
             logger.info(f"Execution tracker evening count: {self.execution_tracker['afternoon']}")
-            # Check afternoon executions limit:
-            if self.execution_tracker["afternoon"] >= max_executions + 1:
+            # Check afternoon executions limit (but allow if resuming)
+            if self.execution_tracker["afternoon"] >= max_executions + 1 and not is_resuming:
                 logger.info("Maximum exceeded.")
                 return
 
-            if self.execution_tracker["afternoon"] == max_executions:
+            if self.execution_tracker["afternoon"] == max_executions and not is_resuming:
                 self.send_csv()
 
-            self.execution_tracker["afternoon"] += 1
-        else:
+            if not is_resuming:
+                self.execution_tracker["afternoon"] += 1
+        elif not is_resuming:
+            # Outside time windows and not resuming - return
             return
+
+        # Initialize timing for this execution
+        self._resume_state['start_time'] = datetime.now()
 
         self.apply_corrections()
 
@@ -1041,10 +1101,38 @@ class cash_stratergy:
         logger.info("Executing cash strategy.")
         data = pd.read_csv(self.csv_path)
 
-        # Process different order states using helper methods
-        self._process_new_orders(data, place_order)
-        self._process_open_positions(data, place_order)
-        self._process_pending_orders(data, place_order)
+        # Determine starting phase based on resume state
+        current_phase = self._resume_state.get('phase') or 'new'
+        logger.info(f"Starting from phase: {current_phase}, resume_sl_no: {self._resume_state.get('last_sl_no')}")
+
+        # Process phases with time budget checks
+        if current_phase == 'new':
+            self._process_new_orders(data, place_order)
+            if self._is_time_budget_exceeded():
+                logger.info("Time budget exceeded after new orders phase")
+                self._resume_state['phase'] = 'open'
+                self._resume_state['last_sl_no'] = None
+                data.to_csv(self.csv_path, index=False)
+                return
+            current_phase = 'open'
+
+        if current_phase == 'open':
+            resume_sl_no = self._resume_state.get('last_sl_no')
+            last_sl_no, completed = self._process_open_positions(data, place_order, resume_sl_no)
+            if not completed:
+                logger.info(f"Open positions phase incomplete, saving state at sl_no: {last_sl_no}")
+                self._resume_state['phase'] = 'open'
+                self._resume_state['last_sl_no'] = last_sl_no
+                data.to_csv(self.csv_path, index=False)
+                return
+            current_phase = 'pending'
+
+        if current_phase == 'pending':
+            self._process_pending_orders(data, place_order)
+
+        # Reset state - execution complete
+        logger.info("Cash strategy execution complete")
+        self._resume_state = {'phase': None, 'last_sl_no': None, 'start_time': None}
 
         # Save the updated CSV
         data.to_csv(self.csv_path, index=False)
