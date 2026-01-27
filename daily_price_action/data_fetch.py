@@ -175,18 +175,20 @@ class DataFetcher:
             instrument_key = token['instrument_key'].values[0]
             all_data = []
             
-            # Get data for last 4 years
+            # Get data for last 4 years using V3 API
             today = datetime.datetime.now()
             
-            for year in range(8):
+            for year in range(4):
                 end_date = today - datetime.timedelta(days=365*year)
                 start_date = end_date - datetime.timedelta(days=365)
                 
                 # Format dates as YYYY-MM-DD
-                to_date = end_date.strftime('%Y-%m-%d')
+                # Add 1 day to end_date as Upstox API treats to_date as exclusive
+                to_date = (end_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                 from_date = start_date.strftime('%Y-%m-%d')
                 
-                url = f'https://api.upstox.com/v2/historical-candle/{instrument_key}/day/{to_date}/{from_date}'
+                # V3 API URL format: /v3/historical-candle/{instrument_key}/{unit}/{interval}/{to_date}/{from_date}
+                url = f'https://api.upstox.com/v3/historical-candle/{instrument_key}/days/1/{to_date}/{from_date}'
                 
                 headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -212,11 +214,27 @@ class DataFetcher:
                     print(f"Error fetching data for period {from_date} to {to_date}: {e}")
                     continue
 
+            # Fetch current day data from intraday API (V3)
+            try:
+                intraday_url = f'https://api.upstox.com/v3/historical-candle/intraday/{instrument_key}/days/1'
+                res = requests.get(intraday_url, headers=headers, timeout=5.0)
+                intradayRes = res.json()
+
+                if 'data' in intradayRes and 'candles' in intradayRes['data'] and intradayRes['data']['candles']:
+                    intradayData = pd.DataFrame(intradayRes['data']['candles'])
+                    intradayData.columns = ['date','open','high','low', 'close','vol','oi']
+                    intradayData['date'] = pd.to_datetime(intradayData['date']).dt.tz_convert('Asia/Kolkata')
+                    intradayData = intradayData.drop(['vol','oi'], axis=1)
+                    intradayData = intradayData.assign(date=intradayData['date'].dt.tz_localize(None))
+                    all_data.append(intradayData)
+            except Exception as e:
+                print(f"Error fetching intraday data: {e}")
+
             if all_data:
                 final_df = pd.concat(all_data, ignore_index=True)
                 final_df = final_df.drop_duplicates(subset=['date'])
                 final_df = final_df.sort_values(by='date', ascending=True)
-                # Reverse the data to have the latest data at the end
+                # Reverse the data to have the latest data at the beginning
                 final_df = final_df.iloc[::-1].reset_index(drop=True)
 
                 final_df.rename(columns={'date': 'datetime'}, inplace=True)
