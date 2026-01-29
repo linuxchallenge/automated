@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import random
+import socket
 import time
 from datetime import datetime, timedelta
 import traceback
@@ -21,9 +22,16 @@ import pandas as pd
 import requests
 from tvDatafeed import Interval, TvDatafeed
 import pytz
+import websocket
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Set socket timeout for websocket connections (in seconds)
+# Balance between allowing slow connections and not blocking too long
+DEFAULT_WEBSOCKET_TIMEOUT = 10  # 10 seconds - fail fast but allow for some latency
+socket.setdefaulttimeout(DEFAULT_WEBSOCKET_TIMEOUT)
+websocket.setdefaulttimeout(DEFAULT_WEBSOCKET_TIMEOUT)
 
 class commodity_data:
 
@@ -37,43 +45,24 @@ class commodity_data:
         logging.info("Initializing commodity_data")
         self.tv_obj = None
         self.tv_error = 0
+        self.tv_timeout_retries = 0  # Track consecutive timeout errors
+        self.max_tv_timeout_retries = 3  # Max retries before reconnecting
 
         # Load credentials from external file
         credentials_file = os.path.join(os.path.dirname(__file__), 'tv_credentials.json')
         try:
             with open(credentials_file, 'r', encoding='utf-8') as f:
-                credentials = json.load(f)
-            logging.info(f"Loaded {len(credentials)} credentials from {credentials_file}")
+                self.credentials = json.load(f)
+            logging.info(f"Loaded {len(self.credentials)} credentials from {credentials_file}")
         except FileNotFoundError:
             logging.error(f"Credentials file not found: {credentials_file}")
-            credentials = []
+            self.credentials = []
         except json.JSONDecodeError as e:
             logging.error(f"Error parsing credentials file: {e}")
-            credentials = []
+            self.credentials = []
 
         # Initialize the tv datafeed
-        # Randomly choose a set of credentials
-        for _ in range(5):
-            credentials12 = random.choice(credentials)
-            username = credentials12['username']
-            password = credentials12['password']
-            print(f"Using credentials: {username}")
-            print(f"Using credentials: {password}")
-
-            self.tv_obj = TvDatafeed(username, password, random_user_agent=True)
-
-            if self.tv_obj.token != 'unauthorized_user_token':
-                break
-
-            # sleep for 3 seconds before retrying
-            time.sleep(5)
-
-            # If it fails 5 times, then switch self.use_source to mc
-            if _ == 4:
-                self.use_source = "up"
-                print("Switching to UP as TV Datafeed failed")
-                logging.error("Switching to UP as TV Datafeed failed")
-                break
+        self._init_tv_connection()
 
         fileUrl ='https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz'
         self.symboldf = pd.read_csv(fileUrl)
@@ -81,8 +70,58 @@ class commodity_data:
         self.symboldf = self.symboldf[self.symboldf.exchange == 'MCX_FO']
         self.symboldf = self.symboldf[self.symboldf.strike == 0]
         #self.use_source = "up"
-        print("TV Datafeed initialized " + self.tv_obj.token)
+        if self.tv_obj:
+            print("TV Datafeed initialized " + self.tv_obj.token)
         logging.info(f"Fetching data from: {self.use_source}")
+
+    def _init_tv_connection(self):
+        """Initialize or reinitialize the TradingView connection"""
+        # Randomly choose a set of credentials
+        for attempt in range(5):
+            if not self.credentials:
+                logging.error("No credentials available for TV connection")
+                self.use_source = "up"
+                return
+
+            credentials12 = random.choice(self.credentials)
+            username = credentials12['username']
+            password = credentials12['password']
+            print(f"Using credentials: {username}")
+            logging.info(f"TV connection attempt {attempt + 1}/5 with user: {username}")
+
+            try:
+                self.tv_obj = TvDatafeed(username, password, random_user_agent=True)
+
+                if self.tv_obj.token != 'unauthorized_user_token':
+                    logging.info(f"TV connection successful with token: {self.tv_obj.token}")
+                    self.tv_timeout_retries = 0  # Reset timeout counter on successful connection
+                    return
+            except Exception as e:
+                logging.error(f"Error creating TV connection: {e}")
+
+            # sleep for 3 seconds before retrying
+            time.sleep(5)
+
+        # If it fails 5 times, then switch self.use_source to up
+        self.use_source = "up"
+        print("Switching to UP as TV Datafeed failed")
+        logging.error("Switching to UP as TV Datafeed failed")
+
+    def _reconnect_tv(self):
+        """Reconnect TradingView when connection issues occur"""
+        logging.warning("Reconnecting TradingView due to connection issues...")
+        try:
+            # Close existing websocket if any
+            if self.tv_obj and hasattr(self.tv_obj, 'ws') and self.tv_obj.ws:
+                try:
+                    self.tv_obj.ws.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.debug(f"Error closing existing TV connection: {e}")
+
+        # Reinitialize the connection
+        self._init_tv_connection()
 
     def change_source(self, source):
         self.use_source = source
@@ -145,45 +184,87 @@ class commodity_data:
             return None
 
     def historic_data_tv(self, symbol, daily = False):
-        try:
-            if not daily:
-                tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_1_hour, n_bars=500, fut_contract=1)
-            else:
-                tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_daily, n_bars=500, fut_contract=1)
+        max_retries = 2  # Reduced from 3 for faster failure
 
-            # Drop symbol column
-            tv_data = tv_data.drop(columns=['symbol'])
+        for retry in range(max_retries):
+            try:
+                if not daily:
+                    tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_1_hour, n_bars=500, fut_contract=1)
+                else:
+                    tv_data = self.tv_obj.get_hist(symbol=symbol, exchange='MCX', interval=Interval.in_daily, n_bars=500, fut_contract=1)
 
-            # datetime column make non index
-            tv_data['datetime'] = tv_data.index
+                # Null check - TV can return None on connection issues
+                if tv_data is None:
+                    logging.warning(f"TV returned None for {symbol}, retry {retry + 1}/{max_retries}")
+                    self.tv_timeout_retries += 1
+                    if self.tv_timeout_retries >= self.max_tv_timeout_retries:
+                        logging.warning("Multiple consecutive TV failures, reconnecting...")
+                        self._reconnect_tv()
+                        self.tv_timeout_retries = 0
+                    time.sleep(1)  # Short 1s wait before retry
+                    continue
 
-            # Rename datetime column to Date
-            tv_data = tv_data.rename(columns={'datetime': 'Date'})
+                # Drop symbol column
+                tv_data = tv_data.drop(columns=['symbol'])
 
-            # Covert datetime from UTC to IST
-            tv_data['Date'] = tv_data['Date'].dt.tz_localize(None)
+                # datetime column make non index
+                tv_data['datetime'] = tv_data.index
 
-            tv_data = tv_data.drop(columns='volume')
+                # Rename datetime column to Date
+                tv_data = tv_data.rename(columns={'datetime': 'Date'})
 
-            # Drop datetime as index
-            tv_data = tv_data.reset_index(drop=True)
+                # Covert datetime from UTC to IST
+                tv_data['Date'] = tv_data['Date'].dt.tz_localize(None)
 
-            # Put Date at first column
-            tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
+                tv_data = tv_data.drop(columns='volume')
 
-            self.tv_error = 0
-            return tv_data
-        except Exception as e:
-            print(f"Error executing historic_data_tv: {e}")
-            logging.error(f"Error executing historic_data_tv: {e}")
-            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                # Drop datetime as index
+                tv_data = tv_data.reset_index(drop=True)
 
-            # Maintian count is error is more than 5 times switch to UP
-            self.tv_error = self.tv_error + 1
-            if self.tv_error > 5:
-                self.use_source = "up"
+                # Put Date at first column
+                tv_data = tv_data[['Date', 'open', 'high', 'low', 'close']]
 
-            return None
+                # Success - reset error counters
+                self.tv_error = 0
+                self.tv_timeout_retries = 0
+                return tv_data
+
+            except Exception as e:
+                error_str = str(e).lower()
+                is_timeout = 'timeout' in error_str or 'timed out' in error_str
+                is_connection_lost = 'connection' in error_str and 'lost' in error_str
+
+                logging.error(f"Error executing historic_data_tv (retry {retry + 1}/{max_retries}): {e}")
+
+                if is_timeout or is_connection_lost:
+                    self.tv_timeout_retries += 1
+                    logging.warning(f"TV timeout/connection error #{self.tv_timeout_retries} for {symbol}")
+
+                    # If we've had multiple consecutive timeouts, try reconnecting
+                    if self.tv_timeout_retries >= self.max_tv_timeout_retries:
+                        logging.warning("Multiple consecutive TV timeouts, reconnecting...")
+                        self._reconnect_tv()
+                        self.tv_timeout_retries = 0
+
+                    # Short wait before retry (1 second)
+                    time.sleep(1)
+                    continue
+                else:
+                    # Non-timeout error - log full traceback
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(f"Error executing historic_data_tv: {e}")
+
+                    # Maintain count - if error is more than 5 times switch to UP
+                    self.tv_error = self.tv_error + 1
+                    if self.tv_error > 5:
+                        self.use_source = "up"
+                        logging.warning("Switching to Upstox due to repeated TV errors")
+
+                    return None
+
+        # All retries exhausted - fall back to Upstox immediately
+        logging.warning(f"TV retries exhausted for {symbol}, falling back to Upstox")
+        return None  # Will trigger fallback in historic_data()
 
 
     def historic_data_investing(self, symbol, daily = False):
