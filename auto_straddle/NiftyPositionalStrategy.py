@@ -518,6 +518,7 @@ class NiftyPositionalStrategy:
                 # Compute and send P/L (now expiry_trades is defined)
                 total_ce_pl = 0
                 total_pe_pl = 0
+                total_hedge_pl = 0
                 total_pl = 0
 
                 # Loop through all trades for this expiry
@@ -529,7 +530,7 @@ class NiftyPositionalStrategy:
                     # Use quantity from each trade record
                     trade_qty = trade['quantity']
 
-                    # For CE leg
+                    # For CE leg (sold option: profit = sell_price - close_price)
                     if trade['strangle_ce_price'] != -1:
                         ce_close_price = trade['strangle_ce_close_price']
                         # On expiry day, if no close price (None or NaN), assume 0 (expired worthless)
@@ -538,7 +539,7 @@ class NiftyPositionalStrategy:
                         ce_pl = (trade['strangle_ce_price'] - ce_close_price) * trade_qty
                         total_ce_pl += ce_pl
 
-                    # For PE leg
+                    # For PE leg (sold option: profit = sell_price - close_price)
                     if trade['strangle_pe_price'] != -1:
                         pe_close_price = trade['strangle_pe_close_price']
                         # On expiry day, if no close price (None or NaN), assume 0 (expired worthless)
@@ -547,11 +548,35 @@ class NiftyPositionalStrategy:
                         pe_pl = (trade['strangle_pe_price'] - pe_close_price) * trade_qty
                         total_pe_pl += pe_pl
 
-                total_pl = total_ce_pl + total_pe_pl
+                    # For hedge CE (bought option: profit = close_price - buy_price)
+                    hedge_ce_price = trade.get('hedge_ce_price', -1)
+                    if hedge_ce_price is not None and hedge_ce_price != -1 and not pd.isna(hedge_ce_price):
+                        hedge_ce_close = trade.get('hedge_ce_close_price', 0)
+                        if pd.isna(hedge_ce_close):
+                            hedge_ce_close = 0  # Expired worthless
+                        hedge_ce_pl = (hedge_ce_close - hedge_ce_price) * trade_qty
+                        total_hedge_pl += hedge_ce_pl
+
+                    # For hedge PE (bought option: profit = close_price - buy_price)
+                    hedge_pe_price = trade.get('hedge_pe_price', -1)
+                    if hedge_pe_price is not None and hedge_pe_price != -1 and not pd.isna(hedge_pe_price):
+                        hedge_pe_close = trade.get('hedge_pe_close_price', 0)
+                        if pd.isna(hedge_pe_close):
+                            hedge_pe_close = 0  # Expired worthless
+                        hedge_pe_pl = (hedge_pe_close - hedge_pe_price) * trade_qty
+                        total_hedge_pl += hedge_pe_pl
+
+                total_pl = total_ce_pl + total_pe_pl + total_hedge_pl
                 if self.symbol == "NIFTY":
                     total_pl = total_pl * 65
+                    total_hedge_pl = total_hedge_pl * 65
+                    total_ce_pl = total_ce_pl * 65
+                    total_pe_pl = total_pe_pl * 65
                 elif self.symbol == "SENSEX":
                     total_pl = total_pl * 20
+                    total_hedge_pl = total_hedge_pl * 20
+                    total_ce_pl = total_ce_pl * 20
+                    total_pe_pl = total_pe_pl * 20
 
                 # Only send P/L message if we haven't already processed expiry closing today
                 pl_flag_file = f"/tmp/pl_message_sent_{datetime.now().strftime('%Y-%m-%d')}_{account}_{self.symbol}_{self.stratergy}.flag"
@@ -563,6 +588,7 @@ class NiftyPositionalStrategy:
                         f"Strategy: {self.stratergy}\n"
                         f"CE P/L: {total_ce_pl:.2f}\n"
                         f"PE P/L: {total_pe_pl:.2f}\n"
+                        f"Hedge P/L: {total_hedge_pl:.2f}\n"
                         f"Total P/L: {total_pl:.2f}\n"
                         f"Number of trades: {len(expiry_trades)}"
                     )
@@ -771,8 +797,16 @@ class NiftyPositionalStrategy:
                 return option_chain_analyzer['atm_strike']
         return 0  # Return 0 for invalid option type
 
+    def get_hedge_offset(self):
+        """Get hedge offset based on symbol: NIFTY=500, SENSEX=1500"""
+        return 500 if self.symbol == "NIFTY" else 1500
+
     def create_new_position(self, account, spot_price, option_chain_analyzer,
                            quantity, place_order_obj):
+        ce_strike = self.get_option_strike(option_chain_analyzer, 'CE')
+        pe_strike = self.get_option_strike(option_chain_analyzer, 'PE')
+        hedge_offset = self.get_hedge_offset()
+
         sold_options_info = {
             'account': account,
             'symbol': self.symbol,
@@ -784,8 +818,8 @@ class NiftyPositionalStrategy:
             'open_time': datetime.now(),
             'close_time': None,
             'expiry': self.get_next_nifty_expiry().strftime("%Y-%m-%d"),
-            'strangle_ce_strike': self.get_option_strike(option_chain_analyzer, 'CE'),
-            'strangle_pe_strike': self.get_option_strike(option_chain_analyzer, 'PE'),
+            'strangle_ce_strike': ce_strike,
+            'strangle_pe_strike': pe_strike,
             'atm_strike': option_chain_analyzer['atm_strike'],
             'strangle_ce_close_price': None,
             'strangle_pe_close_price': None,
@@ -796,13 +830,26 @@ class NiftyPositionalStrategy:
             'pe_open_state': 'open_pending',
             'ce_open_state': 'open_pending',
             'pe_close_state': 'None',
-            'ce_close_state': 'None'
+            'ce_close_state': 'None',
+            # Hedge fields - OTM options to protect short strangle
+            'hedge_ce_strike': ce_strike + hedge_offset,  # Buy CE further OTM
+            'hedge_pe_strike': pe_strike - hedge_offset,  # Buy PE further OTM
+            'hedge_ce_price': -1,         # Buy price for CE hedge
+            'hedge_pe_price': -1,         # Buy price for PE hedge
+            'hedge_ce_order_id': -1,
+            'hedge_pe_order_id': -1,
+            'hedge_ce_open_state': 'None',
+            'hedge_pe_open_state': 'None',
+            'hedge_ce_close_price': None,
+            'hedge_pe_close_price': None,
+            'hedge_ce_close_order_id': -1,
+            'hedge_pe_close_order_id': -1,
+            'hedge_ce_close_state': 'None',
+            'hedge_pe_close_state': 'None',
         }
 
         # Get PE/CE ratio for decision
         pe_to_ce_ratio = option_chain_analyzer['pe_to_ce_ratio']
-        ce_strike = self.get_option_strike(option_chain_analyzer, 'CE')
-        pe_strike = self.get_option_strike(option_chain_analyzer, 'PE')
 
         # Log decision parameters
         logging.info(f"Nifty Positional: {account} {self.symbol} ({self.stratergy}) - "
@@ -835,8 +882,25 @@ class NiftyPositionalStrategy:
         return sold_options_info
 
     def place_ce_only(self, sold_options_info, account, ce_strike, quantity, place_order_obj):
-        """Place only CE order"""
+        """Place only CE order with hedge (buy hedge first, then sell)"""
         sold_options_info['strangle_pe_price'] = -1
+        hedge_ce_strike = sold_options_info['hedge_ce_strike']
+
+        # Step 1: Buy CE hedge first (further OTM)
+        logging.info(f"Placing CE hedge BUY order at strike {hedge_ce_strike}")
+        sold_options_info['hedge_ce_order_id'] = place_order_obj.buy_hedge_orders(
+            account, hedge_ce_strike, 'CE', self.symbol, quantity, False)
+
+        if sold_options_info['hedge_ce_order_id'] == -1:
+            error_message = f"Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {quantity} | Bearish"
+            self.send_error_message(account, error_message)
+            return None
+
+        sold_options_info['hedge_ce_open_state'] = 'open_pending'
+        t.sleep(1)
+
+        # Step 2: Sell CE main position
+        logging.info(f"Placing CE SELL order at strike {ce_strike}")
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
             account, ce_strike, 'CE', self.symbol, quantity, False)
 
@@ -848,11 +912,31 @@ class NiftyPositionalStrategy:
         sold_options_info['pe_open_order_id'] = -1
         sold_options_info['pe_open_state'] = 'closed'
         sold_options_info['ce_open_state'] = 'open_pending'
+        # PE hedge not needed since we're only selling CE
+        sold_options_info['hedge_pe_open_state'] = 'closed'
+        sold_options_info['hedge_pe_price'] = -1
         return sold_options_info
 
     def place_pe_only(self, sold_options_info, account, pe_strike, quantity, place_order_obj):
-        """Place only PE order"""
+        """Place only PE order with hedge (buy hedge first, then sell)"""
         sold_options_info['strangle_ce_price'] = -1
+        hedge_pe_strike = sold_options_info['hedge_pe_strike']
+
+        # Step 1: Buy PE hedge first (further OTM)
+        logging.info(f"Placing PE hedge BUY order at strike {hedge_pe_strike}")
+        sold_options_info['hedge_pe_order_id'] = place_order_obj.buy_hedge_orders(
+            account, hedge_pe_strike, 'PE', self.symbol, quantity, False)
+
+        if sold_options_info['hedge_pe_order_id'] == -1:
+            error_message = f"Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {quantity} | Bullish"
+            self.send_error_message(account, error_message)
+            return None
+
+        sold_options_info['hedge_pe_open_state'] = 'open_pending'
+        t.sleep(1)
+
+        # Step 2: Sell PE main position
+        logging.info(f"Placing PE SELL order at strike {pe_strike}")
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
             account, pe_strike, 'PE', self.symbol, quantity, False)
 
@@ -864,11 +948,42 @@ class NiftyPositionalStrategy:
         sold_options_info['ce_open_order_id'] = -1
         sold_options_info['ce_open_state'] = 'closed'
         sold_options_info['pe_open_state'] = 'open_pending'
+        # CE hedge not needed since we're only selling PE
+        sold_options_info['hedge_ce_open_state'] = 'closed'
+        sold_options_info['hedge_ce_price'] = -1
         return sold_options_info
 
     def place_both_legs(self, sold_options_info, account, ce_strike, pe_strike, quantity, place_order_obj):
-        """Place both CE and PE orders"""
-        # Place CE order
+        """Place both CE and PE orders with hedges (buy hedges first, then sell)"""
+        hedge_ce_strike = sold_options_info['hedge_ce_strike']
+        hedge_pe_strike = sold_options_info['hedge_pe_strike']
+
+        # Step 1: Buy CE hedge first
+        logging.info(f"Placing CE hedge BUY order at strike {hedge_ce_strike}")
+        sold_options_info['hedge_ce_order_id'] = place_order_obj.buy_hedge_orders(
+            account, hedge_ce_strike, 'CE', self.symbol, quantity, False)
+        if sold_options_info['hedge_ce_order_id'] == -1:
+            error_message = f"Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {quantity} | Neutral"
+            self.send_error_message(account, error_message)
+            return None
+        sold_options_info['hedge_ce_open_state'] = 'open_pending'
+
+        t.sleep(1)
+
+        # Step 2: Buy PE hedge
+        logging.info(f"Placing PE hedge BUY order at strike {hedge_pe_strike}")
+        sold_options_info['hedge_pe_order_id'] = place_order_obj.buy_hedge_orders(
+            account, hedge_pe_strike, 'PE', self.symbol, quantity, False)
+        if sold_options_info['hedge_pe_order_id'] == -1:
+            error_message = f"Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {quantity} | Neutral"
+            self.send_error_message(account, error_message)
+            return None
+        sold_options_info['hedge_pe_open_state'] = 'open_pending'
+
+        t.sleep(1)
+
+        # Step 3: Sell CE main position
+        logging.info(f"Placing CE SELL order at strike {ce_strike}")
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
             account, ce_strike, 'CE', self.symbol, quantity, False)
         if sold_options_info['ce_open_order_id'] == -1:
@@ -878,7 +993,8 @@ class NiftyPositionalStrategy:
 
         t.sleep(1)
 
-        # Place PE order
+        # Step 4: Sell PE main position
+        logging.info(f"Placing PE SELL order at strike {pe_strike}")
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
             account, pe_strike, 'PE', self.symbol, quantity, False)
         if sold_options_info['pe_open_order_id'] == -1:
@@ -1081,6 +1197,72 @@ class NiftyPositionalStrategy:
                     logging.warning("Unknown CE close order status '%s' for account %s, continuing to wait", order_status, account)
                 self.store_sold_options_info(existing_sold_options_info, account)
 
+            # Check hedge CE open order
+            if existing_sold_options_info.iloc[-1].get('hedge_ce_open_state') == 'open_pending':
+                hedge_ce_order_id = existing_sold_options_info.iloc[-1].get('hedge_ce_order_id', -1)
+                if hedge_ce_order_id != -1:
+                    order_status, price = place_order_obj.order_status(account, hedge_ce_order_id,
+                                existing_sold_options_info.iloc[-1].get('hedge_ce_price', 0))
+                    if order_status == 'Complete':
+                        logging.info(f"Hedge CE order executed for account {account}")
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_open_state'] = 'open'
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_price'] = price
+                    elif order_status == 'Open':
+                        logging.info(f"Hedge CE open order {hedge_ce_order_id} still pending for account {account}")
+                    elif order_status in ['Rejected', -1, 'NotFound']:
+                        error_in_order = True
+                        error_message = error_message + f"Hedge CE open order failed for account {account} ({self.stratergy}) "
+                    self.store_sold_options_info(existing_sold_options_info, account)
+
+            # Check hedge PE open order
+            if existing_sold_options_info.iloc[-1].get('hedge_pe_open_state') == 'open_pending':
+                hedge_pe_order_id = existing_sold_options_info.iloc[-1].get('hedge_pe_order_id', -1)
+                if hedge_pe_order_id != -1:
+                    order_status, price = place_order_obj.order_status(account, hedge_pe_order_id,
+                                existing_sold_options_info.iloc[-1].get('hedge_pe_price', 0))
+                    if order_status == 'Complete':
+                        logging.info(f"Hedge PE order executed for account {account}")
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_open_state'] = 'open'
+                        existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_price'] = price
+                    elif order_status == 'Open':
+                        logging.info(f"Hedge PE open order {hedge_pe_order_id} still pending for account {account}")
+                    elif order_status in ['Rejected', -1, 'NotFound']:
+                        error_in_order = True
+                        error_message = error_message + f"Hedge PE open order failed for account {account} ({self.stratergy}) "
+                    self.store_sold_options_info(existing_sold_options_info, account)
+
+            # Check hedge CE close order
+            if (existing_sold_options_info.iloc[-1].get('hedge_ce_close_state') == 'close_pending' and
+                existing_sold_options_info.iloc[-1].get('hedge_ce_close_order_id', -1) != -1):
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['hedge_ce_close_order_id'],
+                        existing_sold_options_info.iloc[-1].get('hedge_ce_close_price'))
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_close_price'] = price
+                elif order_status == 'Open':
+                    logging.info(f"Hedge CE close order still pending for account {account}")
+                elif order_status in ['Rejected', -1, 'NotFound']:
+                    error_in_order = True
+                    error_message = error_message + f"Hedge CE close order failed for account {account} ({self.stratergy}) "
+                self.store_sold_options_info(existing_sold_options_info, account)
+
+            # Check hedge PE close order
+            if (existing_sold_options_info.iloc[-1].get('hedge_pe_close_state') == 'close_pending' and
+                existing_sold_options_info.iloc[-1].get('hedge_pe_close_order_id', -1) != -1):
+                order_status, price = place_order_obj.order_status(account,
+                        existing_sold_options_info.iloc[-1]['hedge_pe_close_order_id'],
+                        existing_sold_options_info.iloc[-1].get('hedge_pe_close_price'))
+                if order_status == 'Complete':
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_close_state'] = 'closed'
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_close_price'] = price
+                elif order_status == 'Open':
+                    logging.info(f"Hedge PE close order still pending for account {account}")
+                elif order_status in ['Rejected', -1, 'NotFound']:
+                    error_in_order = True
+                    error_message = error_message + f"Hedge PE close order failed for account {account} ({self.stratergy}) "
+                self.store_sold_options_info(existing_sold_options_info, account)
+
             # Add this section before storing results:
             # Check if we should change trade_state from open_pending to open
             if existing_sold_options_info.iloc[-1]['trade_state'] == 'open_pending':
@@ -1089,10 +1271,17 @@ class NiftyPositionalStrategy:
                 is_pe_ready = (existing_sold_options_info.iloc[-1]['strangle_pe_price'] == -1 or
                               existing_sold_options_info.iloc[-1]['pe_open_state'] == 'open')
 
-                logging.info("CE ready: %s, PE ready: %s", is_ce_ready, is_pe_ready)
+                # Check hedge orders too
+                hedge_ce_ready = (existing_sold_options_info.iloc[-1].get('hedge_ce_price', -1) == -1 or
+                                  existing_sold_options_info.iloc[-1].get('hedge_ce_open_state') in ['open', 'closed', 'None'])
+                hedge_pe_ready = (existing_sold_options_info.iloc[-1].get('hedge_pe_price', -1) == -1 or
+                                  existing_sold_options_info.iloc[-1].get('hedge_pe_open_state') in ['open', 'closed', 'None'])
 
-                if is_ce_ready and is_pe_ready:
-                    logging.info("All orders executed for account %s, changing state to open", account)
+                logging.info("CE ready: %s, PE ready: %s, Hedge CE ready: %s, Hedge PE ready: %s",
+                            is_ce_ready, is_pe_ready, hedge_ce_ready, hedge_pe_ready)
+
+                if is_ce_ready and is_pe_ready and hedge_ce_ready and hedge_pe_ready:
+                    logging.info("All orders (including hedges) executed for account %s, changing state to open", account)
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'open'
                     self.store_sold_options_info(existing_sold_options_info, account)
 
@@ -1106,9 +1295,17 @@ class NiftyPositionalStrategy:
                 pe_was_opened = existing_sold_options_info.iloc[-1]['strangle_pe_price'] != -1
                 pe_closed = not pe_was_opened or existing_sold_options_info.iloc[-1]['pe_close_state'] == 'closed'
 
-                # If both legs are closed (or weren't opened), update trade state to 'closed'
-                if ce_closed and pe_closed:
-                    logging.info("Trade for account %s is now fully closed", account)
+                # For hedge CE leg
+                hedge_ce_was_opened = existing_sold_options_info.iloc[-1].get('hedge_ce_price', -1) != -1
+                hedge_ce_closed = not hedge_ce_was_opened or existing_sold_options_info.iloc[-1].get('hedge_ce_close_state') == 'closed'
+
+                # For hedge PE leg
+                hedge_pe_was_opened = existing_sold_options_info.iloc[-1].get('hedge_pe_price', -1) != -1
+                hedge_pe_closed = not hedge_pe_was_opened or existing_sold_options_info.iloc[-1].get('hedge_pe_close_state') == 'closed'
+
+                # If all legs are closed (or weren't opened), update trade state to 'closed'
+                if ce_closed and pe_closed and hedge_ce_closed and hedge_pe_closed:
+                    logging.info("Trade for account %s is now fully closed (including hedges)", account)
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'trade_state'] = 'closed'
 
             logging.debug("Trade state updated for account %s", account)
@@ -1123,27 +1320,53 @@ class NiftyPositionalStrategy:
 
         return True
 
-    def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price, place_order_obj, qty):
-        """Close the trade"""
+    def close_trade(self, account, pe_strike, ce_strike, strangle_pe_price, strangle_ce_price,
+                    place_order_obj, qty, hedge_ce_strike=None, hedge_pe_strike=None,
+                    hedge_ce_price=-1, hedge_pe_price=-1):
+        """Close the trade including hedge positions"""
         logging.info("Closing the trade for account %s %s (%s)", account, self.symbol, self.stratergy)
         ce_order_id = -1
         pe_order_id = -1
+        hedge_ce_close_order_id = -1
+        hedge_pe_close_order_id = -1
 
+        # Close main positions first (buy back sold options)
         if strangle_pe_price != -1:
             pe_order_id = place_order_obj.close_orders(account, pe_strike, 'PE', self.symbol, qty, False)
             if pe_order_id == -1:
                 error_message = f"Exit PE Order Failed | Strike: {pe_strike} | Qty: {qty}"
                 self.send_error_message(account, error_message)
-                return -1, -1
+                return -1, -1, -1, -1
 
         if strangle_ce_price != -1:
             ce_order_id = place_order_obj.close_orders(account, ce_strike, 'CE', self.symbol, qty, False)
             if ce_order_id == -1:
                 error_message = f"Exit CE Order Failed | Strike: {ce_strike} | Qty: {qty}"
                 self.send_error_message(account, error_message)
-                return -1, -1
+                return -1, -1, -1, -1
 
-        return ce_order_id, pe_order_id
+        # Close hedge positions (sell the bought options)
+        if hedge_ce_price != -1 and hedge_ce_strike is not None:
+            t.sleep(1)
+            logging.info(f"Closing hedge CE position at strike {hedge_ce_strike}")
+            hedge_ce_close_order_id = place_order_obj.close_hedge_orders(account, hedge_ce_strike, 'CE', self.symbol, qty, False)
+            if hedge_ce_close_order_id == -1:
+                error_message = f"Exit Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {qty}"
+                self.send_error_message(account, error_message)
+                # Don't fail the whole trade if hedge close fails
+                logging.warning("Hedge CE close failed, but continuing with main position close")
+
+        if hedge_pe_price != -1 and hedge_pe_strike is not None:
+            t.sleep(1)
+            logging.info(f"Closing hedge PE position at strike {hedge_pe_strike}")
+            hedge_pe_close_order_id = place_order_obj.close_hedge_orders(account, hedge_pe_strike, 'PE', self.symbol, qty, False)
+            if hedge_pe_close_order_id == -1:
+                error_message = f"Exit Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {qty}"
+                self.send_error_message(account, error_message)
+                # Don't fail the whole trade if hedge close fails
+                logging.warning("Hedge PE close failed, but continuing with main position close")
+
+        return ce_order_id, pe_order_id, hedge_ce_close_order_id, hedge_pe_close_order_id
 
     def read_existing_sold_options_info(self, file_path):
         """
@@ -1218,23 +1441,33 @@ class NiftyPositionalStrategy:
             raise
 
     def _close_position(self, existing_sold_options_info, account, quantity, place_order_obj):
-        """Close open positions"""
+        """Close open positions including hedges"""
         try:
             # Check if it's expiry day closing
             is_expiry_closing = self.is_expiry_day_closing_time()
 
-            # Get the current states
+            # Get the current states for main positions
             pe_was_opened = existing_sold_options_info.iloc[-1]['strangle_pe_price'] != -1
             ce_was_opened = existing_sold_options_info.iloc[-1]['strangle_ce_price'] != -1
 
-            ce_close_id, pe_close_id = self.close_trade(
+            # Get hedge info
+            hedge_ce_strike = existing_sold_options_info.iloc[-1].get('hedge_ce_strike')
+            hedge_pe_strike = existing_sold_options_info.iloc[-1].get('hedge_pe_strike')
+            hedge_ce_price = existing_sold_options_info.iloc[-1].get('hedge_ce_price', -1)
+            hedge_pe_price = existing_sold_options_info.iloc[-1].get('hedge_pe_price', -1)
+
+            ce_close_id, pe_close_id, hedge_ce_close_id, hedge_pe_close_id = self.close_trade(
                 account,
                 existing_sold_options_info.iloc[-1]['strangle_pe_strike'],
                 existing_sold_options_info.iloc[-1]['strangle_ce_strike'],
                 existing_sold_options_info.iloc[-1]['strangle_pe_price'],
                 existing_sold_options_info.iloc[-1]['strangle_ce_price'],
                 place_order_obj,
-                quantity
+                quantity,
+                hedge_ce_strike=hedge_ce_strike,
+                hedge_pe_strike=hedge_pe_strike,
+                hedge_ce_price=hedge_ce_price,
+                hedge_pe_price=hedge_pe_price
             )
 
             updates = {
@@ -1252,12 +1485,25 @@ class NiftyPositionalStrategy:
                 updates['pe_close_order_id'] = pe_close_id
                 updates['pe_close_state'] = 'close_pending' if pe_close_id != -1 else 'closed'
 
+            # Update hedge close states
+            if hedge_ce_price != -1:
+                updates['hedge_ce_close_order_id'] = hedge_ce_close_id
+                updates['hedge_ce_close_state'] = 'close_pending' if hedge_ce_close_id != -1 else 'closed'
+
+            if hedge_pe_price != -1:
+                updates['hedge_pe_close_order_id'] = hedge_pe_close_id
+                updates['hedge_pe_close_state'] = 'close_pending' if hedge_pe_close_id != -1 else 'closed'
+
             # If it's expiry day closing, set close prices to 0 for opened legs
             if is_expiry_closing:
                 if ce_was_opened:
                     updates['strangle_ce_close_price'] = 0
                 if pe_was_opened:
                     updates['strangle_pe_close_price'] = 0
+                if hedge_ce_price != -1:
+                    updates['hedge_ce_close_price'] = 0
+                if hedge_pe_price != -1:
+                    updates['hedge_pe_close_price'] = 0
 
             self.update_and_store(
                 existing_sold_options_info,

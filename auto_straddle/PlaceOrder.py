@@ -202,6 +202,132 @@ class PlaceOrder:
         print(f"Order id for account: {order_id}")
         return order_id
 
+    def buy_hedge_orders(self, account, strike, pe_ce, symbol, qty, intraday=True):
+        """Buy hedge options (protective OTM options for short strangle)"""
+        multiplication_factor = {
+            'NIFTY': 65,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
+            'MIDCPNIFTY': 50,
+            'SENSEX': 20
+        }
+        # Use .get() with default value of 1
+        multiplier = multiplication_factor.get(symbol, 1)
+        qty = qty * multiplier
+
+        # Add try/except for type conversion
+        try:
+            qty = int(qty)
+        except (ValueError, TypeError) as e:
+            logging.error(f"Invalid quantity value: {qty}. Error: {e}")
+            return -1
+
+        print(f"Placing Buy hedge order for account {account}: option with strike price {strike}")
+        logging.info(f"Placing Buy hedge order for account {account} {symbol}: option with strike price {strike}")
+        order_id = -1
+        if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
+            order_id = self.obj_1.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+            logging.info(f"API Response for {account} hedge order: {order_id}")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id = self.obj_1.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+                logging.info(f"Retry {retry_count} API Response for {account} hedge order: {order_id}")
+        elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+        elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
+            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+        elif (account == 'dummy'):
+            order_id = 987654322
+        else:
+            logging.error(f"Invalid account or API object not initialized: {account}")
+            return -1
+
+        # Standardize result check
+        if order_id == -1 or order_id == 0 or order_id is None or pd.isna(order_id):
+            logging.error(f"Hedge order failed to generate a valid ID for {account}")
+            return -1
+
+        logging.info(f"Hedge order id for account: {order_id}")
+        print(f"Hedge order id for account: {order_id}")
+        return order_id
+
+    def close_hedge_orders(self, account, strike, pe_ce, symbol, qty, intraday=True):
+        """Close hedge options (sell back the protective options)"""
+        multiplication_factor = {
+            'NIFTY': 65,
+            'BANKNIFTY': 30,
+            'FINNIFTY': 65,
+            'MIDCPNIFTY': 50,
+            'SENSEX': 20
+        }
+        qty = qty * multiplication_factor[symbol]
+
+        # Convert qty to integer
+        qty = int(qty)
+
+        print(f"Closing hedge order for account {account}: option with strike price {strike}")
+        logging.info(f"Closing hedge order for account {account}: option with strike price {strike} {symbol}")
+        order_id = -1
+        if (account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None):
+            order_id = self.obj_1.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+            logging.info(f"API Response for {account} hedge close order: {order_id}")
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id = self.obj_1.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+                logging.info(f"Retry {retry_count} API Response for {account} hedge close order: {order_id}")
+
+        elif (account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None):
+            order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+
+        elif (account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None):
+            order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
+            retry_count = 0
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
+                retry_count += 1
+                logging.warning(f"Hedge close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
+                time.sleep(1)
+                order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+        elif (account == 'dummy'):
+            order_id = 123456790
+
+        # Standardize result check
+        if order_id == -1 or order_id == 0 or order_id is None or pd.isna(order_id):
+            logging.error(f"Hedge close order failed to generate a valid ID for {account}")
+            return -1
+
+        logging.info(f"Hedge close order id for account: {order_id}")
+        return order_id
+
     def place_order_synthetic_future(self, account, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         multiplication_factor = {
             'NIFTY': 65,
