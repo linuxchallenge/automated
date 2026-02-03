@@ -697,6 +697,67 @@ class NiftyPositionalStrategy:
         expiry_date = self.get_next_nifty_expiry().date()
         return current_date == expiry_date
 
+    def is_hedge_time(self) -> bool:
+        """Check if current time is after 2:50 PM for end-of-day hedge placement"""
+        current_time = datetime.now().time()
+        return current_time >= time(14, 50)
+
+    def _enter_hedge_for_open_position(self, existing_sold_options_info, account, quantity, place_order_obj):
+        """Place hedge orders for an existing open position at end of day (after 2:50 PM)"""
+        try:
+            last_trade = existing_sold_options_info.iloc[-1]
+
+            # Check if CE main position is open and CE hedge is not yet placed
+            ce_needs_hedge = (last_trade['ce_open_state'] == 'open' and
+                            last_trade.get('hedge_ce_open_state', 'None') == 'None')
+
+            # Check if PE main position is open and PE hedge is not yet placed
+            pe_needs_hedge = (last_trade['pe_open_state'] == 'open' and
+                            last_trade.get('hedge_pe_open_state', 'None') == 'None')
+
+            if not ce_needs_hedge and not pe_needs_hedge:
+                return  # No hedges needed
+
+            hedge_ce_strike = last_trade.get('hedge_ce_strike')
+            hedge_pe_strike = last_trade.get('hedge_pe_strike')
+
+            # Place CE hedge if needed
+            if ce_needs_hedge and hedge_ce_strike is not None:
+                logging.info(f"EOD: Placing CE hedge BUY order at strike {hedge_ce_strike} for {account}")
+                hedge_ce_order_id = place_order_obj.buy_hedge_orders(
+                    account, hedge_ce_strike, 'CE', self.symbol, quantity, False)
+
+                if hedge_ce_order_id == -1:
+                    error_message = f"EOD Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {quantity}"
+                    self.send_error_message(account, error_message)
+                else:
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_order_id'] = hedge_ce_order_id
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_ce_open_state'] = 'open_pending'
+                    logging.info(f"EOD: CE hedge order placed for {account}, order ID: {hedge_ce_order_id}")
+
+            t.sleep(1)
+
+            # Place PE hedge if needed
+            if pe_needs_hedge and hedge_pe_strike is not None:
+                logging.info(f"EOD: Placing PE hedge BUY order at strike {hedge_pe_strike} for {account}")
+                hedge_pe_order_id = place_order_obj.buy_hedge_orders(
+                    account, hedge_pe_strike, 'PE', self.symbol, quantity, False)
+
+                if hedge_pe_order_id == -1:
+                    error_message = f"EOD Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {quantity}"
+                    self.send_error_message(account, error_message)
+                else:
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_order_id'] = hedge_pe_order_id
+                    existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'hedge_pe_open_state'] = 'open_pending'
+                    logging.info(f"EOD: PE hedge order placed for {account}, order ID: {hedge_pe_order_id}")
+
+            # Save updated info
+            self.store_sold_options_info(existing_sold_options_info, account)
+
+        except Exception as e:
+            logging.error(f"Error placing end-of-day hedges: {str(e)}")
+            logging.error(traceback.format_exc())
+
     def _manage_open_position(self, existing_sold_options_info, option_chain_analyzer,
                             account, quantity, place_order_obj):
         """Manage existing open positions"""
@@ -713,6 +774,16 @@ class NiftyPositionalStrategy:
             # Check exit conditions
             if self.should_exit_trade(option_chain_analyzer, existing_sold_options_info, account):
                 self._close_position(
+                    existing_sold_options_info,
+                    account,
+                    quantity,
+                    place_order_obj
+                )
+                return  # Position closed, no need to place hedges
+
+            # Check if it's time to place end-of-day hedges (after 2:50 PM, but not on expiry day)
+            if self.is_hedge_time() and not self.is_expiry_day():
+                self._enter_hedge_for_open_position(
                     existing_sold_options_info,
                     account,
                     quantity,
@@ -882,24 +953,10 @@ class NiftyPositionalStrategy:
         return sold_options_info
 
     def place_ce_only(self, sold_options_info, account, ce_strike, quantity, place_order_obj):
-        """Place only CE order with hedge (buy hedge first, then sell)"""
+        """Place only CE order (hedge will be placed at end of day)"""
         sold_options_info['strangle_pe_price'] = -1
-        hedge_ce_strike = sold_options_info['hedge_ce_strike']
 
-        # Step 1: Buy CE hedge first (further OTM)
-        logging.info(f"Placing CE hedge BUY order at strike {hedge_ce_strike}")
-        sold_options_info['hedge_ce_order_id'] = place_order_obj.buy_hedge_orders(
-            account, hedge_ce_strike, 'CE', self.symbol, quantity, False)
-
-        if sold_options_info['hedge_ce_order_id'] == -1:
-            error_message = f"Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {quantity} | Bearish"
-            self.send_error_message(account, error_message)
-            return None
-
-        sold_options_info['hedge_ce_open_state'] = 'open_pending'
-        t.sleep(1)
-
-        # Step 2: Sell CE main position
+        # Sell CE main position
         logging.info(f"Placing CE SELL order at strike {ce_strike}")
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
             account, ce_strike, 'CE', self.symbol, quantity, False)
@@ -912,30 +969,17 @@ class NiftyPositionalStrategy:
         sold_options_info['pe_open_order_id'] = -1
         sold_options_info['pe_open_state'] = 'closed'
         sold_options_info['ce_open_state'] = 'open_pending'
-        # PE hedge not needed since we're only selling CE
-        sold_options_info['hedge_pe_open_state'] = 'closed'
+        # Hedges will be placed at end of day (after 2:50 PM)
+        sold_options_info['hedge_ce_open_state'] = 'None'
+        sold_options_info['hedge_pe_open_state'] = 'closed'  # PE hedge not needed since we're only selling CE
         sold_options_info['hedge_pe_price'] = -1
         return sold_options_info
 
     def place_pe_only(self, sold_options_info, account, pe_strike, quantity, place_order_obj):
-        """Place only PE order with hedge (buy hedge first, then sell)"""
+        """Place only PE order (hedge will be placed at end of day)"""
         sold_options_info['strangle_ce_price'] = -1
-        hedge_pe_strike = sold_options_info['hedge_pe_strike']
 
-        # Step 1: Buy PE hedge first (further OTM)
-        logging.info(f"Placing PE hedge BUY order at strike {hedge_pe_strike}")
-        sold_options_info['hedge_pe_order_id'] = place_order_obj.buy_hedge_orders(
-            account, hedge_pe_strike, 'PE', self.symbol, quantity, False)
-
-        if sold_options_info['hedge_pe_order_id'] == -1:
-            error_message = f"Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {quantity} | Bullish"
-            self.send_error_message(account, error_message)
-            return None
-
-        sold_options_info['hedge_pe_open_state'] = 'open_pending'
-        t.sleep(1)
-
-        # Step 2: Sell PE main position
+        # Sell PE main position
         logging.info(f"Placing PE SELL order at strike {pe_strike}")
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
             account, pe_strike, 'PE', self.symbol, quantity, False)
@@ -948,41 +992,15 @@ class NiftyPositionalStrategy:
         sold_options_info['ce_open_order_id'] = -1
         sold_options_info['ce_open_state'] = 'closed'
         sold_options_info['pe_open_state'] = 'open_pending'
-        # CE hedge not needed since we're only selling PE
-        sold_options_info['hedge_ce_open_state'] = 'closed'
+        # Hedges will be placed at end of day (after 2:50 PM)
+        sold_options_info['hedge_pe_open_state'] = 'None'
+        sold_options_info['hedge_ce_open_state'] = 'closed'  # CE hedge not needed since we're only selling PE
         sold_options_info['hedge_ce_price'] = -1
         return sold_options_info
 
     def place_both_legs(self, sold_options_info, account, ce_strike, pe_strike, quantity, place_order_obj):
-        """Place both CE and PE orders with hedges (buy hedges first, then sell)"""
-        hedge_ce_strike = sold_options_info['hedge_ce_strike']
-        hedge_pe_strike = sold_options_info['hedge_pe_strike']
-
-        # Step 1: Buy CE hedge first
-        logging.info(f"Placing CE hedge BUY order at strike {hedge_ce_strike}")
-        sold_options_info['hedge_ce_order_id'] = place_order_obj.buy_hedge_orders(
-            account, hedge_ce_strike, 'CE', self.symbol, quantity, False)
-        if sold_options_info['hedge_ce_order_id'] == -1:
-            error_message = f"Hedge CE Order Failed | Strike: {hedge_ce_strike} | Qty: {quantity} | Neutral"
-            self.send_error_message(account, error_message)
-            return None
-        sold_options_info['hedge_ce_open_state'] = 'open_pending'
-
-        t.sleep(1)
-
-        # Step 2: Buy PE hedge
-        logging.info(f"Placing PE hedge BUY order at strike {hedge_pe_strike}")
-        sold_options_info['hedge_pe_order_id'] = place_order_obj.buy_hedge_orders(
-            account, hedge_pe_strike, 'PE', self.symbol, quantity, False)
-        if sold_options_info['hedge_pe_order_id'] == -1:
-            error_message = f"Hedge PE Order Failed | Strike: {hedge_pe_strike} | Qty: {quantity} | Neutral"
-            self.send_error_message(account, error_message)
-            return None
-        sold_options_info['hedge_pe_open_state'] = 'open_pending'
-
-        t.sleep(1)
-
-        # Step 3: Sell CE main position
+        """Place both CE and PE orders (hedges will be placed at end of day)"""
+        # Sell CE main position
         logging.info(f"Placing CE SELL order at strike {ce_strike}")
         sold_options_info['ce_open_order_id'] = place_order_obj.place_orders(
             account, ce_strike, 'CE', self.symbol, quantity, False)
@@ -993,7 +1011,7 @@ class NiftyPositionalStrategy:
 
         t.sleep(1)
 
-        # Step 4: Sell PE main position
+        # Sell PE main position
         logging.info(f"Placing PE SELL order at strike {pe_strike}")
         sold_options_info['pe_open_order_id'] = place_order_obj.place_orders(
             account, pe_strike, 'PE', self.symbol, quantity, False)
@@ -1004,6 +1022,9 @@ class NiftyPositionalStrategy:
 
         sold_options_info['ce_open_state'] = 'open_pending'
         sold_options_info['pe_open_state'] = 'open_pending'
+        # Hedges will be placed at end of day (after 2:50 PM)
+        sold_options_info['hedge_ce_open_state'] = 'None'
+        sold_options_info['hedge_pe_open_state'] = 'None'
         return sold_options_info
 
     def retry_rejected_order(self, account, order_type, strike, quantity, place_order_obj):
