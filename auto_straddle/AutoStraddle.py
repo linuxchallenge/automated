@@ -275,7 +275,7 @@ def main():
                 # Get current time
                 current_time = datetime.now().second
 
-                # Reset alarm for index future strategy
+                # Reset alarm for index future strategy (runs at 9:15+)
                 signal.alarm(300)
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
@@ -283,7 +283,15 @@ def main():
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
-                # Reset alarm for option strategy
+                # Reset alarm for nifty position strategy (runs at 9:15+, must be before option strategy)
+                signal.alarm(300)
+                try:
+                    nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)
+                except Exception as e:
+                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                # Reset alarm for option strategy (has 60s sleep if time < 9:23)
                 signal.alarm(300)
                 try:
                     execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
@@ -297,14 +305,6 @@ def main():
                 signal.alarm(300)
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
-                except Exception as e:
-                    logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-
-                # Reset alarm for nifty position strategy
-                signal.alarm(300)
-                try:
-                    nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
@@ -363,14 +363,12 @@ def main():
 
 def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details, index_future_stratergy):
 
-    # return if time is greater than 3:29 PM
+    # return if time is outside option strategy window (9:23 AM to 3:29 PM)
     current_time_dt = datetime.now().time()
     if current_time_dt > time_dt(15, 29):
-        time.sleep(60)
         return
 
     if current_time_dt < time_dt(9, 23):
-        time.sleep(60)
         return
 
     for symbol in symbols:
