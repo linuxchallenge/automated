@@ -549,9 +549,21 @@ class cash_stratergy:
                         continue
 
                     leg = str(row['leg']).lower().strip()
+                    local_row_data = local_row.iloc[0]
+
                     if leg in ['open', 'buy']:
+                        # Skip if already corrected (status is 'open' and open_order_status is 'Complete')
+                        if (local_row_data.get('status') == 'open' and
+                            local_row_data.get('open_order_status') == 'Complete'):
+                            logger.debug(f"Skipping open correction for sl_no {row['sl_no']} - already applied")
+                            continue
                         self._handle_open_correction(local_data, row)
                     elif leg in ['close', 'sell']:
+                        # Skip if already corrected (status is 'close' and close_order_status is 'Complete')
+                        if (local_row_data.get('status') == 'close' and
+                            local_row_data.get('close_order_status') == 'Complete'):
+                            logger.debug(f"Skipping close correction for sl_no {row['sl_no']} - already applied")
+                            continue
                         self._handle_close_correction(local_data, row)
                     else:
                         logger.warning(f"Invalid leg value: {row['leg']} for sl_no {row['sl_no']}")
