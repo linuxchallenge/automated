@@ -237,6 +237,9 @@ class cash_stratergy:
         self._order_retry_count = {}  # {(account, symbol, order_type): retry_count}
         self._max_order_retries = 3
 
+        # Daily CSV send tracking
+        self._csv_sent_date = None  # Date when CSV was last sent
+
         # Resumable execution state
         self._resume_state = {
             'phase': None,  # 'new', 'open', 'pending', or None (complete)
@@ -551,18 +554,30 @@ class cash_stratergy:
                     leg = str(row['leg']).lower().strip()
                     local_row_data = local_row.iloc[0]
 
+                    # Helper to safely get and normalize string values from pandas Series
+                    def get_val(series, col):
+                        try:
+                            val = series[col] if col in series.index else None
+                            if pd.isna(val):
+                                return None
+                            return str(val).strip() if val is not None else None
+                        except (KeyError, TypeError):
+                            return None
+
+                    local_status = get_val(local_row_data, 'status')
+                    local_open_status = get_val(local_row_data, 'open_order_status')
+                    local_close_status = get_val(local_row_data, 'close_order_status')
+
                     if leg in ['open', 'buy']:
                         # Skip if already corrected (status is 'open' and open_order_status is 'Complete')
-                        if (local_row_data.get('status') == 'open' and
-                            local_row_data.get('open_order_status') == 'Complete'):
-                            logger.debug(f"Skipping open correction for sl_no {row['sl_no']} - already applied")
+                        if local_status == 'open' and local_open_status == 'Complete':
+                            logger.debug(f"Skipping open correction for sl_no {row['sl_no']} - already applied (status={local_status}, open_order_status={local_open_status})")
                             continue
                         self._handle_open_correction(local_data, row)
                     elif leg in ['close', 'sell']:
                         # Skip if already corrected (status is 'close' and close_order_status is 'Complete')
-                        if (local_row_data.get('status') == 'close' and
-                            local_row_data.get('close_order_status') == 'Complete'):
-                            logger.debug(f"Skipping close correction for sl_no {row['sl_no']} - already applied")
+                        if local_status == 'close' and local_close_status == 'Complete':
+                            logger.debug(f"Skipping close correction for sl_no {row['sl_no']} - already applied (status={local_status}, close_order_status={local_close_status})")
                             continue
                         self._handle_close_correction(local_data, row)
                     else:
@@ -1095,8 +1110,12 @@ class cash_stratergy:
                 logger.info("Maximum exceeded.")
                 return
 
-            if self.execution_tracker["afternoon"] == max_executions and not is_resuming:
+            # Send CSV once per day during afternoon window
+            today = now.date()
+            if self._csv_sent_date != today:
+                logger.info(f"Sending daily CSV (last sent: {self._csv_sent_date})")
                 self.send_csv()
+                self._csv_sent_date = today
 
             if not is_resuming:
                 self.execution_tracker["afternoon"] += 1
@@ -1171,6 +1190,8 @@ class cash_stratergy:
 
             # Initialize Telegram API and send file
             self.telegram_api.send_file(id1, self.csv_path)
+            logger.info(f"CSV file sent successfully to {telegram_group}")
+            return True
 
         except Exception as e:
             logger.error(f"Error sending CSV file to Telegram: {str(e)}")
