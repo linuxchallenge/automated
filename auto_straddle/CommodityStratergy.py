@@ -62,9 +62,6 @@ class CommodityStratergy:
         # Order retry tracking - track retry attempts for each order
         self.order_retry_count = {}  # Format: {f"{account}_{symbol}_{order_type}": count}
         self.MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for rejected orders
-        # Track rejected status count - only retry after seeing rejected 2+ times
-        self.rejected_status_count = {}  # Format: {f"{account}_{order_id}": count}
-        self.MIN_REJECTED_COUNT_BEFORE_RETRY = 2  # Wait for 2 rejected status checks before retrying
         self.commodity_data.intializeSymbolAndGetExpiryData()
 
     # Write function which accepts data frame and retuen alligator and fractal
@@ -220,30 +217,14 @@ class CommodityStratergy:
                             current_trade.loc[row_number, 'entry_price'] = price
                         current_trade.to_csv(file_name, index=False)
                         logging.info(f"Entry order completed for {account} {current_trade.loc[row_number, 'Symbol']}")
-                        # Reset retry count and rejected count on successful completion
+                        # Reset retry count on successful completion
                         self.reset_retry_count(account, current_trade.loc[row_number, 'Symbol'], 'entry')
-                        rejected_key = f"{account}_{order_id}"
-                        if rejected_key in self.rejected_status_count:
-                            del self.rejected_status_count[rejected_key]
                     elif status == "Open":
                         # Order is still pending, keep waiting
                         logging.info(f"Entry order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
                     elif status == "Rejected":
-                        # Track rejected status count - don't retry immediately
+                        # Order was rejected, try to retry
                         trading_symbol = current_trade.loc[row_number, 'Symbol']
-                        rejected_key = f"{account}_{order_id}"
-                        self.rejected_status_count[rejected_key] = self.rejected_status_count.get(rejected_key, 0) + 1
-                        rejected_count = self.rejected_status_count[rejected_key]
-
-                        logging.info(f"Entry order {order_id} for {account} {trading_symbol} shows Rejected (count: {rejected_count}/{self.MIN_REJECTED_COUNT_BEFORE_RETRY})")
-
-                        if rejected_count < self.MIN_REJECTED_COUNT_BEFORE_RETRY:
-                            # Wait for more status checks before retrying
-                            logging.info(f"Waiting for more status checks before retrying {account} {trading_symbol}")
-                            continue
-
-                        # Clear the rejected count before retry
-                        del self.rejected_status_count[rejected_key]
 
                         new_order_id, retry_success = self.retry_rejected_order(
                             account, trading_symbol, 'entry', place_order, account_details, current_trade, row_number
@@ -312,30 +293,14 @@ class CommodityStratergy:
                                                 current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                             current_trade.to_csv(file_name, index=False)
-                            # Reset retry count and rejected count on successful completion
+                            # Reset retry count on successful completion
                             self.reset_retry_count(account, current_trade.loc[row_number, 'Symbol'], 'exit')
-                            rejected_key = f"{account}_{order_id}"
-                            if rejected_key in self.rejected_status_count:
-                                del self.rejected_status_count[rejected_key]
                         elif status == "Open":
                             # Order is still pending, keep waiting
                             logging.info(f"Exit order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
                         elif status == "Rejected":
-                            # Track rejected status count - don't retry immediately
+                            # Order was rejected, try to retry
                             trading_symbol = current_trade.loc[row_number, 'Symbol']
-                            rejected_key = f"{account}_{order_id}"
-                            self.rejected_status_count[rejected_key] = self.rejected_status_count.get(rejected_key, 0) + 1
-                            rejected_count = self.rejected_status_count[rejected_key]
-
-                            logging.info(f"Exit order {order_id} for {account} {trading_symbol} shows Rejected (count: {rejected_count}/{self.MIN_REJECTED_COUNT_BEFORE_RETRY})")
-
-                            if rejected_count < self.MIN_REJECTED_COUNT_BEFORE_RETRY:
-                                # Wait for more status checks before retrying
-                                logging.info(f"Waiting for more status checks before retrying exit for {account} {trading_symbol}")
-                                continue
-
-                            # Clear the rejected count before retry
-                            del self.rejected_status_count[rejected_key]
 
                             new_order_id, retry_success = self.retry_rejected_order(
                                 account, trading_symbol, 'exit', place_order, account_details, current_trade, row_number

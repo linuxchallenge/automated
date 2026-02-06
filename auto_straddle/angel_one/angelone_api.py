@@ -611,11 +611,9 @@ class angelone_api(object):
                     print(f"Error: {e1}")
                     return -1, -1
 
-            order_ret = "Rejected"
             # get orderbook for the order id
             orderbook = pd.DataFrame(orderbook)
 
-            # Line 633 - add validation before DataFrame access
             try:
                 # Check if order exists in orderbook
                 matching_orders = orderbook[orderbook.orderid == order_id]
@@ -627,20 +625,30 @@ class angelone_api(object):
                 order_status = matching_orders['orderstatus'].values[0]
                 averageprice = matching_orders['averageprice'].values[0]
 
-                # Rest of the function logic...
             except Exception as e:
                 print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 print(f"Error executing get_order_status: {e}")
                 logger.error(f"Error executing get_order_status: {e}")
                 return -1, -1
 
-            if order_status == "complete":
+            # Log raw status for debugging
+            logger.info(f"AngelOne raw order status for {order_id}: '{order_status}'")
+
+            # Case-insensitive status matching
+            order_status_lower = str(order_status).lower()
+            if order_status_lower == "complete":
                 order_ret = "Complete"
-            elif order_status == "Open":
+            elif order_status_lower in ("open", "pending", "trigger pending",
+                                         "after market order req received"):
                 order_ret = "Open"
-            elif order_status == "rejected":
+            elif order_status_lower == "rejected":
                 order_ret = "Rejected"
-                #order_ret = "Complete"
+            elif order_status_lower == "cancelled":
+                order_ret = "Cancelled"
+            else:
+                # Unknown status - log warning and treat as Open (don't retry)
+                logger.warning(f"Unknown AngelOne order status '{order_status}' for order {order_id}, treating as Open")
+                order_ret = "Open"
 
             averageprice = orderbook.loc[orderbook.orderid == order_id, 'averageprice'].values[0]
             print("Order Status", order_ret)

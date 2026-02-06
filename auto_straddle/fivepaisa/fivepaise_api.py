@@ -781,15 +781,25 @@ class fivepaise_api(object):
                 logger.warning(f"Order {order_id} not found in orderbook")
                 return "NotFound", -1
 
-            order_ret = "Rejected"
             order_status = matching_orders['OrderStatus'].values[0]
-            if order_status == 'Fully Executed':
-                order_ret = "Complete"
-            elif order_status == 'Open':
-                order_ret = "Open"
-            elif order_status == 'Rejected By 5P':
-                order_ret = "Rejected"
             average_price = matching_orders['AveragePrice'].values[0]
+
+            # Log raw status for debugging
+            logger.info(f"[{self.account}] Raw order status for {order_id}: '{order_status}'")
+
+            # Case-insensitive status matching
+            order_status_lower = str(order_status).lower()
+            if order_status_lower in ('fully executed', 'complete'):
+                order_ret = "Complete"
+            elif order_status_lower in ('open', 'pending', 'ordered',
+                                        'partially executed', 'after market order req received'):
+                order_ret = "Open"
+            elif 'rejected' in order_status_lower or 'cancelled' in order_status_lower:
+                order_ret = "Rejected"
+            else:
+                # Unknown status - log warning and treat as Open (don't retry)
+                logger.warning(f"[{self.account}] Unknown order status '{order_status}' for order {order_id}, treating as Open")
+                order_ret = "Open"
 
             logger.info(f"[{self.account}] 📊 Order status result: order_id={order_id} status={order_ret} price={average_price}")
             return order_ret, average_price
