@@ -34,7 +34,7 @@ commodity_to_symbol = {
     'COPPER': 'COPPER',
     'GOLD': 'GOLDM',
     'LEAD': 'LEADMINI',
-    'SILVER': 'SILVERM',
+    'SILVER': 'SILVERMIC',
     'ZINC': 'ZINCMINI',
     'ALUMINIUM': 'ALUMINI',
     'NIFTY': 'NIFTY',
@@ -51,7 +51,7 @@ symbol_to_lot = {
     'LEAD': 1000,
     'ZINC': 1000,
     'ALUMINIUM': 1000,
-    'SILVER': 5000,
+    'SILVER': 1000,
 }
 
 class fivepaise_api(object):

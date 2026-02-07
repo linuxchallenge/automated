@@ -167,7 +167,7 @@ class angelone_api(object):
             if symbol == 'GOLD':
                 symbol = 'GOLDM'
             elif symbol == 'SILVER':
-                symbol = 'SILVERM'
+                symbol = 'SILVERMIC'
             elif symbol == 'CRUDEOIL':
                 symbol = 'CRUDEOILM'
             elif symbol == 'LEAD':
