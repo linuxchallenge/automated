@@ -33,10 +33,13 @@ commodity_to_symbol = {
 }
 
 class PlaceOrder:
-    obj_1 = None
 
     def __init__(self):
-        pass
+        # Instance variables - not shared across instances
+        self.obj_1 = None
+        self.obj_2 = None
+        self.obj_3 = None
+        self.account_id = None
 
     def init_account(self, account):
         self.account_id = account
@@ -517,19 +520,19 @@ class PlaceOrder:
             if (order_status == -1):
                 order_status, average_price = self.obj_2.get_order_status(order_id)
                 if (order_status == -1):
-                    order_status = 'Complete'
-                    if old_price is not None and isinstance(old_price, (int, float)):
-                        average_price = old_price
-                    else:
-                        logging.warning(f"Invalid old_price value: {old_price}, using 0")
-                        average_price = 0
+                    # API failed twice - return error status instead of assuming Complete
+                    logging.error(f"Failed to get order status for {account} order_id={order_id} after 2 retries")
+                    order_status = 'APIError'
+                    average_price = -1
         if (account == 'avanthi'):
             order_status, average_price = self.obj_3.get_order_status(order_id)
             if (order_status == -1):
                 order_status, average_price = self.obj_3.get_order_status(order_id)
                 if (order_status == -1):
-                    order_status = 'Complete'
-                    average_price = old_price
+                    # API failed twice - return error status instead of assuming Complete
+                    logging.error(f"Failed to get order status for {account} order_id={order_id} after 2 retries")
+                    order_status = 'APIError'
+                    average_price = -1
 
         if (account == 'dummy'):
             order_status = 'Complete'

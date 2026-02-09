@@ -11,7 +11,7 @@
 
 import time
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import time as time_dt
 import logging
 import os
@@ -341,10 +341,16 @@ def main():
                 if current_time_dt < time_dt(0, 5):
                     cash_sl_updated_today = False
 
-                # Sleep for a specified interval (e.g., 1 minutes)
-                after_loop_time = datetime.now().second
-                time_to_sleep = 60 - (after_loop_time - current_time)
-                if time_to_sleep > 0:
+                # Sleep for a specified interval (e.g., 1 minute)
+                # Use full timestamp to handle minute boundary correctly
+                loop_end_time = datetime.now()
+                loop_start_time = loop_end_time.replace(second=current_time, microsecond=0)
+                # If we crossed a minute boundary, adjust the start time
+                if loop_end_time.second < current_time:
+                    loop_start_time = loop_start_time - timedelta(minutes=1)
+                elapsed_seconds = (loop_end_time - loop_start_time).total_seconds()
+                time_to_sleep = 60 - elapsed_seconds
+                if 0 < time_to_sleep <= 60:
                     time.sleep(time_to_sleep)
 
                 if current_time_dt > time_dt(23, 50):

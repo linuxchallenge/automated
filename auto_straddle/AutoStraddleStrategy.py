@@ -43,6 +43,8 @@ def get_strike_interval(symbol):
         return 50
     if symbol == "MIDCPNIFTY":
         return 25
+    if symbol == "SENSEX":
+        return 100
     return 0
 
 
@@ -65,6 +67,8 @@ class AutoStraddleStrategy:
             return -2000
         if symbol == "MIDCPNIFTY":
             return -750
+        if symbol == "SENSEX":
+            return -2000
         logging.error(f"Symbol {symbol} not found in loss limit")
         return -2000
 
@@ -637,7 +641,8 @@ class AutoStraddleStrategy:
                 'NIFTY': 65,
                 'BANKNIFTY': 30,
                 'FINNIFTY': 65,
-                'MIDCPNIFTY': 50
+                'MIDCPNIFTY': 50,
+                'SENSEX': 20
             }
 
             # Add symbol validation
@@ -692,7 +697,8 @@ class AutoStraddleStrategy:
                 'NIFTY': 65,
                 'BANKNIFTY': 30,
                 'FINNIFTY': 65,
-                'MIDCPNIFTY': 50
+                'MIDCPNIFTY': 50,
+                'SENSEX': 20
             }
 
             # Add symbol validation
@@ -762,6 +768,7 @@ class AutoStraddleStrategy:
         finnifty_movement = 60
         banknifty_movement = 120
         midcpnifty_movement = 35
+        sensex_movement = 100
 
         # function to return movement depending on symbol
         def get_movement(symbol):
@@ -773,13 +780,16 @@ class AutoStraddleStrategy:
                 return finnifty_movement
             if symbol == "MIDCPNIFTY":
                 return midcpnifty_movement
+            if symbol == "SENSEX":
+                return sensex_movement
             return 0
 
         multiplication_factor = {
             'NIFTY': 65,
             'BANKNIFTY': 30,
             'FINNIFTY': 65,
-            'MIDCPNIFTY': 50
+            'MIDCPNIFTY': 50,
+            'SENSEX': 20
         }
 
         if sold_options_info['atm_ce_price'] != -1 and sold_options_info['atm_pe_price'] != -1:
