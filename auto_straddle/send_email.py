@@ -65,15 +65,23 @@ def send_email_with_errors(sender_email, sender_password, receiver_email, email_
     msg.attach(MIMEText(email_body, 'plain'))
 
     try:
-        s = smtplib.SMTP('smtp.gmail.com', 587)
+        print(f"Connecting to smtp.gmail.com:587...")
+        s = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+        s.set_debuglevel(0)
+        print("Starting TLS...")
         s.starttls()
+        print(f"Logging in as {sender_email}...")
         s.login(sender_email, sender_password)
         text = msg.as_string()
-        s.sendmail(sender_email, receiver_email, text)
+        print(f"Sending email to {receiver_email} (size: {len(text)} bytes)...")
+        refused = s.sendmail(sender_email, receiver_email, text)
         s.quit()
-        print("Email sent successfully!")
+        if refused:
+            print(f"Email refused for recipients: {refused}")
+        else:
+            print("Email sent successfully!")
     except (smtplib.SMTPException, OSError) as e:
-        print(f"Failed to send email. Error: {e}")
+        print(f"Failed to send email. Error: {type(e).__name__}: {e}")
 
 
 # --- CONFIGURATION ---
