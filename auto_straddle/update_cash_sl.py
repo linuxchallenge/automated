@@ -189,7 +189,7 @@ class CashSLUpdater:
                 return 0
 
         # Read cash_stratergy.csv
-        csv_path = os.path.join(os.path.dirname(__file__), 'cash_stratergy.csv')
+        csv_path = os.path.expanduser('~/temp/data_collection/cash_stratergy.csv')
         logger.info(f"Reading {csv_path}...")
 
         try:

@@ -75,7 +75,7 @@ class LedgerCalculator:
                 'LEAD': 1000,
                 'ZINC': 1000,
                 'ALUMINIUM': 1000,
-                'SILVER': 5
+                'SILVER': 1
             },
             'NiftyPositional': {
                 'NIFTY': 65,
