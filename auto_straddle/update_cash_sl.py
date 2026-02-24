@@ -73,7 +73,7 @@ class CashSLUpdater:
         data_with_fractals['BullishFractal'] = fractals['BullishFractal']
 
         # Filter to bullish fractals only (local lows = support levels)
-        bullish = data_with_fractals[data_with_fractals['BullishFractal']]
+        bullish = data_with_fractals[data_with_fractals['BullishFractal'] == 1.0]
 
         # Get the low prices (bullish fractals are local lows)
         bullish_prices = bullish['low']
