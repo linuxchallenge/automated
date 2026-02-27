@@ -779,7 +779,7 @@ class fivepaise_api(object):
             if order_id is None or order_id == 0 or order_id == -1:
                 print(f"Invalid order_id: {order_id}. Cannot check status.")
                 logger.error(f"Invalid order_id: {order_id}. Cannot check status.")
-                return "Rejected", -1
+                return "InvalidID", -1
 
             #orderbook = self.obj.orderBook()['OrderBookDetail']
             print(order_id)

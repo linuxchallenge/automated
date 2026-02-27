@@ -259,9 +259,10 @@ class CommodityStratergy:
                             else:
                                 # Retry was skipped (same hour) — wait for next hour, keep open_pending
                                 logging.info(f"Entry order retry deferred to next hour for {account} {trading_symbol}")
-                    elif status in [-1, 'NotFound']:
-                        # API error or order not found, mark as error and send message
-                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Entry order API error or not found", 0)
+                    elif status in [-1, 'NotFound', 'InvalidID']:
+                        # API error, order not found, or invalid order ID
+                        # If it's InvalidID and we are here, something went wrong in initial placement or retry
+                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Entry order failed with status: {status}", 0)
                         current_trade.loc[row_number, 'enter_order_state'] = 'error'
                         current_trade.to_csv(file_name, index=False)
                     else:
@@ -285,12 +286,12 @@ class CommodityStratergy:
 
                         if status == "Complete":
                             current_trade.loc[row_number, 'exit_order_state'] = 'close'
-                            current_trade.loc[row_number, 'state'] = 'closed'  # Add this line
+                            current_trade.loc[row_number, 'state'] = 'closed'
                             if price != 0:
                                 current_trade.loc[row_number, 'exit_price'] = price
 
-                            brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']\
-                                                                                    , current_trade.loc[row_number, 'exit_price'],\
+                            brokarage_dict = brokrage_calculator.calculate_equity_futures(current_trade.loc[row_number, 'entry_price']
+                                                                                    , current_trade.loc[row_number, 'exit_price'],
                                                                                  symbol_to_lot[current_trade.loc[row_number, 'Symbol']] * quantity)
                             brokarage = brokarage_dict['total_charges']
 
@@ -317,7 +318,7 @@ class CommodityStratergy:
                         elif status == "Open":
                             # Order is still pending, keep waiting
                             logging.info(f"Exit order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
-                        elif status == "Rejected":
+                        elif status == "Rejected" or status == "InvalidID":
                             # Order was rejected — retry only if a new hour has begun
                             trading_symbol = current_trade.loc[row_number, 'Symbol']
 
@@ -456,7 +457,7 @@ class CommodityStratergy:
                                 order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, None)
                                 new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': 'long',
                                            'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'],
-                                           'enter_orderid': order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0,
+                                           'enter_orderid': order_id, 'enter_order_state': 'open_pending' if order_id != -1 else 'error', 'exit_orderid': 0,
                                            'exit_order_state': 'none', 'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 current_trade = pd.concat([current_trade, pd.DataFrame([new_row])], ignore_index=True)  # Note the square brackets
                                 trade_entered = True
@@ -468,7 +469,7 @@ class CommodityStratergy:
                                 order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, None)
                                 new_row = {'Symbol': s, 'expiry': expiry, 'trade_type': 'short', \
                                         'entry_time': datetime.now(), 'entry_price': historic_data.iloc[-1]['close'], \
-                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending', 'exit_orderid': 0, 'exit_order_state': 'none', \
+                                        'enter_orderid' : order_id, 'enter_order_state': 'open_pending' if order_id != -1 else 'error', 'exit_orderid': 0, 'exit_order_state': 'none', \
                                             'exit_time': '', 'exit_price': '', 'state': 'open', 'profit': ''}
                                 current_trade = pd.concat([current_trade, pd.DataFrame([new_row])], ignore_index=True)  # Note the square brackets
                                 trade_entered = True
