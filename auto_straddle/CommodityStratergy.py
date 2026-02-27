@@ -61,6 +61,8 @@ class CommodityStratergy:
         self.last_error_sent = {}  # Format: {f"{account}_{symbol}_{error_hash}": datetime}
         # Order retry tracking - track retry attempts for each order
         self.order_retry_count = {}  # Format: {f"{account}_{symbol}_{order_type}": count}
+        # Track the hour when the last retry was attempted per key
+        self.order_retry_hour = {}  # Format: {f"{account}_{symbol}_{order_type}": hour}
         self.MAX_RETRY_ATTEMPTS = 3  # Maximum retry attempts for rejected orders
         self.commodity_data.intializeSymbolAndGetExpiryData()
 
@@ -107,6 +109,8 @@ class CommodityStratergy:
         """
         retry_key = f"{account}_{trading_symbol}_{order_type}"
 
+        current_hour = datetime.now().hour
+
         # Get current retry count
         current_retries = self.order_retry_count.get(retry_key, 0)
 
@@ -114,7 +118,14 @@ class CommodityStratergy:
             logging.error(f"Maximum retry attempts ({self.MAX_RETRY_ATTEMPTS}) reached for {account} {trading_symbol} {order_type} order")
             return -1, False
 
-        # Increment retry count
+        # Only retry if the hour has changed since last retry attempt
+        last_retry_hour = self.order_retry_hour.get(retry_key, -1)
+        if last_retry_hour == current_hour:
+            logging.info(f"Already retried {order_type} order for {account} {trading_symbol} this hour (hour={current_hour}), waiting for next hour")
+            return -1, False
+
+        # Record this hour as the last retry hour and increment retry count
+        self.order_retry_hour[retry_key] = current_hour
         self.order_retry_count[retry_key] = current_retries + 1
 
         logging.info(f"Retrying {order_type} order for {account} {trading_symbol} (attempt {current_retries + 1}/{self.MAX_RETRY_ATTEMPTS})")
@@ -184,6 +195,8 @@ class CommodityStratergy:
         retry_key = f"{account}_{trading_symbol}_{order_type}"
         if retry_key in self.order_retry_count:
             del self.order_retry_count[retry_key]
+        if retry_key in self.order_retry_hour:
+            del self.order_retry_hour[retry_key]
 
     def check_trade_executed(self, accounts, place_order, account_details):
         # For all accounts
@@ -223,7 +236,7 @@ class CommodityStratergy:
                         # Order is still pending, keep waiting
                         logging.info(f"Entry order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
                     elif status == "Rejected":
-                        # Order was rejected, try to retry
+                        # Order was rejected — retry only if a new hour has begun
                         trading_symbol = current_trade.loc[row_number, 'Symbol']
 
                         new_order_id, retry_success = self.retry_rejected_order(
@@ -236,10 +249,16 @@ class CommodityStratergy:
                             logging.info(f"Entry order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
                             current_trade.to_csv(file_name, index=False)
                         else:
-                            # Retry failed, mark as error
-                            self.send_message(account, trading_symbol, "Entry order rejected and retry failed", 0)
-                            current_trade.loc[row_number, 'enter_order_state'] = 'error'
-                            current_trade.to_csv(file_name, index=False)
+                            retry_key = f"{account}_{trading_symbol}_entry"
+                            current_retries = self.order_retry_count.get(retry_key, 0)
+                            if current_retries >= self.MAX_RETRY_ATTEMPTS:
+                                # All hourly retries exhausted — mark as permanent error
+                                self.send_message(account, trading_symbol, "Entry order rejected and all retries failed", 0)
+                                current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                                current_trade.to_csv(file_name, index=False)
+                            else:
+                                # Retry was skipped (same hour) — wait for next hour, keep open_pending
+                                logging.info(f"Entry order retry deferred to next hour for {account} {trading_symbol}")
                     elif status in [-1, 'NotFound']:
                         # API error or order not found, mark as error and send message
                         self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Entry order API error or not found", 0)
@@ -299,7 +318,7 @@ class CommodityStratergy:
                             # Order is still pending, keep waiting
                             logging.info(f"Exit order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
                         elif status == "Rejected":
-                            # Order was rejected, try to retry
+                            # Order was rejected — retry only if a new hour has begun
                             trading_symbol = current_trade.loc[row_number, 'Symbol']
 
                             new_order_id, retry_success = self.retry_rejected_order(
@@ -312,10 +331,16 @@ class CommodityStratergy:
                                 logging.info(f"Exit order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
                                 current_trade.to_csv(file_name, index=False)
                             else:
-                                # Retry failed, mark as error
-                                self.send_message(account, trading_symbol, "Exit order rejected and retry failed", 0)
-                                current_trade.loc[row_number, 'exit_order_state'] = 'error'
-                                current_trade.to_csv(file_name, index=False)
+                                retry_key = f"{account}_{trading_symbol}_exit"
+                                current_retries = self.order_retry_count.get(retry_key, 0)
+                                if current_retries >= self.MAX_RETRY_ATTEMPTS:
+                                    # All hourly retries exhausted — mark as permanent error
+                                    self.send_message(account, trading_symbol, "Exit order rejected and all retries failed", 0)
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                    current_trade.to_csv(file_name, index=False)
+                                else:
+                                    # Retry was skipped (same hour) — wait for next hour, keep close_pending
+                                    logging.info(f"Exit order retry deferred to next hour for {account} {trading_symbol}")
                         elif status in [-1, 'NotFound']:
                             # API error or order not found, mark as error and send message
                             self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Exit order API error or not found", 0)
