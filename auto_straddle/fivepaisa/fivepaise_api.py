@@ -308,7 +308,7 @@ class fivepaise_api(object):
                         return True
             except Exception as e:
                 logger.error(f"[{self.account}] ❌ Error refreshing session: {e}")
-                logger.error(f"[{self.account}] Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+                logger.error(f"[{self.account}] Traceback: {''.join(traceback.format_exception(e))}")
 
             attempts -= 1
             if attempts > 0:
@@ -401,16 +401,19 @@ class fivepaise_api(object):
         self._fix_shared_payload_bug()
 
         tokenInfo = self.get_commodity_symbol(commodity_to_symbol[symbol], expiry)
+        if tokenInfo is None:
+            logger.error(f"[{self.account}] ❌ Could not find token info for {symbol}")
+            return -1, -1
 
         print("five paise place order")
 
-        symbol = tokenInfo['SymbolRoot']
+        symbol_name = tokenInfo['SymbolRoot']
         token = tokenInfo['ScripCode']
         lot = int(tokenInfo['LotSize'])
 
         #qty = qty * lot
 
-        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol}, Token: {token}, Lot: {lot}")
+        print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {symbol_name}, Token: {token}, Lot: {lot}")
 
         if buy_sell == 'BUY':
             buy_sell = 'B'
@@ -425,11 +428,18 @@ class fivepaise_api(object):
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-            print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-            logger.info(f"[{self.account}] ✅ COMMODITY Order placed: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+            if order_id is None:
+                logger.error(f"[{self.account}] ❌ place_order returned None")
+                return -1, -1
+
+            broker_order_id = order_id.get('BrokerOrderID', -1)
+            message = order_id.get('Message', 'No message')
+            
+            print(f"Order id: {broker_order_id} {message}")
+            logger.info(f"[{self.account}] ✅ COMMODITY Order placed: order_id={broker_order_id} message='{message}'")
 
             # Check for "another client" error even on success
-            if 'another client' in str(order_id.get('Message', '')).lower():
+            if 'another client' in str(message).lower():
                 logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
                 logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
 
@@ -446,11 +456,16 @@ class fivepaise_api(object):
                             qty = qty * lot
                             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                             ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
-                        logger.info(f"[{self.account}] ✅ COMMODITY Order placed after session refresh: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+                        if order_id is not None:
+                            broker_order_id = order_id.get('BrokerOrderID', -1)
+                            message = order_id.get('Message', 'No message')
+                            logger.info(f"[{self.account}] ✅ COMMODITY Order placed after session refresh: order_id={broker_order_id} message='{message}'")
 
-                        # Check again for "another client" error
-                        if 'another client' in str(order_id.get('Message', '')).lower():
-                            logger.error(f"[{self.account}] ❌ Still getting 'another client' error after session refresh!")
+                            # Check again for "another client" error
+                            if 'another client' in str(message).lower():
+                                logger.error(f"[{self.account}] ❌ Still getting 'another client' error after session refresh!")
+                        else:
+                            logger.error(f"[{self.account}] ❌ place_order returned None after session refresh")
                     except Exception as retry_e:
                         logger.error(f"[{self.account}] ❌ Error retrying COMMODITY order after session refresh: {retry_e}")
                 else:
@@ -470,14 +485,22 @@ class fivepaise_api(object):
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='C', ExchangeType='C', \
                                                 ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-                print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-                logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+                if order_id is not None:
+                    broker_order_id = order_id.get('BrokerOrderID', -1)
+                    message = order_id.get('Message', 'No message')
+                    print(f"Order id: {broker_order_id} {message}")
+                    logger.info(f"Order id: {broker_order_id} {message}")
+                else:
+                    print("Order id: None")
+                    logger.error("place_order returned None during retry")
             except Exception as e2:
-                print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                print(''.join(traceback.format_exception(e2)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1, -1
-        return order_id['BrokerOrderID'], tokenInfo['Expiry']
+        if order_id is None:
+            return -1, -1
+        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo else None
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, isIntraday=True):
         """
@@ -542,11 +565,17 @@ class fivepaise_api(object):
                 IsIntraday=isIntraday  # Actually use the parameter
             )
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-            print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-            logger.info(f"[{self.account}] ✅ OPTION Order placed: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
+            if order_id is None:
+                logger.error(f"[{self.account}] ❌ place_order returned None")
+                return -1, None
+                
+            broker_order_id = order_id.get('BrokerOrderID', -1)
+            message = order_id.get('Message', 'No message')
+            print(f"Order id: {broker_order_id} {message}")
+            logger.info(f"[{self.account}] ✅ OPTION Order placed: order_id={broker_order_id} message='{message}'")
 
             # Check for "another client" error even on success
-            if 'another client' in str(order_id.get('Message', '')).lower():
+            if 'another client' in str(message).lower():
                 logger.error(f"[{self.account}] ❌ DETECTED 'another client' error! This should NOT happen after fix!")
                 logger.error(f"[{self.account}] Current client_code in payload: {self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')}")
 
@@ -596,16 +625,24 @@ class fivepaise_api(object):
                     IsIntraday=isIntraday  # Use the parameter in retry as well
                 )
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
-                print(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
-                logger.info(f"Order id: {order_id['BrokerOrderID']} {order_id['Message']}")
+                if order_id is not None:
+                    broker_order_id = order_id.get('BrokerOrderID', -1)
+                    message = order_id.get('Message', 'No message')
+                    print(f"Order id: {broker_order_id} {message}")
+                    logger.info(f"Order id: {broker_order_id} {message}")
+                else:
+                    print("Order id: None")
+                    logger.error("place_order returned None during retry")
 
             except Exception as e2:
-                print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                print(''.join(traceback.format_exception(e2)))
                 print(f"Error executing place_order: {e2}")
                 logging.error("Error executing place_order: %s", e2)
                 return -1, None
 
-        return order_id['BrokerOrderID'], tokenInfo['Expiry']  # Changed to return tuple
+        if order_id is None:
+            return -1, None
+        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo else None
 
     def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         """
@@ -712,7 +749,7 @@ class fivepaise_api(object):
 
         except Exception as e:
             logger.error(f"Fatal error in place_order_synthetic_future: {e}")
-            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            print(''.join(traceback.format_exception(e)))
             return -1, None
 
     def get_ledger_balance(self):
@@ -804,7 +841,7 @@ class fivepaise_api(object):
             logger.info(f"[{self.account}] 📊 Order status result: order_id={order_id} status={order_ret} price={average_price}")
             return order_ret, average_price
         except Exception as e:
-            print(''.join(traceback.format_exception(e, value=e, tb=e.__traceback__)))
+            print(''.join(traceback.format_exception(e)))
             print(f"Error executing get_order_status: {e}")
             logger.error("Error executing get_order_status: %s", e)
             return -1, -1

@@ -482,15 +482,23 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
-                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit long trade")
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                # Fake close if previous error
+                                if current_trade.loc[row_number, 'enter_order_state'] == 'error' or \
+                                   current_trade.loc[row_number, 'exit_order_state'] == 'error':
+                                    logging.info(f"Fake closing long trade for {account} {s} due to previous error state")
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                else:
+                                    print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                    logging.info("Exit long trade")
+                                    order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                    current_trade.loc[row_number, 'exit_orderid'] = order_id
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
                                     current_trade.loc[row_number, 'entry_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
-                                current_trade.loc[row_number, 'exit_orderid'] = order_id
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+
                     elif trade_entered is False and alligator[0] == "uptrend":
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
@@ -499,39 +507,52 @@ class CommodityStratergy:
                                 current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                                 current_trade.loc[row_number, 'state'] = 'closed'
 
-                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit short trade")
-                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                # Fake close if previous error
+                                if current_trade.loc[row_number, 'enter_order_state'] == 'error' or \
+                                   current_trade.loc[row_number, 'exit_order_state'] == 'error':
+                                    logging.info(f"Fake closing short trade for {account} {s} due to previous error state")
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                else:
+                                    print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                    logging.info("Exit short trade")
+                                    order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                    current_trade.loc[row_number, 'exit_orderid'] = order_id
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
                                     current_trade.loc[row_number, 'exit_price']
                                 current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
-                                current_trade.loc[row_number, 'exit_orderid'] = order_id
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                     else:
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             print(historic_data.iloc[-1]['Date'])
                             current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                             current_trade.loc[row_number, 'exit_price'] = historic_data.iloc[-1]['close']
                             current_trade.loc[row_number, 'state'] = 'closed'
-                            if current_trade.loc[row_number, 'trade_type'] == 'short':
-                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
-                                    current_trade.loc[row_number, 'exit_price']
-                                order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+
+                            # Fake close if previous error
+                            if current_trade.loc[row_number, 'enter_order_state'] == 'error' or \
+                               current_trade.loc[row_number, 'exit_order_state'] == 'error':
+                                logging.info(f"Fake closing trade for {account} {s} due to previous error state")
+                                current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
                             else:
-                                order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
-                                current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
-                                    current_trade.loc[row_number, 'entry_price']
+                                if current_trade.loc[row_number, 'trade_type'] == 'short':
+                                    current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'entry_price'] - \
+                                        current_trade.loc[row_number, 'exit_price']
+                                    order_id, expiry = place_order.place_buy_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                    print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                    logging.info("Exit short trade")
+                                else:
+                                    order_id, expiry = place_order.place_sell_orders_commodity(account, s, quantity, current_trade.loc[row_number, 'expiry'])
+                                    current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'exit_price'] - \
+                                        current_trade.loc[row_number, 'entry_price']
+                                    print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
+                                    logging.info("Exit long trade")
+                                current_trade.loc[row_number, 'exit_orderid'] = order_id
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+
                             current_trade.loc[row_number, 'profit'] = current_trade.loc[row_number, 'profit'] \
                                     * symbol_to_lot[s]
-                            current_trade.loc[row_number, 'exit_orderid'] = order_id
-                            current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                            if current_trade.loc[row_number, 'trade_type'] == 'short':
-                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit short trade")
-                            else:
-                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']) + str(current_trade.loc[row_number, 'exit_price']))
-                                logging.info("Exit long trade")
 
                     if current_trade is not None:
                         current_trade.to_csv(file_name, index=False)
@@ -565,8 +586,8 @@ class CommodityStratergy:
 
                 print(f"Time taken for symbol: {s} is {time_difference}")
 
-                if time_difference > 30:
-                    print("Excedding 30 seconds so exit")
+                if time_difference > 120:
+                    print("Excedding 120 seconds so exit")
                     return
 
         except Exception as e:
