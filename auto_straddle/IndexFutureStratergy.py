@@ -664,39 +664,77 @@ class IndexFutureStratergy:
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.loc[row_number, 'trade_type'] == 'long':
                                 strike_price = current_trade.loc[row_number, 'strike']
-                                print(historic_data.iloc[-1]['Date'])
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'state'] = 'closed'
-                                print("Exit long trade " + str(historic_data.iloc[-1]['close']))
-                                self.logger.info("Exit long trade")
 
-                                # Set the price once
-                                current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
+                                # If entry order was never executed, fake close — no real position to exit
+                                if current_trade.loc[row_number, 'enter_order_state'] == 'error':
+                                    self.logger.info(f"Fake closing long trade for {account} {s} — entry was in error state, no real position exists")
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                else:
+                                    print("Exit long trade " + str(historic_data.iloc[-1]['close']))
+                                    self.logger.info("Exit long trade")
 
-                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
-                                if order_id_ce == -1:
-                                    self.send_message(account, s, f"❌ Index Future: Long Exit SELL (CE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
-                                    return
+                                    current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
 
-                                current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
-                                current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
+                                    order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                    if order_id_ce == -1:
+                                        self.send_message(account, s, f"❌ Index Future: Long Exit SELL (CE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
+                                        return
 
-                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
-                                current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
-                                current_trade.loc[row_number, 'exit_price_pe'] = 0
+                                    current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
+                                    current_trade.loc[row_number, 'exit_price_ce'] = historic_data.iloc[-1]['close']
 
-                                if order_id_pe == -1:
-                                    self.send_message(account, s, f"❌ Index Future: Long Exit BUY (PE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
+                                    order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                    current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
+                                    current_trade.loc[row_number, 'exit_price_pe'] = 0
 
-                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+                                    if order_id_pe == -1:
+                                        self.send_message(account, s, f"❌ Index Future: Long Exit BUY (PE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
+
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
                     elif trade_entered is False and alligator[0] == "uptrend":
                         if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
                             if current_trade.loc[row_number, 'trade_type'] == 'short':
                                 strike_price = current_trade.loc[row_number, 'strike']
-                                print(historic_data.iloc[-1]['Date'])
                                 current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
                                 current_trade.loc[row_number, 'state'] = 'closed'
-                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']))
+
+                                # If entry order was never executed, fake close — no real position to exit
+                                if current_trade.loc[row_number, 'enter_order_state'] == 'error':
+                                    self.logger.info(f"Fake closing short trade for {account} {s} — entry was in error state, no real position exists")
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                else:
+                                    print("Exit short trade " + str(historic_data.iloc[-1]['close']))
+                                    self.logger.info("Exit short trade")
+
+                                    order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
+                                    if order_id_pe == -1:
+                                        self.send_message(account, s, f"❌ Index Future: Short Exit SELL (PE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
+                                        return
+
+                                    current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
+                                    current_trade.loc[row_number, 'exit_price_pe'] = historic_data.iloc[-1]['close']
+
+                                    order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
+                                    current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
+                                    current_trade.loc[row_number, 'exit_price_ce'] = 0
+                                    if order_id_ce == -1:
+                                        self.send_message(account, s, f"❌ Index Future: Short Exit BUY (CE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
+
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+                    else:
+                        if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
+                            current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
+                            current_trade.loc[row_number, 'state'] = 'closed'
+
+                            # If entry order was never executed, fake close — no real position to exit
+                            if current_trade.loc[row_number, 'enter_order_state'] == 'error':
+                                self.logger.info(f"Fake closing trade for {account} {s} — entry was in error state, no real position exists")
+                                current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                            elif current_trade.loc[row_number, 'trade_type'] == 'short':
+                                strike_price = current_trade.loc[row_number, 'strike']
+                                print("Exit short trade " + str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit short trade")
 
                                 order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
@@ -714,31 +752,8 @@ class IndexFutureStratergy:
                                     self.send_message(account, s, f"❌ Index Future: Short Exit BUY (CE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
 
                                 current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
-                    else:
-                        if current_trade is not None and row_number != -1 and current_trade.shape[0] != 0:
-                            print(historic_data.iloc[-1]['Date'])
-                            current_trade.loc[row_number, 'exit_time'] = historic_data.iloc[-1]['Date']
-                            current_trade.loc[row_number, 'state'] = 'closed'
-                            if current_trade.loc[row_number, 'trade_type'] == 'short':
-                                strike_price = current_trade.loc[row_number, 'strike']
-                                print ("Exit short trade " +  str(historic_data.iloc[-1]['close']))
-                                self.logger.info("Exit short trade")
-
-                                order_id_pe, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "PE", current_trade.loc[row_number, 'expiry'])
-                                if order_id_pe == -1:
-                                    self.send_message(account, s, f"❌ Index Future: Short Exit SELL (PE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
-                                    return
-
-                                current_trade.loc[row_number, 'exit_orderid_pe'] = order_id_pe
-                                current_trade.loc[row_number, 'exit_price_pe'] = historic_data.iloc[-1]['close']
-
-                                order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "BUY", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
-                                current_trade.loc[row_number, 'exit_orderid_ce'] = order_id_ce
-                                current_trade.loc[row_number, 'exit_price_ce'] = 0
-                                if order_id_ce == -1:
-                                    self.send_message(account, s, f"❌ Index Future: Short Exit BUY (CE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
                             else:
-                                print ("Exit long trade " +  str(historic_data.iloc[-1]['close']))
+                                print("Exit long trade " + str(historic_data.iloc[-1]['close']))
                                 self.logger.info("Exit long trade")
                                 strike_price = current_trade.loc[row_number, 'strike']
                                 order_id_ce, expiry = place_order.place_order_synthetic_future(account, s, quantity, "SELL", strike_price, "CE", current_trade.loc[row_number, 'expiry'])
@@ -755,7 +770,7 @@ class IndexFutureStratergy:
                                 if order_id_pe == -1:
                                     self.send_message(account, s, f"❌ Index Future: Long Exit BUY (PE) Failed | Strike: {strike_price} | Qty: {quantity}", 0)
 
-                            current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close_pending'
 
                     if current_trade is not None:
                         current_trade.to_csv(file_name, index=False)

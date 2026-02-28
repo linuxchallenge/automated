@@ -64,11 +64,11 @@ class PlaceOrder:
 
         if account == 'deepti':
             order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
-            # Retry up to 1 time if order_id is invalid (0, -1, or None)
+            # Retry up to 3 times if order_id is invalid (0, -1, or None)
             retry_count = 0
-            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 1:
+            while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
                 retry_count += 1
-                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/1...")
+                logging.warning(f"Order placement failed with order_id={order_id}, retry {retry_count}/3...")
                 time.sleep(2)
                 order_id, expiry_ret = self.obj_1.place_order_commodity(symbol, qty, 'BUY', expiry, isCommodity)
 
@@ -538,6 +538,23 @@ class PlaceOrder:
             order_status = 'Complete'
             average_price = old_price
         return order_status, average_price
+
+    def get_commodity_position(self, account, symbol, trade_type):
+        """Check if there is an open commodity position at the broker matching the intended trade.
+
+        Returns:
+            (trade_type, avg_price) if a matching position is found, (None, 0) otherwise.
+        """
+        if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
+            return self.obj_1.get_commodity_position(symbol, trade_type)
+        elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
+            return self.obj_2.get_commodity_position(symbol, trade_type)
+        elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
+            return self.obj_3.get_commodity_position(symbol, trade_type)
+        elif account == 'dummy':
+            return None, 0
+        logging.error(f"get_commodity_position: invalid account or API not initialized: {account}")
+        return None, 0
 
     def place_cash_order(self, account, symbol, quantity, side):
         print(f"Placing order for account {account}: symbol {symbol}")

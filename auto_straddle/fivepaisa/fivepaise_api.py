@@ -478,12 +478,25 @@ class fivepaise_api(object):
                 logger.error("Error placing order, trying again %s", e1)
 
                 x = TelegramSend.telegram_send_api()
-
-                # Send profit loss over telegramsend send_message
                 x.send_message("-4008545231", f"Warning 5 paise {symbol} order Pls check")
 
-                order_id = self.obj.place_order(OrderType=buy_sell, Exchange='C', ExchangeType='C', \
-                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                # Before retrying, check if the position already exists at the broker.
+                # The order may have been processed despite the exception, and retrying
+                # would create a duplicate position.
+                # At this point buy_sell has been remapped to 'B'/'S'.
+                trade_type = 'long' if buy_sell == 'B' else 'short'
+                pos_type, pos_price = self.get_commodity_position(symbol, trade_type)
+                if pos_type is not None:
+                    logger.info(f"[{self.account}] Position already exists for {symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
+                    return -1, tokenInfo['Expiry'] if tokenInfo else None
+
+                # FIX: Use correct MCX exchange (was incorrectly using 'C'/'C' cash/equity exchange)
+                if isCommodity:
+                    order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
+                                                    ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+                else:
+                    order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
+                                                    ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 if order_id is not None:
                     broker_order_id = order_id.get('BrokerOrderID', -1)
@@ -493,6 +506,7 @@ class fivepaise_api(object):
                 else:
                     print("Order id: None")
                     logger.error("place_order returned None during retry")
+                    return -1, -1
             except Exception as e2:
                 print(''.join(traceback.format_exception(e2)))
                 print(f"Error executing place_order: {e2}")
@@ -751,6 +765,61 @@ class fivepaise_api(object):
             logger.error(f"Fatal error in place_order_synthetic_future: {e}")
             print(''.join(traceback.format_exception(e)))
             return -1, None
+
+    def get_commodity_position(self, symbol, trade_type):
+        """Check if there is an open MCX commodity position matching the intended trade.
+
+        Args:
+            symbol: Commodity display name ('GOLD', 'SILVER', 'COPPER', etc.)
+            trade_type: 'long' or 'short'
+
+        Returns:
+            (trade_type, avg_price) if a matching position is found, (None, 0) otherwise
+        """
+        try:
+            self._fix_shared_payload_bug()
+            positions = self.obj.positions()
+
+            if not positions:
+                logger.info(f"[{self.account}] No open positions returned for {symbol}")
+                return None, 0
+
+            symbol_prefix_map = {
+                'GOLD': 'GOLDM',
+                'SILVER': 'SILVERMIC',
+                'COPPER': 'COPPER',
+                'CRUDEOIL': 'CRUDEOILM',
+                'NATURALGAS': 'NATGASMINI',
+                'LEAD': 'LEADMINI',
+                'ZINC': 'ZINCMINI',
+                'ALUMINIUM': 'ALUMINI',
+            }
+            mcx_prefix = symbol_prefix_map.get(symbol, symbol)
+
+            for pos in positions:
+                # 5paisa uses Exch='M' for MCX derivatives
+                exch = pos.get('Exch', '')
+                if exch != 'M':
+                    continue
+                scrip_name = str(pos.get('ScripName', '') or pos.get('Scrip', '') or '')
+                if not scrip_name.upper().startswith(mcx_prefix.upper()):
+                    continue
+
+                net_qty = int(pos.get('NetQty', 0))
+                if net_qty > 0 and trade_type == 'long':
+                    avg_price = float(pos.get('BuyAvgRate', 0) or 0)
+                    logger.info(f"[{self.account}] Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
+                    return 'long', avg_price
+                elif net_qty < 0 and trade_type == 'short':
+                    avg_price = float(pos.get('SellAvgRate', 0) or 0)
+                    logger.info(f"[{self.account}] Found SHORT position for {symbol}: qty={net_qty} avg={avg_price}")
+                    return 'short', avg_price
+
+            logger.info(f"[{self.account}] No matching {trade_type} position found for {symbol}")
+            return None, 0
+        except Exception as e:
+            logger.error(f"[{self.account}] Error checking 5paisa commodity position for {symbol}: {e}")
+            return None, 0
 
     def get_ledger_balance(self):
         """Fetch the ledger balance for the account"""

@@ -207,9 +207,9 @@ class CommodityStratergy:
                 # read file
                 current_trade = pd.read_csv(file_name)
 
-                # current_trade is empty return
+                # current_trade is empty, skip to the next account
                 if current_trade.shape[0] == 0:
-                    return
+                    continue
 
                 # check if any enter_order_state is open_pending
                 open_pending_rows = current_trade[current_trade['enter_order_state'] == 'open_pending']
@@ -235,36 +235,62 @@ class CommodityStratergy:
                     elif status == "Open":
                         # Order is still pending, keep waiting
                         logging.info(f"Entry order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
-                    elif status == "Rejected":
-                        # Order was rejected — retry only if a new hour has begun
+                    elif status in ("Rejected", "InvalidID"):
+                        # Rejected or initial placement returned -1 (InvalidID).
+                        # Before retrying, check if the position already exists at the broker
+                        # (the order may have been partially processed despite the error).
                         trading_symbol = current_trade.loc[row_number, 'Symbol']
+                        trade_type = current_trade.loc[row_number, 'trade_type']
 
-                        new_order_id, retry_success = self.retry_rejected_order(
-                            account, trading_symbol, 'entry', place_order, account_details, current_trade, row_number
-                        )
-
-                        if retry_success:
-                            # Update with new order ID and keep in open_pending state
-                            current_trade.loc[row_number, 'enter_orderid'] = new_order_id
-                            logging.info(f"Entry order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
+                        pos_type, pos_price = place_order.get_commodity_position(account, trading_symbol, trade_type)
+                        if pos_type is not None:
+                            # Position exists — the order was actually executed
+                            logging.info(f"Position found at broker for {account} {trading_symbol} despite status={status}. Marking entry as open.")
+                            current_trade.loc[row_number, 'enter_order_state'] = 'open'
+                            if pos_price > 0:
+                                current_trade.loc[row_number, 'entry_price'] = pos_price
                             current_trade.to_csv(file_name, index=False)
+                            self.reset_retry_count(account, trading_symbol, 'entry')
                         else:
-                            retry_key = f"{account}_{trading_symbol}_entry"
-                            current_retries = self.order_retry_count.get(retry_key, 0)
-                            if current_retries >= self.MAX_RETRY_ATTEMPTS:
-                                # All hourly retries exhausted — mark as permanent error
-                                self.send_message(account, trading_symbol, "Entry order rejected and all retries failed", 0)
-                                current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                            # No position — retry the order
+                            new_order_id, retry_success = self.retry_rejected_order(
+                                account, trading_symbol, 'entry', place_order, account_details, current_trade, row_number
+                            )
+
+                            if retry_success:
+                                current_trade.loc[row_number, 'enter_orderid'] = new_order_id
+                                logging.info(f"Entry order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
                                 current_trade.to_csv(file_name, index=False)
                             else:
-                                # Retry was skipped (same hour) — wait for next hour, keep open_pending
-                                logging.info(f"Entry order retry deferred to next hour for {account} {trading_symbol}")
-                    elif status in [-1, 'NotFound', 'InvalidID']:
-                        # API error, order not found, or invalid order ID
-                        # If it's InvalidID and we are here, something went wrong in initial placement or retry
-                        self.send_message(account, current_trade.loc[row_number, 'Symbol'], f"Entry order failed with status: {status}", 0)
-                        current_trade.loc[row_number, 'enter_order_state'] = 'error'
-                        current_trade.to_csv(file_name, index=False)
+                                retry_key = f"{account}_{trading_symbol}_entry"
+                                current_retries = self.order_retry_count.get(retry_key, 0)
+                                if current_retries >= self.MAX_RETRY_ATTEMPTS:
+                                    self.send_message(account, trading_symbol, "Entry order rejected and all retries failed", 0)
+                                    current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                                    current_trade.to_csv(file_name, index=False)
+                                else:
+                                    logging.info(f"Entry order retry deferred to next hour for {account} {trading_symbol}")
+                    elif status == "NotFound":
+                        # Order not in orderbook — could mean it was never placed or was already filled.
+                        # Check position to disambiguate.
+                        trading_symbol = current_trade.loc[row_number, 'Symbol']
+                        trade_type = current_trade.loc[row_number, 'trade_type']
+
+                        pos_type, pos_price = place_order.get_commodity_position(account, trading_symbol, trade_type)
+                        if pos_type is not None:
+                            logging.info(f"Order {order_id} not in orderbook but position exists for {account} {trading_symbol}. Marking entry as open.")
+                            current_trade.loc[row_number, 'enter_order_state'] = 'open'
+                            if pos_price > 0:
+                                current_trade.loc[row_number, 'entry_price'] = pos_price
+                            current_trade.to_csv(file_name, index=False)
+                            self.reset_retry_count(account, trading_symbol, 'entry')
+                        else:
+                            self.send_message(account, trading_symbol, f"Entry order not found in orderbook and no position exists (order_id={order_id})", 0)
+                            current_trade.loc[row_number, 'enter_order_state'] = 'error'
+                            current_trade.to_csv(file_name, index=False)
+                    elif status == -1:
+                        # API error — log but don't mark as error yet; will retry next cycle
+                        logging.warning(f"API error checking entry order {order_id} for {account} {current_trade.loc[row_number, 'Symbol']}, will retry next cycle")
                     else:
                         # Unknown status, log warning but don't mark as error yet
                         logging.warning(f"Unknown entry order status '{status}' for {account} {current_trade.loc[row_number, 'Symbol']}, continuing to wait")
@@ -318,35 +344,58 @@ class CommodityStratergy:
                         elif status == "Open":
                             # Order is still pending, keep waiting
                             logging.info(f"Exit order {order_id} still pending for {account} {current_trade.loc[row_number, 'Symbol']}")
-                        elif status == "Rejected" or status == "InvalidID":
-                            # Order was rejected — retry only if a new hour has begun
+                        elif status in ("Rejected", "InvalidID"):
+                            # Rejected or invalid order ID.
+                            # Check if the position is already gone (exit was executed despite the error).
                             trading_symbol = current_trade.loc[row_number, 'Symbol']
+                            trade_type = current_trade.loc[row_number, 'trade_type']
 
-                            new_order_id, retry_success = self.retry_rejected_order(
-                                account, trading_symbol, 'exit', place_order, account_details, current_trade, row_number
-                            )
-
-                            if retry_success:
-                                # Update with new order ID and keep in close_pending state
-                                current_trade.loc[row_number, 'exit_orderid'] = new_order_id
-                                logging.info(f"Exit order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
+                            pos_type, _ = place_order.get_commodity_position(account, trading_symbol, trade_type)
+                            if pos_type is None:
+                                # Position is gone — exit was executed successfully
+                                logging.info(f"Exit order status={status} but position is gone for {account} {trading_symbol}. Marking as closed.")
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close'
+                                current_trade.loc[row_number, 'state'] = 'closed'
                                 current_trade.to_csv(file_name, index=False)
+                                self.reset_retry_count(account, trading_symbol, 'exit')
                             else:
-                                retry_key = f"{account}_{trading_symbol}_exit"
-                                current_retries = self.order_retry_count.get(retry_key, 0)
-                                if current_retries >= self.MAX_RETRY_ATTEMPTS:
-                                    # All hourly retries exhausted — mark as permanent error
-                                    self.send_message(account, trading_symbol, "Exit order rejected and all retries failed", 0)
-                                    current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                # Position still exists — retry the exit order
+                                new_order_id, retry_success = self.retry_rejected_order(
+                                    account, trading_symbol, 'exit', place_order, account_details, current_trade, row_number
+                                )
+
+                                if retry_success:
+                                    current_trade.loc[row_number, 'exit_orderid'] = new_order_id
+                                    logging.info(f"Exit order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
                                     current_trade.to_csv(file_name, index=False)
                                 else:
-                                    # Retry was skipped (same hour) — wait for next hour, keep close_pending
-                                    logging.info(f"Exit order retry deferred to next hour for {account} {trading_symbol}")
-                        elif status in [-1, 'NotFound']:
-                            # API error or order not found, mark as error and send message
-                            self.send_message(account, current_trade.loc[row_number, 'Symbol'], "Exit order API error or not found", 0)
-                            current_trade.loc[row_number, 'exit_order_state'] = 'error'
-                            current_trade.to_csv(file_name, index=False)
+                                    retry_key = f"{account}_{trading_symbol}_exit"
+                                    current_retries = self.order_retry_count.get(retry_key, 0)
+                                    if current_retries >= self.MAX_RETRY_ATTEMPTS:
+                                        self.send_message(account, trading_symbol, "Exit order rejected and all retries failed", 0)
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                        current_trade.to_csv(file_name, index=False)
+                                    else:
+                                        logging.info(f"Exit order retry deferred to next hour for {account} {trading_symbol}")
+                        elif status == "NotFound":
+                            # Order not in orderbook — check if position was already closed.
+                            trading_symbol = current_trade.loc[row_number, 'Symbol']
+                            trade_type = current_trade.loc[row_number, 'trade_type']
+
+                            pos_type, _ = place_order.get_commodity_position(account, trading_symbol, trade_type)
+                            if pos_type is None:
+                                logging.info(f"Exit order {order_id} not in orderbook and position is gone for {account} {trading_symbol}. Marking as closed.")
+                                current_trade.loc[row_number, 'exit_order_state'] = 'close'
+                                current_trade.loc[row_number, 'state'] = 'closed'
+                                current_trade.to_csv(file_name, index=False)
+                                self.reset_retry_count(account, trading_symbol, 'exit')
+                            else:
+                                self.send_message(account, trading_symbol, f"Exit order not found in orderbook but position still open (order_id={order_id})", 0)
+                                current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                current_trade.to_csv(file_name, index=False)
+                        elif status == -1:
+                            # API error — log but don't mark as error yet; will retry next cycle
+                            logging.warning(f"API error checking exit order {order_id} for {account} {current_trade.loc[row_number, 'Symbol']}, will retry next cycle")
                         else:
                             # Unknown status, log warning but don't mark as error yet
                             logging.warning(f"Unknown exit order status '{status}' for {account} {current_trade.loc[row_number, 'Symbol']}, continuing to wait")

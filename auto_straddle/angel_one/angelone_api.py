@@ -163,6 +163,7 @@ class angelone_api(object):
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
         logger.info(f"Placing commodity order for {symbol}, qty: {qty}, \
                     type: {buy_sell}, expiry: {expiry}, iscommodity: {iscommodity}")
+        original_symbol = symbol  # preserve before remapping for position check
         try:
             if symbol == 'GOLD':
                 symbol = 'GOLDM'
@@ -241,10 +242,18 @@ class angelone_api(object):
                     logger.error(f"Error executing place_order again: {e}")
                     print(f"Error: {e}")
                     x = TelegramSend.telegram_send_api()
-
-                    # Send profit loss over telegramsend send_message
                     x.send_message("-4008545231", f"Warning angel one {symbol} order Pls check")
                     time.sleep(2)
+
+                    # Before retrying, check if the position already exists at the broker.
+                    # The order may have been processed despite the exception, and retrying
+                    # would create a duplicate position.
+                    trade_type = 'long' if buy_sell == 'BUY' else 'short'
+                    pos_type, pos_price = self.get_commodity_position(original_symbol, trade_type)
+                    if pos_type is not None:
+                        logger.info(f"Position already exists for {original_symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
+                        return -1, tokenInfo['expiry']
+
                     orderid = self.obj.placeOrder(orderparams)
                 except Exception as e1:
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
@@ -570,6 +579,58 @@ class angelone_api(object):
             return -1, None
 
 
+
+    def get_commodity_position(self, symbol, trade_type):
+        """Check if there is an open MCX commodity position matching the intended trade.
+
+        Args:
+            symbol: Commodity display name ('GOLD', 'SILVER', 'COPPER', etc.)
+            trade_type: 'long' or 'short'
+
+        Returns:
+            (trade_type, avg_price) if a matching position is found, (None, 0) otherwise
+        """
+        try:
+            res = self.obj.position()
+            if not res or not res.get('status') or not res.get('data'):
+                logger.warning(f"No position data returned from AngelOne for {symbol}")
+                return None, 0
+
+            symbol_prefix_map = {
+                'GOLD': 'GOLDM',
+                'SILVER': 'SILVERMIC',
+                'COPPER': 'COPPER',
+                'CRUDEOIL': 'CRUDEOILM',
+                'NATURALGAS': 'NATGASMINI',
+                'LEAD': 'LEADMINI',
+                'ZINC': 'ZINCMINI',
+                'ALUMINIUM': 'ALUMINI',
+            }
+            mcx_prefix = symbol_prefix_map.get(symbol, symbol)
+
+            for pos in res['data']:
+                if pos.get('exchange', '') != 'MCX':
+                    continue
+                # symbolname is the base name (e.g. 'GOLDM'), tradingsymbol is the full name (e.g. 'GOLDM05APR26FUT')
+                symbol_name = pos.get('symbolname', '') or pos.get('tradingsymbol', '')
+                if not str(symbol_name).upper().startswith(mcx_prefix.upper()):
+                    continue
+
+                net_qty = int(pos.get('netqty', 0))
+                if net_qty > 0 and trade_type == 'long':
+                    avg_price = float(pos.get('buyavgprice', 0) or 0)
+                    logger.info(f"AngelOne: Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
+                    return 'long', avg_price
+                elif net_qty < 0 and trade_type == 'short':
+                    avg_price = float(pos.get('sellavgprice', 0) or 0)
+                    logger.info(f"AngelOne: Found SHORT position for {symbol}: qty={net_qty} avg={avg_price}")
+                    return 'short', avg_price
+
+            logger.info(f"AngelOne: No matching {trade_type} position found for {symbol}")
+            return None, 0
+        except Exception as e:
+            logger.error(f"Error checking AngelOne commodity position for {symbol}: {e}")
+            return None, 0
 
     def get_ledger_balance(self):
         """Fetch the ledger balance for the account"""
