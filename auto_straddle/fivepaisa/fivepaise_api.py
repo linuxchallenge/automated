@@ -485,7 +485,7 @@ class fivepaise_api(object):
                 # would create a duplicate position.
                 # At this point buy_sell has been remapped to 'B'/'S'.
                 trade_type = 'long' if buy_sell == 'B' else 'short'
-                pos_type, pos_price = self.get_commodity_position(symbol, trade_type)
+                pos_type, _ = self.get_commodity_position(symbol, trade_type)
                 if pos_type is not None:
                     logger.info(f"[{self.account}] Position already exists for {symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
                     return -1, tokenInfo['Expiry'] if tokenInfo else None

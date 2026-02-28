@@ -249,7 +249,7 @@ class angelone_api(object):
                     # The order may have been processed despite the exception, and retrying
                     # would create a duplicate position.
                     trade_type = 'long' if buy_sell == 'BUY' else 'short'
-                    pos_type, pos_price = self.get_commodity_position(original_symbol, trade_type)
+                    pos_type, _ = self.get_commodity_position(original_symbol, trade_type)
                     if pos_type is not None:
                         logger.info(f"Position already exists for {original_symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
                         return -1, tokenInfo['expiry']
