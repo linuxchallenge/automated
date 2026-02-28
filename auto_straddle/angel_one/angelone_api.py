@@ -618,11 +618,17 @@ class angelone_api(object):
 
                 net_qty = int(pos.get('netqty', 0))
                 if net_qty > 0 and trade_type == 'long':
-                    avg_price = float(pos.get('buyavgprice', 0) or 0)
+                    # For carry-forward (positional) trades, buyavgprice is 0;
+                    # the actual average is in cfbuyavgprice or totalbuyavgprice.
+                    avg_price = (float(pos.get('totalbuyavgprice', 0) or 0)
+                                 or float(pos.get('cfbuyavgprice', 0) or 0)
+                                 or float(pos.get('buyavgprice', 0) or 0))
                     logger.info(f"AngelOne: Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'long', avg_price
                 elif net_qty < 0 and trade_type == 'short':
-                    avg_price = float(pos.get('sellavgprice', 0) or 0)
+                    avg_price = (float(pos.get('totalsellavgprice', 0) or 0)
+                                 or float(pos.get('cfsellavgprice', 0) or 0)
+                                 or float(pos.get('sellavgprice', 0) or 0))
                     logger.info(f"AngelOne: Found SHORT position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'short', avg_price
 

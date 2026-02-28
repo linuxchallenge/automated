@@ -807,11 +807,14 @@ class fivepaise_api(object):
 
                 net_qty = int(pos.get('NetQty', 0))
                 if net_qty > 0 and trade_type == 'long':
-                    avg_price = float(pos.get('BuyAvgRate', 0) or 0)
+                    # AvgRate is the carry-forward avg price; BuyAvgRate is only non-zero for same-day buys
+                    avg_price = (float(pos.get('AvgRate', 0) or 0)
+                                 or float(pos.get('BuyAvgRate', 0) or 0))
                     logger.info(f"[{self.account}] Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'long', avg_price
                 elif net_qty < 0 and trade_type == 'short':
-                    avg_price = float(pos.get('SellAvgRate', 0) or 0)
+                    avg_price = (float(pos.get('AvgRate', 0) or 0)
+                                 or float(pos.get('SellAvgRate', 0) or 0))
                     logger.info(f"[{self.account}] Found SHORT position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'short', avg_price
 
