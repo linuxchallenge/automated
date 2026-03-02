@@ -160,6 +160,37 @@ class angelone_api(object):
             logger.error(f"Order placement failed: {str(e)}")
             return -1
 
+    def _find_recent_order(self, tradingsymbol, transactiontype, qty, producttype=None):
+        """Check order book for a non-rejected order matching the given params.
+
+        Used after a timeout to detect if the server processed the order before
+        the client gave up, to avoid placing a duplicate on retry.
+
+        Args:
+            tradingsymbol: Full trading symbol (e.g. 'NIFTY06MAR2624900CE')
+            transactiontype: 'BUY' or 'SELL'
+            qty: Order quantity
+            producttype: 'INTRADAY' or 'CARRYFORWARD' (optional, matched if provided)
+
+        Returns the orderid string if found, None otherwise.
+        """
+        try:
+            orderbook_data = self.obj.orderBook()
+            if not orderbook_data or not orderbook_data.get('data'):
+                return None
+            for o in orderbook_data['data']:
+                if o.get('orderstatus', '') in ('rejected', 'cancelled'):
+                    continue
+                if (str(o.get('tradingsymbol', '')) == str(tradingsymbol)
+                        and str(o.get('transactiontype', '')) == str(transactiontype)
+                        and int(o.get('quantity', 0)) == int(qty)):
+                    if producttype is not None and str(o.get('producttype', '')) != str(producttype):
+                        continue
+                    return o.get('orderid')
+        except Exception as e:
+            logger.error(f"Error checking order book for recent order: {e}")
+        return None
+
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
         logger.info(f"Placing commodity order for {symbol}, qty: {qty}, \
                     type: {buy_sell}, expiry: {expiry}, iscommodity: {iscommodity}")
@@ -228,14 +259,19 @@ class angelone_api(object):
                 except requests.exceptions.Timeout:
                     print("Order placement timed out, retrying once")
                     logger.warning("Order placement timed out, retrying once")
-                    time.sleep(2)
-                    try:
-                        orderid = self.obj.placeOrder(orderparams)
-                    except Exception as e2:
-                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                        print(f"Error executing place_order after timeout: {e2}")
-                        logger.error(f"Error executing place_order after timeout: {e2}")
-                        return -1, -1
+                    time.sleep(5)
+                    existing_orderid = self._find_recent_order(orderparams['tradingsymbol'], buy_sell, qty, orderparams.get('producttype'))
+                    if existing_orderid:
+                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        orderid = existing_orderid
+                    else:
+                        try:
+                            orderid = self.obj.placeOrder(orderparams)
+                        except Exception as e2:
+                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                            print(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            return -1, -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -331,14 +367,19 @@ class angelone_api(object):
                 except requests.exceptions.Timeout:
                     print("Order placement timed out, retrying once")
                     logger.warning("Order placement timed out, retrying once")
-                    time.sleep(2)
-                    try:
-                        orderid = self.obj.placeOrder(orderparams)
-                    except Exception as e2:
-                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                        print(f"Error executing place_order after timeout: {e2}")
-                        logger.error(f"Error executing place_order after timeout: {e2}")
-                        return -1
+                    time.sleep(5)
+                    existing_orderid = self._find_recent_order(orderparams['tradingsymbol'], buy_sell, qty, orderparams.get('producttype'))
+                    if existing_orderid:
+                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        orderid = existing_orderid
+                    else:
+                        try:
+                            orderid = self.obj.placeOrder(orderparams)
+                        except Exception as e2:
+                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                            print(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            return -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")
@@ -431,14 +472,19 @@ class angelone_api(object):
                 except requests.exceptions.Timeout:
                     print("Order placement timed out, retrying once")
                     logger.warning("Order placement timed out, retrying once")
-                    time.sleep(2)
-                    try:
-                        orderid = self.obj.placeOrder(orderparams)
-                    except Exception as e2:
-                        print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                        print(f"Error executing place_order after timeout: {e2}")
-                        logger.error(f"Error executing place_order after timeout: {e2}")
-                        return -1
+                    time.sleep(5)
+                    existing_orderid = self._find_recent_order(orderparams['tradingsymbol'], buy_sell, qty, orderparams.get('producttype'))
+                    if existing_orderid:
+                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        orderid = existing_orderid
+                    else:
+                        try:
+                            orderid = self.obj.placeOrder(orderparams)
+                        except Exception as e2:
+                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
+                            print(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            return -1
             except Exception as e:
                 try:
                     print("Error placing order, trying again")

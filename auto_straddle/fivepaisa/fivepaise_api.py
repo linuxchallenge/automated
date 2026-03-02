@@ -363,6 +363,41 @@ class fivepaise_api(object):
                 return None
         return df.iloc[0]
 
+    def _find_recent_order(self, scrip_code, buy_sell, qty, is_intraday=None):
+        """Check order book for a non-rejected order matching scrip_code/side/qty.
+
+        Used after an exception to detect if the order was processed by the
+        broker before the client received the error, preventing duplicate orders.
+
+        Args:
+            scrip_code: Numeric 5paisa ScripCode
+            buy_sell: 'B' or 'S' (already remapped)
+            qty: Order quantity (int)
+            is_intraday: True for intraday, False for carryforward (None = skip check)
+
+        Returns BrokerOrderId (int) if found, None otherwise.
+        """
+        try:
+            self._fix_shared_payload_bug()
+            orderbook = self.obj.order_book()
+            if not orderbook:
+                return None
+            for o in orderbook:
+                status = str(o.get('OrderStatus', '')).lower()
+                if 'reject' in status or 'cancel' in status:
+                    continue
+                if (int(o.get('ScripCode', -1)) == int(scrip_code)
+                        and str(o.get('BuySell', '')) == str(buy_sell)
+                        and int(o.get('Qty', 0)) == int(qty)):
+                    if is_intraday is not None and bool(o.get('IsIntraday', False)) != bool(is_intraday):
+                        continue
+                    broker_id = o.get('BrokerOrderId') or o.get('BrokerOrderID') or o.get('OrderId')
+                    if broker_id:
+                        return int(broker_id)
+        except Exception as e:
+            logger.error(f"[{self.account}] Error checking order book for recent order: {e}")
+        return None
+
     def get_commodity_symbol(self, symbol, expiry=None):
         df = self.scrip_master_df
 
@@ -488,7 +523,7 @@ class fivepaise_api(object):
                 pos_type, _ = self.get_commodity_position(symbol, trade_type)
                 if pos_type is not None:
                     logger.info(f"[{self.account}] Position already exists for {symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
-                    return -1, tokenInfo['Expiry'] if tokenInfo else None
+                    return -1, tokenInfo['Expiry'] if tokenInfo is not None else None
 
                 # FIX: Use correct MCX exchange (was incorrectly using 'C'/'C' cash/equity exchange)
                 if isCommodity:
@@ -514,7 +549,7 @@ class fivepaise_api(object):
                 return -1, -1
         if order_id is None:
             return -1, -1
-        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo else None
+        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo is not None else None
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, isIntraday=True):
         """
@@ -628,16 +663,24 @@ class fivepaise_api(object):
                 x = TelegramSend.telegram_send_api()
                 x.send_message("-4008545231", f"Warning 5 paise {symbol} order Pls check")
 
-                # Retry with the same isIntraday parameter
-                order_id = self.obj.place_order(
-                    OrderType=buy_sell,
-                    Exchange='N',
-                    ExchangeType='D',
-                    ScripCode=int(token),
-                    Qty=int(qty),
-                    Price=0,
-                    IsIntraday=isIntraday  # Use the parameter in retry as well
-                )
+                # Before retrying, check if the order was already placed at the broker.
+                # The exception may have fired after the order was processed server-side.
+                existing_order_id = self._find_recent_order(int(token), buy_sell, int(qty), isIntraday)
+                if existing_order_id:
+                    logger.info(f"[{self.account}] Order {existing_order_id} already exists for {symbol} after exception. Skipping retry.")
+                    broker_order_id = existing_order_id
+                    order_id = {'BrokerOrderID': existing_order_id, 'Message': 'found in orderbook'}
+                else:
+                    # Retry with the same isIntraday parameter
+                    order_id = self.obj.place_order(
+                        OrderType=buy_sell,
+                        Exchange='N',
+                        ExchangeType='D',
+                        ScripCode=int(token),
+                        Qty=int(qty),
+                        Price=0,
+                        IsIntraday=isIntraday  # Use the parameter in retry as well
+                    )
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 if order_id is not None:
                     broker_order_id = order_id.get('BrokerOrderID', -1)
@@ -656,7 +699,7 @@ class fivepaise_api(object):
 
         if order_id is None:
             return -1, None
-        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo else None
+        return order_id.get('BrokerOrderID', -1), tokenInfo['Expiry'] if tokenInfo is not None else None
 
     def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         """
