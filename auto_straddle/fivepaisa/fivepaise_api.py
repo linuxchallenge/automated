@@ -856,8 +856,14 @@ class fivepaise_api(object):
                     logger.info(f"[{self.account}] Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'long', avg_price
                 elif net_qty < 0 and trade_type == 'short':
+                    # AvgRate holds the carry-forward avg price; SellAvgRate is only non-zero for same-day sells.
+                    # AvgCFQty is a tertiary fallback — 5paisa raw data shows it also holds the CF avg rate
+                    # (same as AvgRate) despite the misleading "Qty" name.
                     avg_price = (float(pos.get('AvgRate', 0) or 0)
-                                 or float(pos.get('SellAvgRate', 0) or 0))
+                                 or float(pos.get('SellAvgRate', 0) or 0)
+                                 or float(pos.get('AvgCFQty', 0) or 0))
+                    if avg_price == 0:
+                        logger.warning(f"[{self.account}] SHORT avg_price=0 for {symbol}. Raw pos fields: {dict(pos)}")
                     logger.info(f"[{self.account}] Found SHORT position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'short', avg_price
 
