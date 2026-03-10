@@ -955,39 +955,63 @@ Strategy Breakdown:"""
                 qty = float(qty_val)
 
                 # Check if trade was opened on target date (Credit)
-                # Entry = Sell = Credit (count for ALL trades opened on target date)
+                # Entry = Sell strangle = Credit; Hedge = Buy options = Debit
                 open_date = row.get('open_date')
                 if pd.notna(open_date) and open_date == target_date:
                     ce_price = float(row.get('strangle_ce_price') or 0)
                     pe_price = float(row.get('strangle_pe_price') or 0)
-                    
+
                     # Handle cases where one side might be -1 or 0 (if only one side traded)
                     credit_per_unit = 0
                     if ce_price > 0:
                         credit_per_unit += ce_price
                     if pe_price > 0:
                         credit_per_unit += pe_price
-                        
+
                     total_pnl += credit_per_unit * multiplier * qty
 
+                    # Hedge options are BOUGHT on the same day (debit)
+                    # hedge_ce_price / hedge_pe_price are -1 when not yet placed
+                    hedge_ce_price = float(row.get('hedge_ce_price') or 0)
+                    hedge_pe_price = float(row.get('hedge_pe_price') or 0)
+                    hedge_debit = 0
+                    if hedge_ce_price > 0:
+                        hedge_debit += hedge_ce_price
+                    if hedge_pe_price > 0:
+                        hedge_debit += hedge_pe_price
+                    total_pnl -= hedge_debit * multiplier * qty
+
                 # Check if trade was closed on target date (Debit)
-                # Exit = Buy to close = Debit (only count if close prices are valid)
+                # Exit = Buy to close strangle = Debit; Hedge close = Sell/expiry = Credit
                 close_date = row.get('close_date')
                 if pd.notna(close_date) and close_date == target_date:
                     ce_close_price = float(row.get('strangle_ce_close_price') or 0)
                     pe_close_price = float(row.get('strangle_pe_close_price') or 0)
-                    
+
                     # Skip if both close prices are 0/empty (incomplete data)
                     if ce_close_price == 0 and pe_close_price == 0:
                         continue
-                    
+
                     debit_per_unit = 0
                     if ce_close_price > 0:
                         debit_per_unit += ce_close_price
                     if pe_close_price > 0:
                         debit_per_unit += pe_close_price
-                        
+
                     total_pnl -= debit_per_unit * multiplier * qty
+
+                    # Hedge options are SOLD (or expired worthless) on close date (credit)
+                    # NaN means expired worthless → 0 credit, which is correct
+                    hedge_ce_close = row.get('hedge_ce_close_price')
+                    hedge_pe_close = row.get('hedge_pe_close_price')
+                    hedge_ce_close = float(hedge_ce_close) if pd.notna(hedge_ce_close) else 0
+                    hedge_pe_close = float(hedge_pe_close) if pd.notna(hedge_pe_close) else 0
+                    hedge_credit = 0
+                    if hedge_ce_close > 0:
+                        hedge_credit += hedge_ce_close
+                    if hedge_pe_close > 0:
+                        hedge_credit += hedge_pe_close
+                    total_pnl += hedge_credit * multiplier * qty
 
             return total_pnl
 
