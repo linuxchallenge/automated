@@ -390,9 +390,24 @@ class CommodityStratergy:
                                 current_trade.to_csv(file_name, index=False)
                                 self.reset_retry_count(account, trading_symbol, 'exit')
                             else:
-                                self.send_message(account, trading_symbol, f"Exit order not found in orderbook but position still open (order_id={order_id})", 0)
-                                current_trade.loc[row_number, 'exit_order_state'] = 'error'
-                                current_trade.to_csv(file_name, index=False)
+                                # Position still open — original order never went through, retry next cycle
+                                logging.warning(f"Exit order {order_id} not in orderbook but position still open for {account} {trading_symbol}. Retrying.")
+                                new_order_id, retry_success = self.retry_rejected_order(
+                                    account, trading_symbol, 'exit', place_order, account_details, current_trade, row_number
+                                )
+                                if retry_success:
+                                    current_trade.loc[row_number, 'exit_orderid'] = new_order_id
+                                    logging.info(f"Exit order retry successful for {account} {trading_symbol}, new order ID: {new_order_id}")
+                                    current_trade.to_csv(file_name, index=False)
+                                else:
+                                    retry_key = f"{account}_{trading_symbol}_exit"
+                                    current_retries = self.order_retry_count.get(retry_key, 0)
+                                    if current_retries >= self.MAX_RETRY_ATTEMPTS:
+                                        self.send_message(account, trading_symbol, "Exit order not found and all retries failed. Manual check required.", 0)
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
+                                        current_trade.to_csv(file_name, index=False)
+                                    else:
+                                        logging.info(f"Exit order retry deferred to next hour for {account} {trading_symbol}")
                         elif status == -1:
                             # API error — log but don't mark as error yet; will retry next cycle
                             logging.warning(f"API error checking exit order {order_id} for {account} {current_trade.loc[row_number, 'Symbol']}, will retry next cycle")
