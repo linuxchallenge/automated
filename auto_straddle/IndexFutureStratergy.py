@@ -455,7 +455,7 @@ class IndexFutureStratergy:
 
             current_time_dt = datetime.now().time()
 
-            if current_time_dt < time(9, 15):
+            if current_time_dt < time(9, 17):
                 return
 
             # return if time is more than 3:30
