@@ -424,6 +424,55 @@ class fivepaise_api(object):
         else:
             return None
 
+    def get_best_price(self, token, exchange, exchange_type, buy_sell):
+        """Fetch best market depth price for limit orders (SEBI compliance - no market orders).
+
+        For BUY orders returns best ask (SellPrice) to ensure immediate fill.
+        For SELL orders returns best bid (BuyPrice) to ensure immediate fill.
+        Falls back to LTP ± 0.5% buffer if market depth is unavailable.
+
+        Args:
+            token: ScripCode (int)
+            exchange: Exchange code ('N', 'M', 'B', etc.)
+            exchange_type: ExchangeType ('D', 'C', etc.)
+            buy_sell: 'B' for buy, 'S' for sell
+
+        Returns:
+            float: Best price to use in limit order
+        """
+        try:
+            self._fix_shared_payload_bug()
+            response = self.obj.fetch_market_depth_by_scrip(
+                Exchange=exchange,
+                ExchangeType=exchange_type,
+                ScripCode=str(token)
+            )
+            packet = response['body']['Data'][0]['Packet'][0]
+            if buy_sell == 'B':
+                price = float(packet.get('SellPrice', 0))
+            else:
+                price = float(packet.get('BuyPrice', 0))
+            if price > 0:
+                logger.info(f"[{self.account}] Market depth price for token {token}: {price} (buy_sell={buy_sell})")
+                return price
+        except Exception as e:
+            logger.warning(f"[{self.account}] Market depth unavailable for token {token}: {e}. Falling back to LTP.")
+
+        # Fallback: use market snapshot LTP ± 0.5% buffer
+        try:
+            self._fix_shared_payload_bug()
+            snap = self.obj.fetch_market_feed_scrip(Exchange=exchange, ExchangeType=exchange_type, ScripCode=str(token))
+            ltp = float(snap['body']['Data'][0]['LastTradedPrice'])
+            if buy_sell == 'B':
+                price = round(ltp * 1.005, 2)
+            else:
+                price = round(ltp * 0.995, 2)
+            logger.info(f"[{self.account}] LTP fallback price for token {token}: {price} (ltp={ltp})")
+            return price
+        except Exception as e2:
+            logger.error(f"[{self.account}] LTP fallback also failed for token {token}: {e2}. Using 0 (market order).")
+            return 0
+
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, isCommodity=True):
         logger.info(f"[{self.account}] 🔵 Placing COMMODITY order: {buy_sell} {symbol} qty={qty} expiry={expiry}")
 
@@ -456,12 +505,14 @@ class fivepaise_api(object):
             buy_sell = 'S'
         try:
             if isCommodity:
+                price = self.get_best_price(int(token), 'M', 'D', buy_sell)
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
-                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+                                                ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
             else:
                 qty = qty * lot
+                price = self.get_best_price(int(token), 'N', 'D', buy_sell)
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
-                                                ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                                                ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
             if order_id is None:
                 logger.error(f"[{self.account}] ❌ place_order returned None")
@@ -485,12 +536,14 @@ class fivepaise_api(object):
                     time.sleep(1)
                     try:
                         if isCommodity:
+                            price = self.get_best_price(int(token), 'M', 'D', buy_sell)
                             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
-                                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+                                                            ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
                         else:
                             qty = qty * lot
+                            price = self.get_best_price(int(token), 'N', 'D', buy_sell)
                             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
-                                                            ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                                                            ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
                         if order_id is not None:
                             broker_order_id = order_id.get('BrokerOrderID', -1)
                             message = order_id.get('Message', 'No message')
@@ -527,11 +580,13 @@ class fivepaise_api(object):
 
                 # FIX: Use correct MCX exchange (was incorrectly using 'C'/'C' cash/equity exchange)
                 if isCommodity:
+                    price = self.get_best_price(int(token), 'M', 'D', buy_sell)
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
-                                                    ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=False)
+                                                    ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
                 else:
+                    price = self.get_best_price(int(token), 'N', 'D', buy_sell)
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
-                                                    ScripCode=int(token), Qty=int(qty), Price=0, IsIntraday=True)
+                                                    ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 if order_id is not None:
                     broker_order_id = order_id.get('BrokerOrderID', -1)
@@ -604,13 +659,14 @@ class fivepaise_api(object):
 
         try:
             # Use the isIntraday parameter in the order placement
+            price = self.get_best_price(int(token), exchange, 'D', buy_sell)
             order_id = self.obj.place_order(
                 OrderType=buy_sell,
                 Exchange=exchange,
                 ExchangeType='D',
                 ScripCode=int(token),
                 Qty=int(qty),
-                Price=0,
+                Price=price,
                 IsIntraday=isIntraday  # Actually use the parameter
             )
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -634,13 +690,14 @@ class fivepaise_api(object):
                     # Retry the order after session refresh
                     time.sleep(1)
                     try:
+                        price = self.get_best_price(int(token), exchange, 'D', buy_sell)
                         order_id = self.obj.place_order(
                             OrderType=buy_sell,
                             Exchange='N',
                             ExchangeType='D',
                             ScripCode=int(token),
                             Qty=int(qty),
-                            Price=0,
+                            Price=price,
                             IsIntraday=isIntraday
                         )
                         logger.info(f"[{self.account}] ✅ OPTION Order placed after session refresh: order_id={order_id['BrokerOrderID']} message='{order_id['Message']}'")
@@ -672,13 +729,14 @@ class fivepaise_api(object):
                     order_id = {'BrokerOrderID': existing_order_id, 'Message': 'found in orderbook'}
                 else:
                     # Retry with the same isIntraday parameter
+                    price = self.get_best_price(int(token), exchange, 'D', buy_sell)
                     order_id = self.obj.place_order(
                         OrderType=buy_sell,
                         Exchange='N',
                         ExchangeType='D',
                         ScripCode=int(token),
                         Qty=int(qty),
-                        Price=0,
+                        Price=price,
                         IsIntraday=isIntraday  # Use the parameter in retry as well
                     )
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -772,13 +830,14 @@ class fivepaise_api(object):
                 order_type = 'S'
 
             # 4. PLACE ORDER
+            price = self.get_best_price(int(token), exchange, 'D', order_type)
             order_id = self.obj.place_order(
                 OrderType=order_type,
                 Exchange=exchange,
                 ExchangeType='D',
                 ScripCode=int(token),
                 Qty=int(qty),
-                Price=0,
+                Price=price,
                 IsIntraday=False # Synthetic futures are usually positional
             )
 
@@ -791,13 +850,14 @@ class fivepaise_api(object):
                 logger.error(f"[{self.account}] ❌ DETECTED 'another client' error during synthetic future order!")
                 if self._refresh_session():
                     time.sleep(1)
+                    price = self.get_best_price(int(token), exchange, 'D', order_type)
                     order_id = self.obj.place_order(
                         OrderType=order_type,
                         Exchange=exchange,
                         ExchangeType='D',
                         ScripCode=int(token),
                         Qty=int(qty),
-                        Price=0,
+                        Price=price,
                         IsIntraday=False
                     )
                     logger.info(f"[{self.account}] ✅ SYNTHETIC FUTURE Order placed after refresh: order_id={order_id['BrokerOrderID']}")
