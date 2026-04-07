@@ -442,27 +442,39 @@ class fivepaise_api(object):
         """
         try:
             self._fix_shared_payload_bug()
+            # order_request already unwraps res["body"], so response IS the body.
+            # Response keys: 'MarketDepthData' (list), 'Status', 'Message'.
+            # Each entry: {'BbBuySellFlag': 66=Bid/83=Ask, 'Price': float, 'Quantity': int}
             response = self.obj.fetch_market_depth_by_scrip(
-                Exchange=exchange,
+                Exch=exchange,
                 ExchangeType=exchange_type,
                 ScripCode=str(token)
             )
-            packet = response['body']['Data'][0]['Packet'][0]
+            entries = response.get('MarketDepthData', [])
             if buy_sell == 'B':
-                price = float(packet.get('SellPrice', 0))
+                # BUY: use best ask (flag=83, 'S')
+                asks = [e for e in entries if e.get('BbBuySellFlag') == 83 and e.get('Price', 0) > 0]
+                price = float(asks[0]['Price']) if asks else 0
             else:
-                price = float(packet.get('BuyPrice', 0))
+                # SELL: use best bid (flag=66, 'B')
+                bids = [e for e in entries if e.get('BbBuySellFlag') == 66 and e.get('Price', 0) > 0]
+                price = float(bids[0]['Price']) if bids else 0
             if price > 0:
                 logger.info(f"[{self.account}] Market depth price for token {token}: {price} (buy_sell={buy_sell})")
                 return price
         except Exception as e:
             logger.warning(f"[{self.account}] Market depth unavailable for token {token}: {e}. Falling back to LTP.")
 
-        # Fallback: use market snapshot LTP ± 0.5% buffer
+        # Fallback: use market feed scrip LTP ± 0.5% buffer
         try:
             self._fix_shared_payload_bug()
-            snap = self.obj.fetch_market_feed_scrip(Exchange=exchange, ExchangeType=exchange_type, ScripCode=str(token))
-            ltp = float(snap['body']['Data'][0]['LastTradedPrice'])
+            # fetch_market_feed_scrip takes a list of scrip dicts; returns res["body"]
+            req_list = [{"Exch": exchange, "ExchangeType": exchange_type, "ScripCode": int(token)}]
+            snap = self.obj.fetch_market_feed_scrip(req_list)
+            data = snap.get('Data')
+            if not data:
+                raise ValueError(f"Feed server returned no data: {snap.get('Message')}")
+            ltp = float(data[0]['LastRate'])
             if buy_sell == 'B':
                 price = round(ltp * 1.005, 2)
             else:

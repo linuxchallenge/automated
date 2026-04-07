@@ -19,6 +19,7 @@ class upstox_api(object):
         self.access_token = None
         
         self.base_url = "https://api.upstox.com/v2"
+        self.order_url = "https://api-hft.upstox.com/v2/order/place"
         
         self._authenticate()
         self.intializeSymbolTokenMap()
@@ -132,7 +133,7 @@ class upstox_api(object):
                 
         elif exch_seg in ['NFO', 'BFO'] and instrumenttype in ['OPTSTK', 'OPTIDX']:
             return df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) & 
-                      (df['name'] == symbol) & (df['strike'] == str(float(strike_price))) & 
+                      (df['name'] == symbol) & (df['strike'] == float(strike_price)) &
                       (df['option_type'] == pe_ce)].sort_values(by=['expiry'])
                       
         elif exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
@@ -155,7 +156,7 @@ class upstox_api(object):
         return pd.DataFrame()
 
     def _place_upstox_order(self, orderparams):
-        url = f"{self.base_url}/order/place"
+        url = self.order_url
         try:
             response = requests.post(url, headers=self.get_headers(), json=orderparams)
             res_json = response.json()
@@ -381,21 +382,26 @@ class upstox_api(object):
 
     def get_order_status(self, order_id):
         try:
-            url = f"{self.base_url}/order/history?order_id={order_id}"
+            url = f"{self.base_url}/order/details?order_id={order_id}"
             response = requests.get(url, headers=self.get_headers())
-            
+
             if response.status_code == 200:
                 res = response.json()
-                if 'data' in res and len(res['data']) > 0:
-                    order_status = res['data'][0].get('status', '').lower()
-                    average_price = res['data'][0].get('average_price', 0.0)
-                    
-                    if order_status == 'complete': return "Complete", average_price
-                    elif order_status in ['open', 'pending']: return "Open", average_price
-                    elif order_status == 'rejected': return "Rejected", average_price
-                    elif order_status == 'cancelled': return "Cancelled", average_price
-                    else: return "Open", average_price
-                    
+                data = res.get('data')
+                if data:
+                    # /order/details returns data as an object (not a list)
+                    if isinstance(data, list):
+                        data = data[0] if data else None
+                    if data:
+                        order_status = data.get('status', '').lower()
+                        average_price = data.get('average_price', 0.0)
+
+                        if order_status == 'complete': return "Complete", average_price
+                        elif order_status in ['open', 'pending']: return "Open", average_price
+                        elif order_status == 'rejected': return "Rejected", average_price
+                        elif order_status == 'cancelled': return "Cancelled", average_price
+                        else: return "Open", average_price
+
             return "NotFound", -1
         except Exception as e:
             logger.error(f"Error executing get_order_status: {e}")
