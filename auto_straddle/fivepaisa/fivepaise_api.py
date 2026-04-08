@@ -231,15 +231,20 @@ class fivepaise_api(object):
 
     def _fix_shared_payload_bug(self):
         """
-        Fix py5paisa library's class-level shared variable bug.
-        The library has login_check_payload as a class variable that's shared
-        between all instances, causing "another client" errors.
-        This method updates it with the correct credentials before each order.
-        """
-        # Log the BEFORE state
-        old_client_code = self.obj.login_check_payload.get('head', {}).get('LoginId', 'UNKNOWN')
-        logger.debug(f"[{self.account}] BEFORE fix: login_check_payload has client_code={old_client_code}")
+        Fix py5paisa library's shared mutable object bugs.
 
+        The library uses module-level dicts (GENERIC_PAYLOAD, LOGIN_CHECK_PAYLOAD,
+        HEADERS) that are shared across ALL FivePaisaClient instances. When multiple
+        accounts are active, one account's API calls overwrite another's credentials,
+        causing "another client" errors and wrong-account orders.
+
+        This method breaks those shared references by assigning fresh dicts to this
+        instance before every API call.
+        """
+        # 1. Reset the main request payload to a fresh dict (breaks GENERIC_PAYLOAD sharing)
+        self.obj.payload = {"head": {}, "body": {}}
+
+        # 2. Reset login_check_payload with this account's correct credentials
         if self.account == 'leelu':
             self.obj.login_check_payload = {
                 'head': {
@@ -254,7 +259,6 @@ class fivepaise_api(object):
                     'RegistrationID': self.session
                 }
             }
-            logger.debug(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_leelu.CLIENTCODE}")
         elif self.account == 'avanthi':
             self.obj.login_check_payload = {
                 'head': {
@@ -269,7 +273,6 @@ class fivepaise_api(object):
                     'RegistrationID': self.session
                 }
             }
-            logger.debug(f"[{self.account}] AFTER fix: Set login_check_payload to client_code={credentials_avanthi.CLIENTCODE}")
 
         # Print diagnostics after fix if enabled
         if ENABLE_DIAGNOSTICS:
@@ -291,9 +294,11 @@ class fivepaise_api(object):
                     new_session = self.obj.get_totp_session(credentials_leelu.CLIENTCODE, totp_pin, credentials_leelu.PIN)
                     if new_session:
                         self.session = new_session
-                        # Fix the payload with correct credentials and new session
+                        # get_totp_session() re-links self.obj.payload to the shared GENERIC_PAYLOAD
+                        # and pollutes it with leftover keys. Reset to fresh dict first.
+                        self.obj.payload = {"head": {}, "body": {}}
                         self._fix_shared_payload_bug()
-                        # Verify login
+                        # Verify login (also sets .ASPXAUTH cookie for market depth)
                         if self.obj.Login_check() is not None:
                             logger.info(f"[{self.account}] ✅ Session refreshed successfully")
                             return True
@@ -302,10 +307,16 @@ class fivepaise_api(object):
                     new_session = self.obj.get_totp_session(credentials_avanthi.CLIENTCODE, totp_pin, credentials_avanthi.PIN)
                     if new_session:
                         self.session = new_session
-                        # Fix the payload with correct credentials and new session
+                        # get_totp_session() re-links self.obj.payload to the shared GENERIC_PAYLOAD
+                        # and pollutes it with leftover keys (TOTP, PIN, RequestToken, etc.)
+                        # which cause "Scrip info missing". Fix by resetting to fresh dict first.
+                        self.obj.payload = {"head": {}, "body": {}}
                         self._fix_shared_payload_bug()
-                        logger.info(f"[{self.account}] ✅ Session refreshed successfully")
-                        return True
+                        # Login_check() sets the .ASPXAUTH cookie required for market depth
+                        # and feed server APIs. Without it, market depth returns 0.
+                        if self.obj.Login_check() is not None:
+                            logger.info(f"[{self.account}] ✅ Session refreshed successfully")
+                            return True
             except Exception as e:
                 logger.error(f"[{self.account}] ❌ Error refreshing session: {e}")
                 logger.error(f"[{self.account}] Traceback: {''.join(traceback.format_exception(e))}")
@@ -440,11 +451,8 @@ class fivepaise_api(object):
         Returns:
             float: Best price to use in limit order
         """
-        try:
+        def _fetch_depth_price():
             self._fix_shared_payload_bug()
-            # order_request already unwraps res["body"], so response IS the body.
-            # Response keys: 'MarketDepthData' (list), 'Status', 'Message'.
-            # Each entry: {'BbBuySellFlag': 66=Bid/83=Ask, 'Price': float, 'Quantity': int}
             response = self.obj.fetch_market_depth_by_scrip(
                 Exch=exchange,
                 ExchangeType=exchange_type,
@@ -452,23 +460,36 @@ class fivepaise_api(object):
             )
             entries = response.get('MarketDepthData', [])
             if buy_sell == 'B':
-                # BUY: use best ask (flag=83, 'S')
                 asks = [e for e in entries if e.get('BbBuySellFlag') == 83 and e.get('Price', 0) > 0]
-                price = float(asks[0]['Price']) if asks else 0
+                return float(asks[0]['Price']) if asks else 0
             else:
-                # SELL: use best bid (flag=66, 'B')
                 bids = [e for e in entries if e.get('BbBuySellFlag') == 66 and e.get('Price', 0) > 0]
-                price = float(bids[0]['Price']) if bids else 0
+                return float(bids[0]['Price']) if bids else 0
+
+        # First market depth attempt
+        try:
+            price = _fetch_depth_price()
             if price > 0:
                 logger.info(f"[{self.account}] Market depth price for token {token}: {price} (buy_sell={buy_sell})")
                 return price
+            logger.warning(f"[{self.account}] Market depth returned 0 for token {token}, retrying in 1s...")
         except Exception as e:
-            logger.warning(f"[{self.account}] Market depth unavailable for token {token}: {e}. Falling back to LTP.")
+            logger.warning(f"[{self.account}] Market depth unavailable for token {token}: {e}. Retrying in 1s...")
+
+        # Retry market depth after 1 second (handles "no quotes at market open" timing)
+        time.sleep(1)
+        try:
+            price = _fetch_depth_price()
+            if price > 0:
+                logger.info(f"[{self.account}] Market depth price (retry) for token {token}: {price} (buy_sell={buy_sell})")
+                return price
+            logger.warning(f"[{self.account}] Market depth retry also returned 0 for token {token}. Falling back to LTP.")
+        except Exception as e:
+            logger.warning(f"[{self.account}] Market depth retry failed for token {token}: {e}. Falling back to LTP.")
 
         # Fallback: use market feed scrip LTP ± 0.5% buffer
         try:
             self._fix_shared_payload_bug()
-            # fetch_market_feed_scrip takes a list of scrip dicts; returns res["body"]
             req_list = [{"Exch": exchange, "ExchangeType": exchange_type, "ScripCode": int(token)}]
             snap = self.obj.fetch_market_feed_scrip(req_list)
             data = snap.get('Data')
@@ -518,11 +539,17 @@ class fivepaise_api(object):
         try:
             if isCommodity:
                 price = self.get_best_price(int(token), 'M', 'D', buy_sell)
+                if price <= 0:
+                    logger.error(f"[{self.account}] ❌ No price for commodity token {token}. Aborting order.")
+                    return -1, -1
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
             else:
                 qty = qty * lot
                 price = self.get_best_price(int(token), 'N', 'D', buy_sell)
+                if price <= 0:
+                    logger.error(f"[{self.account}] ❌ No price for index token {token}. Aborting order.")
+                    return -1, -1
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -547,13 +574,20 @@ class fivepaise_api(object):
                     # Retry the order after session refresh
                     time.sleep(1)
                     try:
+                        self._fix_shared_payload_bug()
                         if isCommodity:
                             price = self.get_best_price(int(token), 'M', 'D', buy_sell)
+                            if price <= 0:
+                                logger.error(f"[{self.account}] ❌ No price after session refresh. Aborting commodity retry.")
+                                return -1, -1
                             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                             ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
                         else:
                             qty = qty * lot
                             price = self.get_best_price(int(token), 'N', 'D', buy_sell)
+                            if price <= 0:
+                                logger.error(f"[{self.account}] ❌ No price after session refresh. Aborting index retry.")
+                                return -1, -1
                             order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                             ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
                         if order_id is not None:
@@ -591,12 +625,19 @@ class fivepaise_api(object):
                     return -1, tokenInfo['Expiry'] if tokenInfo is not None else None
 
                 # FIX: Use correct MCX exchange (was incorrectly using 'C'/'C' cash/equity exchange)
+                self._fix_shared_payload_bug()
                 if isCommodity:
                     price = self.get_best_price(int(token), 'M', 'D', buy_sell)
+                    if price <= 0:
+                        logger.error(f"[{self.account}] ❌ No price on commodity exception retry. Aborting.")
+                        return -1, -1
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                     ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
                 else:
                     price = self.get_best_price(int(token), 'N', 'D', buy_sell)
+                    if price <= 0:
+                        logger.error(f"[{self.account}] ❌ No price on index exception retry. Aborting.")
+                        return -1, -1
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                     ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -672,6 +713,9 @@ class fivepaise_api(object):
         try:
             # Use the isIntraday parameter in the order placement
             price = self.get_best_price(int(token), exchange, 'D', buy_sell)
+            if price <= 0:
+                logger.error(f"[{self.account}] ❌ Could not get price for token {token}. Aborting order to avoid market-order rejection.")
+                return -1, None
             order_id = self.obj.place_order(
                 OrderType=buy_sell,
                 Exchange=exchange,
@@ -702,10 +746,14 @@ class fivepaise_api(object):
                     # Retry the order after session refresh
                     time.sleep(1)
                     try:
+                        self._fix_shared_payload_bug()
                         price = self.get_best_price(int(token), exchange, 'D', buy_sell)
+                        if price <= 0:
+                            logger.error(f"[{self.account}] ❌ No price after session refresh. Aborting retry.")
+                            return -1, None
                         order_id = self.obj.place_order(
                             OrderType=buy_sell,
-                            Exchange='N',
+                            Exchange=exchange,
                             ExchangeType='D',
                             ScripCode=int(token),
                             Qty=int(qty),
@@ -741,10 +789,14 @@ class fivepaise_api(object):
                     order_id = {'BrokerOrderID': existing_order_id, 'Message': 'found in orderbook'}
                 else:
                     # Retry with the same isIntraday parameter
+                    self._fix_shared_payload_bug()
                     price = self.get_best_price(int(token), exchange, 'D', buy_sell)
+                    if price <= 0:
+                        logger.error(f"[{self.account}] ❌ No price on exception retry. Aborting.")
+                        return -1, None
                     order_id = self.obj.place_order(
                         OrderType=buy_sell,
-                        Exchange='N',
+                        Exchange=exchange,
                         ExchangeType='D',
                         ScripCode=int(token),
                         Qty=int(qty),
@@ -843,6 +895,9 @@ class fivepaise_api(object):
 
             # 4. PLACE ORDER
             price = self.get_best_price(int(token), exchange, 'D', order_type)
+            if price <= 0:
+                logger.error(f"[{self.account}] ❌ No price for synthetic future token {token}. Aborting order.")
+                return -1, None
             order_id = self.obj.place_order(
                 OrderType=order_type,
                 Exchange=exchange,
