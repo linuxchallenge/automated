@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # Enable detailed diagnostics by setting environment variable: FIVEPAISA_DEBUG=1
 ENABLE_DIAGNOSTICS = False
 
+# Enable debug-level order logging: logs credentials state, payload keys, raw API responses
+# before/after every order. Set to True when debugging order failures.
+ENABLE_ORDER_DEBUG = True
+
 commodity_to_symbol = {
     'CRUDEOIL': 'CRUDEOILM',
     'NATURALGAS': 'NATGASMINI',
@@ -148,6 +152,15 @@ class fivepaise_api(object):
                     self.obj.login_check_payload['head']['LoginId'] = credentials_avanthi.CLIENTCODE
                     self.obj.login_check_payload['head']['key'] = credentials_avanthi.USER_KEY
                     self.obj.login_check_payload['head']['appName'] = credentials_avanthi.APP_NAME
+
+                    if None is self.obj.Login_check():
+                        print("Login failed")
+                        continue
+                    # Fix payload again after Login_check
+                    self.obj.login_check_payload['head']['LoginId'] = credentials_avanthi.CLIENTCODE
+                    self.obj.login_check_payload['head']['key'] = credentials_avanthi.USER_KEY
+                    self.obj.login_check_payload['head']['appName'] = credentials_avanthi.APP_NAME
+                    self.obj.login_check_payload['body']['RegistrationID'] = self.session
                     break
             attempts = attempts - 1
             time.sleep(30)
@@ -238,11 +251,41 @@ class fivepaise_api(object):
         accounts are active, one account's API calls overwrite another's credentials,
         causing "another client" errors and wrong-account orders.
 
-        This method breaks those shared references by assigning fresh dicts to this
-        instance before every API call.
+        This method sets the correct client_code and credentials on this instance
+        before every API call.
         """
-        # 1. Reset the main request payload to a fresh dict (breaks GENERIC_PAYLOAD sharing)
-        self.obj.payload = {"head": {}, "body": {}}
+        # 1. Fix the main payload: ensure client_code and key belong to THIS account.
+        #    order_request() reads self.payload["body"]["ClientCode"] and self.payload["head"]["key"]
+        #    so we must ensure they are correct for this account.
+        #    Do NOT replace self.obj.payload with a new empty dict — the library's
+        #    order_request() resets it to GENERIC_PAYLOAD after each call, which may carry
+        #    accumulated state that the API server expects.
+        old_client = self.obj.client_code
+        old_key = self.obj.USER_KEY[:8] if self.obj.USER_KEY else 'None'
+        old_jwt = self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'
+
+        if self.account == 'leelu':
+            self.obj.client_code = credentials_leelu.CLIENTCODE
+            self.obj.USER_KEY = credentials_leelu.USER_KEY
+            self.obj.APP_SOURCE = credentials_leelu.APP_SOURCE
+            self.obj.Jwt_token = self.session
+            self.obj.access_token = self.session
+        elif self.account == 'avanthi':
+            self.obj.client_code = credentials_avanthi.CLIENTCODE
+            self.obj.USER_KEY = credentials_avanthi.USER_KEY
+            self.obj.APP_SOURCE = credentials_avanthi.APP_SOURCE
+            self.obj.Jwt_token = self.session
+            self.obj.access_token = self.session
+
+        new_key = self.obj.USER_KEY[:8] if self.obj.USER_KEY else 'None'
+        new_jwt = self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'
+        if ENABLE_ORDER_DEBUG:
+            if old_client != self.obj.client_code:
+                logger.info(f"[{self.account}] 🔧 _fix: client_code {old_client} → {self.obj.client_code}, key {old_key}→{new_key}, jwt {old_jwt}→{new_jwt}")
+            # Log payload body keys to detect leftover pollution from get_totp_session
+            payload_keys = list(self.obj.payload.get('body', {}).keys())
+            if len(payload_keys) > 3:
+                logger.info(f"[{self.account}] 🔧 _fix: payload body has extra keys: {payload_keys}")
 
         # 2. Reset login_check_payload with this account's correct credentials
         if self.account == 'leelu':
@@ -292,29 +335,29 @@ class fivepaise_api(object):
                 if self.account == 'leelu':
                     totp_pin = pyotp.TOTP(credentials_leelu.TOTP).now()
                     new_session = self.obj.get_totp_session(credentials_leelu.CLIENTCODE, totp_pin, credentials_leelu.PIN)
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[{self.account}] 🔧 _refresh: get_totp_session returned {'token' if new_session else 'None'}, payload body keys after: {list(self.obj.payload.get('body', {}).keys())}")
                     if new_session:
                         self.session = new_session
-                        # get_totp_session() re-links self.obj.payload to the shared GENERIC_PAYLOAD
-                        # and pollutes it with leftover keys. Reset to fresh dict first.
-                        self.obj.payload = {"head": {}, "body": {}}
                         self._fix_shared_payload_bug()
-                        # Verify login (also sets .ASPXAUTH cookie for market depth)
-                        if self.obj.Login_check() is not None:
+                        login_result = self.obj.Login_check()
+                        if ENABLE_ORDER_DEBUG:
+                            logger.info(f"[{self.account}] 🔧 _refresh: Login_check returned {login_result}")
+                        if login_result is not None:
                             logger.info(f"[{self.account}] ✅ Session refreshed successfully")
                             return True
                 elif self.account == 'avanthi':
                     totp_pin = pyotp.TOTP(credentials_avanthi.TOTP).now()
                     new_session = self.obj.get_totp_session(credentials_avanthi.CLIENTCODE, totp_pin, credentials_avanthi.PIN)
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[{self.account}] 🔧 _refresh: get_totp_session returned {'token' if new_session else 'None'}, payload body keys after: {list(self.obj.payload.get('body', {}).keys())}")
                     if new_session:
                         self.session = new_session
-                        # get_totp_session() re-links self.obj.payload to the shared GENERIC_PAYLOAD
-                        # and pollutes it with leftover keys (TOTP, PIN, RequestToken, etc.)
-                        # which cause "Scrip info missing". Fix by resetting to fresh dict first.
-                        self.obj.payload = {"head": {}, "body": {}}
                         self._fix_shared_payload_bug()
-                        # Login_check() sets the .ASPXAUTH cookie required for market depth
-                        # and feed server APIs. Without it, market depth returns 0.
-                        if self.obj.Login_check() is not None:
+                        login_result = self.obj.Login_check()
+                        if ENABLE_ORDER_DEBUG:
+                            logger.info(f"[{self.account}] 🔧 _refresh: Login_check returned {login_result}")
+                        if login_result is not None:
                             logger.info(f"[{self.account}] ✅ Session refreshed successfully")
                             return True
             except Exception as e:
@@ -458,7 +501,14 @@ class fivepaise_api(object):
                 ExchangeType=exchange_type,
                 ScripCode=str(token)
             )
+            if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 Market depth raw for token {token}: Status={response.get('Status') if response else 'None'}, entries={len(response.get('MarketDepthData', [])) if response else 0}")
+            if response is None:
+                logger.warning(f"[{self.account}] Market depth returned None for token {token}")
+                return 0
             entries = response.get('MarketDepthData', [])
+            if not entries:
+                logger.warning(f"[{self.account}] Market depth entries empty for token {token}. Status={response.get('Status')}, Message={response.get('Message')}")
             if buy_sell == 'B':
                 asks = [e for e in entries if e.get('BbBuySellFlag') == 83 and e.get('Price', 0) > 0]
                 return float(asks[0]['Price']) if asks else 0
@@ -542,6 +592,8 @@ class fivepaise_api(object):
                 if price <= 0:
                     logger.error(f"[{self.account}] ❌ No price for commodity token {token}. Aborting order.")
                     return -1, -1
+                if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 PRE-COMMODITY-ORDER: client_code={self.obj.client_code}, Exchange=M, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
             else:
@@ -550,6 +602,8 @@ class fivepaise_api(object):
                 if price <= 0:
                     logger.error(f"[{self.account}] ❌ No price for index token {token}. Aborting order.")
                     return -1, -1
+                if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 PRE-INDEX-ORDER: client_code={self.obj.client_code}, Exchange=N, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -716,6 +770,8 @@ class fivepaise_api(object):
             if price <= 0:
                 logger.error(f"[{self.account}] ❌ Could not get price for token {token}. Aborting order to avoid market-order rejection.")
                 return -1, None
+            if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 PRE-ORDER: client_code={self.obj.client_code}, Exchange={exchange}, token={token}, price={price}, qty={qty}, jwt={self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'}")
             order_id = self.obj.place_order(
                 OrderType=buy_sell,
                 Exchange=exchange,
@@ -729,11 +785,13 @@ class fivepaise_api(object):
             if order_id is None:
                 logger.error(f"[{self.account}] ❌ place_order returned None")
                 return -1, None
-                
+
             broker_order_id = order_id.get('BrokerOrderID', -1)
             message = order_id.get('Message', 'No message')
             print(f"Order id: {broker_order_id} {message}")
             logger.info(f"[{self.account}] ✅ OPTION Order placed: order_id={broker_order_id} message='{message}'")
+            if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 POST-ORDER response: {order_id}")
 
             # Check for "another client" error even on success
             if 'another client' in str(message).lower():
