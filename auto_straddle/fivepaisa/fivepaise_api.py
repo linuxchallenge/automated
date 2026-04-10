@@ -133,7 +133,10 @@ class fivepaise_api(object):
                     self.obj.login_check_payload['head']['key'] = credentials_leelu.USER_KEY
                     self.obj.login_check_payload['head']['appName'] = credentials_leelu.APP_NAME
 
-                    if None is self.obj.Login_check():
+                    login_result = self.obj.Login_check()
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[leelu] 🔧 __init__: get_totp_session OK, Login_check={login_result is not None}, session_prefix={self.session[:20] if self.session else 'None'}")
+                    if None is login_result:
                         print("Login failed")
                         continue
                     # CRITICAL FIX: Fix payload again after Login_check (it might have been corrupted)
@@ -153,7 +156,10 @@ class fivepaise_api(object):
                     self.obj.login_check_payload['head']['key'] = credentials_avanthi.USER_KEY
                     self.obj.login_check_payload['head']['appName'] = credentials_avanthi.APP_NAME
 
-                    if None is self.obj.Login_check():
+                    login_result = self.obj.Login_check()
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[avanthi] 🔧 __init__: get_totp_session OK, Login_check={login_result is not None}, session_prefix={self.session[:20] if self.session else 'None'}")
+                    if None is login_result:
                         print("Login failed")
                         continue
                     # Fix payload again after Login_check
@@ -544,6 +550,8 @@ class fivepaise_api(object):
             snap = self.obj.fetch_market_feed_scrip(req_list)
             data = snap.get('Data')
             if not data:
+                if ENABLE_ORDER_DEBUG:
+                    logger.info(f"[{self.account}] 🔧 LTP fallback snap response for token {token}: {snap}")
                 raise ValueError(f"Feed server returned no data: {snap.get('Message')}")
             ltp = float(data[0]['LastRate'])
             if buy_sell == 'B':
@@ -593,7 +601,7 @@ class fivepaise_api(object):
                     logger.error(f"[{self.account}] ❌ No price for commodity token {token}. Aborting order.")
                     return -1, -1
                 if ENABLE_ORDER_DEBUG:
-                logger.info(f"[{self.account}] 🔧 PRE-COMMODITY-ORDER: client_code={self.obj.client_code}, Exchange=M, token={token}, price={price}, qty={qty}")
+                    logger.info(f"[{self.account}] 🔧 PRE-COMMODITY-ORDER: client_code={self.obj.client_code}, Exchange=M, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
             else:
@@ -603,7 +611,7 @@ class fivepaise_api(object):
                     logger.error(f"[{self.account}] ❌ No price for index token {token}. Aborting order.")
                     return -1, -1
                 if ENABLE_ORDER_DEBUG:
-                logger.info(f"[{self.account}] 🔧 PRE-INDEX-ORDER: client_code={self.obj.client_code}, Exchange=N, token={token}, price={price}, qty={qty}")
+                    logger.info(f"[{self.account}] 🔧 PRE-INDEX-ORDER: client_code={self.obj.client_code}, Exchange=N, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                 ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
             print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -685,6 +693,8 @@ class fivepaise_api(object):
                     if price <= 0:
                         logger.error(f"[{self.account}] ❌ No price on commodity exception retry. Aborting.")
                         return -1, -1
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[{self.account}] 🔧 PRE-COMMODITY-RETRY: client_code={self.obj.client_code}, Exchange=M, token={token}, price={price}, qty={qty}")
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
                                                     ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=False)
                 else:
@@ -692,6 +702,8 @@ class fivepaise_api(object):
                     if price <= 0:
                         logger.error(f"[{self.account}] ❌ No price on index exception retry. Aborting.")
                         return -1, -1
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[{self.account}] 🔧 PRE-INDEX-RETRY: client_code={self.obj.client_code}, Exchange=N, token={token}, price={price}, qty={qty}")
                     order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
                                                     ScripCode=int(token), Qty=int(qty), Price=price, IsIntraday=True)
                 print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
@@ -852,6 +864,8 @@ class fivepaise_api(object):
                     if price <= 0:
                         logger.error(f"[{self.account}] ❌ No price on exception retry. Aborting.")
                         return -1, None
+                    if ENABLE_ORDER_DEBUG:
+                        logger.info(f"[{self.account}] 🔧 PRE-ORDER-RETRY: client_code={self.obj.client_code}, Exchange={exchange}, token={token}, price={price}, qty={qty}, jwt={self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'}")
                     order_id = self.obj.place_order(
                         OrderType=buy_sell,
                         Exchange=exchange,
@@ -956,6 +970,8 @@ class fivepaise_api(object):
             if price <= 0:
                 logger.error(f"[{self.account}] ❌ No price for synthetic future token {token}. Aborting order.")
                 return -1, None
+            if ENABLE_ORDER_DEBUG:
+                logger.info(f"[{self.account}] 🔧 PRE-SYNTHETIC-ORDER: client_code={self.obj.client_code}, Exchange={exchange}, token={token}, price={price}, qty={qty}, jwt={self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'}")
             order_id = self.obj.place_order(
                 OrderType=order_type,
                 Exchange=exchange,
