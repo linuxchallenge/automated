@@ -17,6 +17,7 @@ import time
 import pandas as pd
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_module
+import upstox.upstox_api as upstox_module
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class PlaceOrder:
         if account == 'leelu':
             self.obj_2 = fivepaise_module.fivepaise_api(account)
         if account == 'avanthi':
-            self.obj_3 = fivepaise_module.fivepaise_api(account)
+            self.obj_3 = upstox_module.upstox_api()
 
 
     def place_buy_orders_commodity(self, account, symbol, qty, expiry=None, isCommodity=True):
@@ -182,14 +183,14 @@ class PlaceOrder:
                 time.sleep(2)
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
-            order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+            order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
             # Retry up to 1 time if order_id is invalid (0, -1, or None)
             retry_count = 0
             while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 1:
                 retry_count += 1
                 logging.warning(f"Order placement failed for {account} with order_id={order_id}, retry {retry_count}/1...")
                 time.sleep(2)
-                order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
+                order_id = self.obj_3.place_order(symbol, qty, 'SELL', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 987654321
         else:
@@ -249,14 +250,14 @@ class PlaceOrder:
                 time.sleep(1)
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
         elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
-            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+            order_id = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
             # Retry up to 3 times if order_id is invalid (0, -1, or None)
             retry_count = 0
             while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
                 retry_count += 1
                 logging.warning(f"Hedge order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
                 time.sleep(1)
-                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
+                order_id = self.obj_3.place_order(symbol, qty, 'BUY', strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 987654322
         else:
@@ -312,14 +313,14 @@ class PlaceOrder:
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
 
         elif (account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None):
-            order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+            order_id = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
             # Retry up to 3 times if order_id is invalid (0, -1, or None)
             retry_count = 0
             while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
                 retry_count += 1
                 logging.warning(f"Hedge close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
                 time.sleep(1)
-                order_id, _ = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
+                order_id = self.obj_3.place_order(symbol, qty, 'SELL', strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 123456790
 
@@ -469,14 +470,14 @@ class PlaceOrder:
                 order_id, _ = self.obj_2.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
 
         elif (account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None):
-            order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
+            order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
             # Retry up to 3 times if order_id is invalid (0, -1, or None)
             retry_count = 0
             while (order_id == -1 or order_id == 0 or order_id is None) and retry_count < 3:
                 retry_count += 1
                 logging.warning(f"Close order placement failed for {account} with order_id={order_id}, retry {retry_count}/3...")
                 time.sleep(1)  # Brief delay between retries
-                order_id, _ = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
+                order_id = self.obj_3.place_order(symbol, qty, 'BUY', atm_ce_strike, pe_ce, intraday)
         elif (account == 'dummy'):
             order_id = 123456789
 

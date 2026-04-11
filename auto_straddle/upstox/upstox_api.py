@@ -17,10 +17,113 @@ try:
 except ImportError:
     curl_requests = None
     CURL_CFFI_AVAILABLE = False
+try:
+    import pycurl
+    import certifi
+    PYCURL_AVAILABLE = True
+except ImportError:
+    pycurl = None
+    PYCURL_AVAILABLE = False
 import TelegramSend
 import upstox.credentials as credentials
 
 logger = logging.getLogger(__name__)
+
+
+class PyCurlSession:
+    """Minimal requests-like session using pycurl with cookie + header support."""
+
+    def __init__(self, headers=None):
+        import io
+        self._headers = headers or {}
+        self._cookies = {}
+        self._io = io
+
+    def _exec(self, method, url, params=None, json_data=None, data=None, extra_headers=None, allow_redirects=False):
+        import io, json as _json, pycurl, certifi
+        from urllib.parse import urlencode
+
+        if params:
+            url = url + "?" + urlencode(params)
+
+        buf = io.BytesIO()
+        c = pycurl.Curl()
+        c.setopt(pycurl.URL, url)
+        c.setopt(pycurl.WRITEDATA, buf)
+        c.setopt(pycurl.CAINFO, certifi.where())
+        c.setopt(pycurl.FOLLOWLOCATION, 1 if allow_redirects else 0)
+        c.setopt(pycurl.SSL_VERIFYPEER, 1)
+
+        # Chrome TLS ciphers
+        c.setopt(pycurl.SSL_CIPHER_LIST,
+            "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:"
+            "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:"
+            "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+        )
+        c.setopt(pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1_2)
+
+        # Merge headers
+        merged = dict(self._headers)
+        if extra_headers:
+            merged.update(extra_headers)
+        if self._cookies:
+            cookie_str = "; ".join(f"{k}={v}" for k, v in self._cookies.items())
+            merged["Cookie"] = cookie_str
+        header_list = [f"{k}: {v}" for k, v in merged.items()]
+        c.setopt(pycurl.HTTPHEADER, header_list)
+
+        # Capture response headers for cookies
+        resp_headers = []
+        c.setopt(pycurl.HEADERFUNCTION, lambda line: resp_headers.append(line.decode("utf-8", errors="ignore")))
+
+        if method == "POST":
+            if json_data is not None:
+                body = _json.dumps(json_data).encode()
+                c.setopt(pycurl.POST, 1)
+                c.setopt(pycurl.POSTFIELDS, body.decode())
+            elif data is not None:
+                c.setopt(pycurl.POST, 1)
+                c.setopt(pycurl.POSTFIELDS, data)
+        else:
+            c.setopt(pycurl.HTTPGET, 1)
+
+        c.perform()
+        status_code = c.getinfo(pycurl.RESPONSE_CODE)
+        final_url   = c.getinfo(pycurl.EFFECTIVE_URL)
+        c.close()
+
+        # Parse Set-Cookie headers
+        for h in resp_headers:
+            if h.lower().startswith("set-cookie:"):
+                cookie_part = h.split(":", 1)[1].strip().split(";")[0]
+                if "=" in cookie_part:
+                    k, v = cookie_part.split("=", 1)
+                    self._cookies[k.strip()] = v.strip()
+
+        raw = buf.getvalue()
+        try:
+            body_json = _json.loads(raw.decode())
+        except Exception:
+            body_json = None
+
+        class _Resp:
+            pass
+
+        resp = _Resp()
+        resp.status_code = status_code
+        resp.url = final_url
+        resp._body_json = body_json
+        resp._raw = raw
+        resp.text = raw.decode(errors="ignore")
+        resp.json = lambda: body_json
+        return resp
+
+    def get(self, url, params=None, allow_redirects=False):
+        return self._exec("GET", url, params=params, allow_redirects=allow_redirects)
+
+    def post(self, url, params=None, json=None, data=None, allow_redirects=False):
+        return self._exec("POST", url, params=params, json_data=json, data=data, allow_redirects=allow_redirects)
+
 
 class upstox_api(object):
     def __init__(self):
@@ -78,6 +181,8 @@ class upstox_api(object):
         }
         if CURL_CFFI_AVAILABLE:
             session = curl_requests.Session(impersonate="chrome131", headers=headers)
+        elif PYCURL_AVAILABLE:
+            session = PyCurlSession(headers=headers)
         else:
             session = requests.Session()
             session.headers.update(headers)
@@ -140,7 +245,12 @@ class upstox_api(object):
             raise RuntimeError(f"Could not get auth code: {r.json()}")
 
         # Step 6 — exchange auth code for access token
-        session2 = curl_requests.Session(impersonate="chrome131") if CURL_CFFI_AVAILABLE else requests.Session()
+        if CURL_CFFI_AVAILABLE:
+            session2 = curl_requests.Session(impersonate="chrome131")
+        elif PYCURL_AVAILABLE:
+            session2 = PyCurlSession()
+        else:
+            session2 = requests.Session()
         r = session2.post(
             f"{API_BASE}/v2/login/authorization/token",
             headers={"accept": "application/json", "content-type": "application/x-www-form-urlencoded"},
