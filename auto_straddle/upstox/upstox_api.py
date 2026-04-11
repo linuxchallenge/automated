@@ -447,9 +447,15 @@ class upstox_api(object):
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df.empty: return -1
 
+            # Skip past-expiry contracts
+            try:
+                if pd.to_datetime(df.iloc[0]['expiry']).date() < datetime.now().date():
+                    df = df.iloc[1:] if len(df) > 1 else df
+            except Exception:
+                pass
+
+            if df.empty: return -1
             t_info = df.iloc[0]
-            # Advanced expiry selection logic could be replicated here
-            
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
             
@@ -482,7 +488,21 @@ class upstox_api(object):
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df.empty: return -1
 
-            t_info = df.iloc[-1] # Simplistic replication of option select logic
+            # Pick current month's last expiry (same logic as AngelOne)
+            try:
+                today = datetime.now().date()
+                next_month = today.replace(day=28) + timedelta(days=4)
+                last_day_of_month = next_month - timedelta(days=next_month.day)
+                df = df.copy()
+                df['expiry_date'] = pd.to_datetime(df['expiry']).dt.date
+                current_month = df[df['expiry_date'] <= last_day_of_month]
+                if not current_month.empty:
+                    t_info = current_month.iloc[-1]
+                else:
+                    t_info = df[df['expiry_date'] > last_day_of_month].iloc[-1] if not df[df['expiry_date'] > last_day_of_month].empty else df.iloc[-1]
+            except Exception:
+                t_info = df.iloc[-1]
+
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
             
@@ -512,7 +532,19 @@ class upstox_api(object):
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce, expiry)
             if df.empty: return -1, None
-            
+
+            # Pick expiry at least 8 days out (same logic as AngelOne)
+            try:
+                today = datetime.now().date()
+                df = df.copy()
+                df['expiry_date'] = pd.to_datetime(df['expiry']).dt.date
+                if expiry is None:
+                    future = df[df['expiry_date'] > (today + timedelta(days=8))]
+                    df = future if not future.empty else df
+            except Exception:
+                pass
+
+            if df.empty: return -1, None
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
@@ -541,23 +573,38 @@ class upstox_api(object):
 
     def get_commodity_position(self, symbol, trade_type):
         try:
-            url = f"{self.base_url}/portfolio/short-term-positions"
+            symbol_prefix_map = {
+                'GOLD': 'GOLDM',
+                'SILVER': 'SILVERMIC',
+                'COPPER': 'COPPER',
+                'CRUDEOIL': 'CRUDEOILM',
+                'NATURALGAS': 'NATGASMINI',
+                'LEAD': 'LEADMINI',
+                'ZINC': 'ZINCMINI',
+                'ALUMINIUM': 'ALUMINI',
+            }
+            mcx_prefix = symbol_prefix_map.get(symbol.upper(), symbol.upper())
+
+            # MCX carryforward positions are under long-term-positions
+            url = f"{self.base_url}/portfolio/long-term-positions"
             response = requests.get(url, headers=self.get_headers())
-            
+
             if response.status_code == 200:
-                res_json = response.json()
-                data = res_json.get('data', [])
-                
-                # Filter positions matching symbol and compute logic
+                data = response.json().get('data', [])
                 for pos in data:
-                    tradingsymbol = pos.get('tradingsymbol', '')
-                    if symbol.upper() in tradingsymbol.upper():
-                        net_qty = int(pos.get('quantity', 0)) # Net quantity check vs buy/sell
+                    tradingsymbol = pos.get('tradingsymbol', '').upper()
+                    if tradingsymbol.startswith(mcx_prefix.upper()):
+                        net_qty = int(pos.get('quantity', 0))
                         if net_qty > 0 and trade_type == 'long':
-                            return 'long', float(pos.get('average_price', 0.0))
+                            avg = float(pos.get('average_price', 0.0))
+                            logger.info(f"Upstox: Found LONG position for {symbol}: qty={net_qty} avg={avg}")
+                            return 'long', avg
                         elif net_qty < 0 and trade_type == 'short':
-                            return 'short', float(pos.get('average_price', 0.0))
-                            
+                            avg = float(pos.get('average_price', 0.0))
+                            logger.info(f"Upstox: Found SHORT position for {symbol}: qty={net_qty} avg={avg}")
+                            return 'short', avg
+
+            logger.info(f"Upstox: No matching {trade_type} position found for {symbol}")
             return None, 0
         except Exception as e:
             logger.error(f"Error checking Upstox commodity position: {e}")
@@ -567,12 +614,15 @@ class upstox_api(object):
         try:
             url = f"{self.base_url}/user/get-funds-and-margin"
             response = requests.get(url, headers=self.get_headers())
-            
+
             if response.status_code == 200:
                 res = response.json()
-                if 'data' in res and 'equity' in res['data']:
-                    balance = res['data']['equity'].get('available_margin', 0)
-                    return float(balance)
+                data = res.get('data', {})
+                equity    = float((data.get('equity')    or {}).get('available_margin', 0) or 0)
+                commodity = float((data.get('commodity') or {}).get('available_margin', 0) or 0)
+                balance = equity + commodity
+                logger.info(f"Upstox ledger balance: equity={equity} commodity={commodity} total={balance}")
+                return balance
             return 0.0
         except Exception as e:
             logger.error(f"Error fetching Upstox ledger balance: {e}")

@@ -68,17 +68,15 @@ def _build_api(mock_requests, mock_creds):
     mock_creds.API_KEY = "test_key"
     mock_creds.API_SECRET = "test_secret"
     mock_creds.REDIRECT_URI = "https://localhost/"
-    mock_creds.AUTH_CODE = None  # skip token exchange
 
-    # _authenticate: simulate reading token from file
-    m_open = mock_open(read_data="fake_access_token")
-
-    with patch("builtins.open", m_open):
-        with patch("upstox.upstox_api.pd.read_csv") as mock_read_csv:
-            mock_read_csv.return_value = _make_token_df()
-            with patch.object(pd.DataFrame, "to_csv"):  # skip writing CSV
-                from upstox.upstox_api import upstox_api
-                api = upstox_api()
+    # _authenticate now calls _headless_login — mock it to return a fake token
+    with patch("upstox.upstox_api.upstox_api._headless_login", return_value="fake_access_token"):
+        with patch("builtins.open", mock_open()):
+            with patch("upstox.upstox_api.pd.read_csv") as mock_read_csv:
+                mock_read_csv.return_value = _make_token_df()
+                with patch.object(pd.DataFrame, "to_csv"):  # skip writing CSV
+                    from upstox.upstox_api import upstox_api
+                    api = upstox_api()
     return api
 
 
@@ -87,35 +85,41 @@ def _build_api(mock_requests, mock_creds):
 # ===================================================================
 
 class TestAuthentication(unittest.TestCase):
-    """Test _authenticate with file-based token and auth-code exchange."""
+    """Test _authenticate delegates to _headless_login and retries on failure."""
 
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def test_auth_reads_token_from_file(self, mock_requests, mock_creds):
+    def test_auth_calls_headless_login(self, mock_requests, mock_creds):
+        """_authenticate should call _headless_login and store the returned token."""
         api = _build_api(mock_requests, mock_creds)
         self.assertEqual(api.access_token, "fake_access_token")
 
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def test_auth_exchanges_code_when_file_missing(self, mock_requests, mock_creds):
+    def test_auth_retries_on_failure(self, mock_requests, mock_creds):
+        """_authenticate should retry _headless_login up to 3 times on exception."""
         mock_creds.API_KEY = "key"
         mock_creds.API_SECRET = "secret"
         mock_creds.REDIRECT_URI = "http://localhost/"
-        mock_creds.AUTH_CODE = "test_auth_code"
 
-        # open raises FileNotFoundError → falls through to auth_code exchange
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"access_token": "exchanged_token"}
-        mock_requests.post.return_value = mock_response
+        call_count = {"n": 0}
 
-        with patch("builtins.open", side_effect=[FileNotFoundError, mock_open()()] ):
-            with patch("upstox.upstox_api.pd.read_csv", return_value=_make_token_df()):
-                with patch.object(pd.DataFrame, "to_csv"):
-                    from upstox.upstox_api import upstox_api
-                    api = upstox_api()
+        def headless_side_effect(self_inner):
+            call_count["n"] += 1
+            if call_count["n"] < 3:
+                raise Exception("transient error")
+            return "retried_token"
 
-        self.assertEqual(api.access_token, "exchanged_token")
+        with patch("upstox.upstox_api.upstox_api._headless_login", headless_side_effect):
+            with patch("builtins.open", mock_open()):
+                with patch("upstox.upstox_api.pd.read_csv", return_value=_make_token_df()):
+                    with patch.object(pd.DataFrame, "to_csv"):
+                        with patch("upstox.upstox_api.time.sleep"):
+                            from upstox.upstox_api import upstox_api
+                            api = upstox_api()
+
+        self.assertEqual(api.access_token, "retried_token")
+        self.assertEqual(call_count["n"], 3)
 
 
 class TestGetHeaders(unittest.TestCase):
