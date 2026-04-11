@@ -11,7 +11,12 @@ from urllib.parse import urlparse, parse_qs
 import pandas as pd
 import requests
 import pyotp
-from curl_cffi import requests as curl_requests
+try:
+    from curl_cffi import requests as curl_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    curl_requests = None
+    CURL_CFFI_AVAILABLE = False
 import TelegramSend
 import upstox.credentials as credentials
 
@@ -71,7 +76,11 @@ class upstox_api(object):
             "x-device-details": f"platform=WEB|osName=Mac OS/10.15.7|osVersion=Chrome/131.0.0.0|appVersion=4.0.0|modelName=Chrome|manufacturer=Apple|uuid={uuid}|userAgent=Upstox 3.0 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "x-request-id": request_id,
         }
-        session = curl_requests.Session(impersonate="chrome131", headers=headers)
+        if CURL_CFFI_AVAILABLE:
+            session = curl_requests.Session(impersonate="chrome131", headers=headers)
+        else:
+            session = requests.Session()
+            session.headers.update(headers)
 
         # Step 1 — get user_id
         r = session.get(
@@ -131,7 +140,7 @@ class upstox_api(object):
             raise RuntimeError(f"Could not get auth code: {r.json()}")
 
         # Step 6 — exchange auth code for access token
-        session2 = curl_requests.Session(impersonate="chrome131")
+        session2 = curl_requests.Session(impersonate="chrome131") if CURL_CFFI_AVAILABLE else requests.Session()
         r = session2.post(
             f"{API_BASE}/v2/login/authorization/token",
             headers={"accept": "application/json", "content-type": "application/x-www-form-urlencoded"},
