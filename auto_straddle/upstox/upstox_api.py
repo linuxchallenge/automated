@@ -3,9 +3,15 @@
 import traceback
 import time
 import logging
+import base64
+import random
+import string
 from datetime import datetime, timedelta
+from urllib.parse import urlparse, parse_qs
 import pandas as pd
 import requests
+import pyotp
+from curl_cffi import requests as curl_requests
 import TelegramSend
 import upstox.credentials as credentials
 
@@ -25,49 +31,116 @@ class upstox_api(object):
         self.intializeSymbolTokenMap()
 
     def _authenticate(self):
-        try:
-            with open('upstox_access_token.txt', 'r') as f:
-                self.access_token = f.read().strip()
-                if self.access_token:
-                    # Could add a token validation request here
-                    return
-        except FileNotFoundError:
-            pass
-            
-        auth_code = getattr(credentials, 'AUTH_CODE', None)
-        if not auth_code:
-            logger.error("Please set AUTH_CODE in credentials or provide upstox_access_token.txt")
-            print("Please set AUTH_CODE in credentials or provide upstox_access_token.txt")
-            return
-            
-        url = f'{self.base_url}/login/authorization/token'
+        attempts = 3
+        while attempts > 0:
+            attempts -= 1
+            try:
+                self.access_token = self._headless_login()
+                with open('upstox_access_token.txt', 'w') as f:
+                    f.write(self.access_token)
+                logger.info("Successfully authenticated with Upstox")
+                return
+            except Exception as e:
+                logger.error(f"Upstox login attempt failed: {e}")
+                if attempts > 0:
+                    time.sleep(2)
+        logger.error("All Upstox login attempts failed")
+
+    def _headless_login(self):
+        API_BASE                 = "https://api.upstox.com"
+        SERVICE_BASE             = "https://service.upstox.com"
+        LOGIN_BASE               = "https://login.upstox.com"
+        UPSTOX_INTERNAL_REDIRECT = "https://api-v2.upstox.com/login/authorization/redirect"
+
+        uuid       = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+        request_id = "WPRO-" + "".join(random.choices(string.ascii_letters + string.digits, k=10))
         headers = {
-            'accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            "accept": "*/*",
+            "accept-language": "en-GB,en;q=0.9",
+            "content-type": "application/json",
+            "origin": LOGIN_BASE,
+            "priority": "u=1, i",
+            "referer": LOGIN_BASE,
+            "sec-ch-ua": '"Chromium";v="131", "Not=A?Brand";v="24", "Google Chrome";v="131"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "x-device-details": f"platform=WEB|osName=Mac OS/10.15.7|osVersion=Chrome/131.0.0.0|appVersion=4.0.0|modelName=Chrome|manufacturer=Apple|uuid={uuid}|userAgent=Upstox 3.0 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "x-request-id": request_id,
         }
-        data = {
-            'code': auth_code,
-            'client_id': self.client_id,
-            'client_secret': self.client_secret,
-            'redirect_uri': self.redirect_uri,
-            'grant_type': 'authorization_code',
-        }
-        
-        try:
-            response = requests.post(url, headers=headers, data=data)
-            if response.status_code == 200:
-                res_json = response.json()
-                if 'access_token' in res_json:
-                    self.access_token = res_json['access_token']
-                    with open('upstox_access_token.txt', 'w') as f:
-                        f.write(self.access_token)
-                    logger.info("Successfully authenticated with Upstox")
-                else:
-                    logger.error(f"Failed to get access token: {res_json}")
-            else:
-                logger.error(f"Failed to authenticate: {response.text}")
-        except Exception as e:
-            logger.error(f"Error during authentication: {e}")
+        session = curl_requests.Session(impersonate="chrome131", headers=headers)
+
+        # Step 1 — get user_id
+        r = session.get(
+            f"{API_BASE}/v2/login/authorization/dialog",
+            params={"response_type": "code", "client_id": self.client_id, "redirect_uri": self.redirect_uri},
+            allow_redirects=True,
+        )
+        params    = parse_qs(urlparse(r.url).query)
+        user_id   = params.get("user_id", [None])[0]
+        client_id = params.get("client_id", [None])[0]
+        if not user_id:
+            raise RuntimeError(f"Could not get user_id. URL: {r.url}")
+        time.sleep(1)
+
+        # Step 2 — generate OTP
+        r = session.post(
+            f"{SERVICE_BASE}/login/open/v6/auth/1fa/otp/generate",
+            json={"data": {"mobileNumber": credentials.MOBILE, "userId": user_id}},
+        )
+        validate_otp_token = r.json().get("data", {}).get("validateOTPToken")
+        if not validate_otp_token:
+            raise RuntimeError(f"OTP generation failed: {r.json()}")
+        time.sleep(1)
+
+        # Step 3 — validate TOTP
+        totp = pyotp.TOTP(credentials.TOTP_SECRET).now()
+        r = session.post(
+            f"{SERVICE_BASE}/login/open/v4/auth/1fa/otp-totp/verify",
+            json={"data": {"otp": totp, "validateOtpToken": validate_otp_token}},
+        )
+        if r.status_code != 200:
+            raise RuntimeError(f"TOTP validation failed: {r.text}")
+        time.sleep(1)
+
+        # Step 4 — submit PIN (base64 encoded)
+        pin_b64 = base64.b64encode(credentials.PIN.encode()).decode()
+        r = session.post(
+            f"{SERVICE_BASE}/login/open/v3/auth/2fa",
+            params={"client_id": client_id, "redirect_uri": UPSTOX_INTERNAL_REDIRECT},
+            json={"data": {"twoFAMethod": "SECRET_PIN", "inputText": pin_b64}},
+            allow_redirects=True,
+        )
+        if r.status_code != 200:
+            raise RuntimeError(f"PIN submission failed: {r.text}")
+        time.sleep(1)
+
+        # Step 5 — OAuth authorization
+        r = session.post(
+            f"{SERVICE_BASE}/login/v2/oauth/authorize",
+            params={"client_id": client_id, "redirect_uri": UPSTOX_INTERNAL_REDIRECT, "requestId": request_id, "response_type": "code"},
+            json={"data": {"userOAuthApproval": True}},
+            allow_redirects=True,
+        )
+        redirect_uri = r.json().get("data", {}).get("redirectUri", "")
+        auth_code    = parse_qs(urlparse(redirect_uri).query).get("code", [None])[0]
+        if not auth_code:
+            raise RuntimeError(f"Could not get auth code: {r.json()}")
+
+        # Step 6 — exchange auth code for access token
+        session2 = curl_requests.Session(impersonate="chrome131")
+        r = session2.post(
+            f"{API_BASE}/v2/login/authorization/token",
+            headers={"accept": "application/json", "content-type": "application/x-www-form-urlencoded"},
+            data=f"code={auth_code}&client_id={self.client_id}&client_secret={self.client_secret}&redirect_uri={self.redirect_uri}&grant_type=authorization_code",
+        )
+        res = r.json()
+        if r.status_code != 200 or "access_token" not in res:
+            raise RuntimeError(f"Token exchange failed: {res}")
+        return res["access_token"]
 
     def get_headers(self):
         return {
@@ -100,19 +173,25 @@ class upstox_api(object):
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
         df = self.token_df
         
-        # Map angel_one exchange strings to upstox logic
-        exch_map = {'NSE': 'NSE', 'NFO': 'NFO', 'MCX': 'MCX', 'BSE': 'BSE', 'BFO': 'BFO'}
+        # Map exchange segment names to Upstox CSV exchange values
+        exch_map = {
+            'NSE': 'NSE_EQ',
+            'NFO': 'NSE_FO',
+            'MCX': 'MCX_FO',
+            'BSE': 'BSE_EQ',
+            'BFO': 'BSE_FO',
+        }
         exchange = exch_map.get(exch_seg, exch_seg)
-        
+
         if symbol == "SENSEX":
-            exchange = "BFO"
+            exchange = "BSE_FO"
 
         # Note: Upstox option_type is 'PE' or 'CE'
         # Upstox strike is normally actual float without the *100 used by AngelOne, but check data if needed.
         
         # We approximate the standard filtering:
         if exch_seg == 'NSE':
-            return df[(df['exchange'] == 'NSE') & (df['instrument_type'] == 'EQUITY') & (df['name'] == symbol)]
+            return df[(df['exchange'] == 'NSE_EQ') & (df['instrument_type'] == 'EQUITY') & (df['name'] == symbol)]
             
         elif exch_seg == 'NFO' and instrumenttype in ['FUTSTK', 'FUTIDX']:
             filtered = df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) & (df['name'] == symbol)]
@@ -137,7 +216,7 @@ class upstox_api(object):
                       (df['option_type'] == pe_ce)].sort_values(by=['expiry'])
                       
         elif exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
-            filtered = df[(df['exchange'] == 'MCX') & (df['instrument_type'] == 'FUTCOM') & (df['name'] == symbol)]
+            filtered = df[(df['exchange'] == 'MCX_FO') & (df['instrument_type'] == 'FUTCOM') & (df['name'] == symbol)]
             filtered = filtered.sort_values(by=['expiry'])
             
             today = datetime.now().date()

@@ -21,32 +21,32 @@ def _make_token_df():
     near_expiry = (datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d")
     rows = [
         # NSE equity
-        {"exchange": "NSE", "instrument_type": "EQUITY", "name": "RELIANCE",
+        {"exchange": "NSE_EQ", "instrument_type": "EQUITY", "name": "RELIANCE",
          "instrument_key": "NSE_EQ|INE002A01018", "lot_size": 1,
          "strike": "", "option_type": "", "expiry": ""},
-        # NFO OPTIDX – NIFTY CE
-        {"exchange": "NFO", "instrument_type": "OPTIDX", "name": "NIFTY",
-         "instrument_key": "NFO_OPT|123456", "lot_size": 50,
+        # NSE_FO OPTIDX – NIFTY CE
+        {"exchange": "NSE_FO", "instrument_type": "OPTIDX", "name": "NIFTY",
+         "instrument_key": "NSE_FO|123456", "lot_size": 50,
          "strike": "24000.0", "option_type": "CE", "expiry": far_expiry},
-        # NFO OPTIDX – NIFTY PE
-        {"exchange": "NFO", "instrument_type": "OPTIDX", "name": "NIFTY",
-         "instrument_key": "NFO_OPT|123457", "lot_size": 50,
+        # NSE_FO OPTIDX – NIFTY PE
+        {"exchange": "NSE_FO", "instrument_type": "OPTIDX", "name": "NIFTY",
+         "instrument_key": "NSE_FO|123457", "lot_size": 50,
          "strike": "24000.0", "option_type": "PE", "expiry": far_expiry},
-        # NFO FUTIDX
-        {"exchange": "NFO", "instrument_type": "FUTIDX", "name": "NIFTY",
-         "instrument_key": "NFO_FUT|111111", "lot_size": 50,
+        # NSE_FO FUTIDX
+        {"exchange": "NSE_FO", "instrument_type": "FUTIDX", "name": "NIFTY",
+         "instrument_key": "NSE_FO|111111", "lot_size": 50,
          "strike": "", "option_type": "", "expiry": far_expiry},
-        # NFO FUTIDX near expiry (<=10 days)
-        {"exchange": "NFO", "instrument_type": "FUTIDX", "name": "NIFTY",
-         "instrument_key": "NFO_FUT|111112", "lot_size": 50,
+        # NSE_FO FUTIDX near expiry (<=10 days)
+        {"exchange": "NSE_FO", "instrument_type": "FUTIDX", "name": "NIFTY",
+         "instrument_key": "NSE_FO|111112", "lot_size": 50,
          "strike": "", "option_type": "", "expiry": near_expiry},
-        # MCX FUTCOM
-        {"exchange": "MCX", "instrument_type": "FUTCOM", "name": "GOLDM",
-         "instrument_key": "MCX_FUT|222222", "lot_size": 100,
+        # MCX_FO FUTCOM
+        {"exchange": "MCX_FO", "instrument_type": "FUTCOM", "name": "GOLDM",
+         "instrument_key": "MCX_FO|222222", "lot_size": 100,
          "strike": "", "option_type": "", "expiry": far_expiry},
-        # MCX FUTCOM near expiry
-        {"exchange": "MCX", "instrument_type": "FUTCOM", "name": "GOLDM",
-         "instrument_key": "MCX_FUT|222223", "lot_size": 100,
+        # MCX_FO FUTCOM near expiry
+        {"exchange": "MCX_FO", "instrument_type": "FUTCOM", "name": "GOLDM",
+         "instrument_key": "MCX_FO|222223", "lot_size": 100,
          "strike": "", "option_type": "", "expiry": near_expiry},
     ]
     df = pd.DataFrame(rows)
@@ -89,8 +89,9 @@ def _build_api(mock_requests, mock_creds):
 class TestAuthentication(unittest.TestCase):
     """Test _authenticate with file-based token and auth-code exchange."""
 
-    @patch(*_INIT_PATCHES[::-1])  # unpack in reversed arg order
-    def test_auth_reads_token_from_file(self, mock_creds, mock_requests):
+    @patch("upstox.upstox_api.credentials")
+    @patch("upstox.upstox_api.requests")
+    def test_auth_reads_token_from_file(self, mock_requests, mock_creds):
         api = _build_api(mock_requests, mock_creds)
         self.assertEqual(api.access_token, "fake_access_token")
 
@@ -141,7 +142,7 @@ class TestGetTokenInfo(unittest.TestCase):
     def test_nfo_optidx_lookup(self):
         result = self.api.getTokenInfo("NFO", "OPTIDX", "NIFTY", 24000, "CE")
         self.assertFalse(result.empty)
-        self.assertEqual(result.iloc[0]["instrument_key"], "NFO_OPT|123456")
+        self.assertEqual(result.iloc[0]["instrument_key"], "NSE_FO|123456")
 
     def test_mcx_futcom_lookup(self):
         result = self.api.getTokenInfo("MCX", "FUTCOM", "GOLDM", 0, "X")
@@ -174,6 +175,9 @@ class TestPlaceUpstoxOrder(unittest.TestCase):
 
         result = self.api._place_upstox_order({"quantity": 1})
         self.assertEqual(result, "ORD123")
+        # Verify correct HFT order endpoint is used (not api.upstox.com)
+        call_url = mock_post.call_args[0][0]
+        self.assertEqual(call_url, "https://api-hft.upstox.com/v2/order/place")
 
     @patch("upstox.upstox_api.requests.post")
     def test_failed_order_returns_none(self, mock_post):
@@ -415,20 +419,24 @@ class TestGetOrderStatus(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"status": "complete", "average_price": 250.5}]
+            "data": {"status": "complete", "average_price": 250.5}
         }
         mock_get.return_value = mock_resp
 
         status, price = self.api.get_order_status("ORD123")
         self.assertEqual(status, "Complete")
         self.assertEqual(price, 250.5)
+        mock_get.assert_called_once_with(
+            "https://api.upstox.com/v2/order/details?order_id=ORD123",
+            headers=self.api.get_headers()
+        )
 
     @patch("upstox.upstox_api.requests.get")
     def test_order_open(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"status": "open", "average_price": 0.0}]
+            "data": {"status": "open", "average_price": 0.0}
         }
         mock_get.return_value = mock_resp
 
@@ -440,7 +448,7 @@ class TestGetOrderStatus(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"status": "rejected", "average_price": 0.0}]
+            "data": {"status": "rejected", "average_price": 0.0}
         }
         mock_get.return_value = mock_resp
 
@@ -452,7 +460,7 @@ class TestGetOrderStatus(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"status": "cancelled", "average_price": 0.0}]
+            "data": {"status": "cancelled", "average_price": 0.0}
         }
         mock_get.return_value = mock_resp
 
@@ -460,10 +468,20 @@ class TestGetOrderStatus(unittest.TestCase):
         self.assertEqual(status, "Cancelled")
 
     @patch("upstox.upstox_api.requests.get")
-    def test_order_not_found(self, mock_get):
+    def test_order_not_found_empty_data(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": []}
+        mock_resp.json.return_value = {"data": None}
+        mock_get.return_value = mock_resp
+
+        status, price = self.api.get_order_status("MISSING")
+        self.assertEqual(status, "NotFound")
+        self.assertEqual(price, -1)
+
+    @patch("upstox.upstox_api.requests.get")
+    def test_order_not_found_non_200(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
         mock_get.return_value = mock_resp
 
         status, price = self.api.get_order_status("MISSING")
@@ -475,12 +493,26 @@ class TestGetOrderStatus(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": [{"status": "after_market_order", "average_price": 0.0}]
+            "data": {"status": "after_market_order", "average_price": 0.0}
         }
         mock_get.return_value = mock_resp
 
         status, price = self.api.get_order_status("ORD127")
         self.assertEqual(status, "Open")
+
+    @patch("upstox.upstox_api.requests.get")
+    def test_order_list_response_still_handled(self, mock_get):
+        """Backwards compat: if data is a list, take the first element."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": [{"status": "complete", "average_price": 100.0}]
+        }
+        mock_get.return_value = mock_resp
+
+        status, price = self.api.get_order_status("ORD128")
+        self.assertEqual(status, "Complete")
+        self.assertEqual(price, 100.0)
 
     @patch("upstox.upstox_api.requests.get")
     def test_order_status_exception(self, mock_get):
