@@ -65,7 +65,7 @@ def send_email_with_errors(sender_email, sender_password, receiver_email, email_
     msg.attach(MIMEText(email_body, 'plain'))
 
     try:
-        print(f"Connecting to smtp.gmail.com:587...")
+        print("Connecting to smtp.gmail.com:587...")
         s = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
         s.set_debuglevel(0)
         print("Starting TLS...")

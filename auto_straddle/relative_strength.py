@@ -99,14 +99,14 @@ def get_nse_session():
         try:
             market_response = session.get("https://www.nseindia.com/market-data/live-equity-market", headers=market_headers, timeout=30)
             print(f"Market data page response: {market_response.status_code}")
-        except:
+        except Exception:
             print("Market data page failed, continuing...")
 
         # Step 3: Visit indices page to get more context
         try:
             indices_response = session.get("https://www.nseindia.com/market-data/india-indices", headers=market_headers, timeout=30)
             print(f"Indices page response: {indices_response.status_code}")
-        except:
+        except Exception:
             print("Indices page failed, continuing...")
 
         # Step 4: Try to access a simple API first to warm up session
@@ -595,28 +595,28 @@ def save_results(df_results, filename=None, send_to_telegram=True, telegram_chat
             for idx, row in top_5_1w.iterrows():
                 message += f"• {row['Index']}: {row['RS_1W']:.2f}%\n"
 
-            message += f"\n📅 *Top 5 Performers (1 Month):*\n"
+            message += "\n📅 *Top 5 Performers (1 Month):*\n"
 
             # Add top 5 performers for 1 month
             top_5_1m = df_results.nlargest(5, 'RS_1M')[['Index', 'RS_1M']]
             for idx, row in top_5_1m.iterrows():
                 message += f"• {row['Index']}: {row['RS_1M']:.2f}%\n"
 
-            message += f"\n📅 *Top 5 Performers (6 Months):*\n"
+            message += "\n📅 *Top 5 Performers (6 Months):*\n"
 
             # Add top 5 performers for 6 months
             top_5_6m = df_results.nlargest(5, 'RS_6M')[['Index', 'RS_6M']]
             for idx, row in top_5_6m.iterrows():
                 message += f"• {row['Index']}: {row['RS_6M']:.2f}%\n"
 
-            message += f"\n📅 *Top 5 Performers (1 Year):*\n"
+            message += "\n📅 *Top 5 Performers (1 Year):*\n"
 
             # Add top 5 performers for 1 year
             top_5_1y = df_results.nlargest(5, 'RS_1Y')[['Index', 'RS_1Y']]
             for idx, row in top_5_1y.iterrows():
                 message += f"• {row['Index']}: {row['RS_1Y']:.2f}%\n"
 
-            message += f"\n📎 Full results attached as CSV file."
+            message += "\n📎 Full results attached as CSV file."
 
             # Send message
             telegram_api.send_message(telegram_chat_id, message)
@@ -731,7 +731,7 @@ if __name__ == "__main__":
         # Print summary
         print("\nSUMMARY:")
         print(f"Total indices processed: {len(results_df)}")
-        print(f"All calculations completed successfully")
+        print("All calculations completed successfully")
 
         # Print top performers
         print_top_performers(results_df)

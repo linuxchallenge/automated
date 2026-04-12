@@ -11,7 +11,7 @@ import logging
 import requests
 import pandas as pd
 from datetime import datetime
-import logging_config
+import logging_config  # pylint: disable=unused-import  # side-effect: configures logging
 
 # Initialize logging using the common config
 logger = logging.getLogger(__name__)
@@ -50,11 +50,11 @@ class CSVFetcher:
             # Fetch CSV data
             response = requests.get(self.csv_url, timeout=30)
             response.raise_for_status()
-            
+
             # Load into DataFrame
             # The columns are expected to be: Sl no, Instrument, account, stratergy, expiry, date
             df = pd.read_csv(io.StringIO(response.text))
-            
+
             if df.empty:
                 logger.info("CSV is empty. Nothing to process.")
                 return
@@ -67,7 +67,7 @@ class CSVFetcher:
 
         except Exception as e:
             logger.error(f"Error in fetch_and_process: {e}")
-        
+
         if once:
             logger.info("Single run completed. Exiting.")
             exit(0)
@@ -90,7 +90,7 @@ class CSVFetcher:
             # Construct the target filename
             # nifty_pos_options_info_2026-01-08_avanthi_SENSEX_fr.csv
             filename = f"nifty_pos_options_info_{expiry}_{account}_{instrument}_{strategy}.csv"
-            
+
             # Unique key for tracking (filename + date_col to be safe)
             tracking_key = f"{filename}_{date_col}"
 
@@ -103,7 +103,7 @@ class CSVFetcher:
 
             if os.path.exists(source_path):
                 logger.info(f"Processing file: {filename}")
-                
+
                 # Copy the file to local directory
                 shutil.copy2(source_path, dest_path)
                 logger.info(f"Copied {filename} to {self.dest_dir}")

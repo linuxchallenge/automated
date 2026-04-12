@@ -1054,7 +1054,7 @@ if __name__ == "__main__":
     print(f"spot_price: {bse_data['spot_price']}")
     print(f"atm_strike: {bse_data['atm_strike']}")
     print(f"atm_ce_price: {bse_data['atm_current_ce_price']}, atm_pe_price: {bse_data['atm_current_pe_price']}")
-    print(f"\nHighest OI:")
+    print("\nHighest OI:")
     print(f"  CE: Strike {bse_data['ce_highest_strike']}, OI {bse_data['ce_highest_open_interest']}")
     print(f"  PE: Strike {bse_data['pe_highest_strike']}, OI {bse_data['pe_highest_open_interest']}")
 
@@ -1066,7 +1066,7 @@ if __name__ == "__main__":
     print(f"spot_price: {groww_data['spot_price']}")
     print(f"atm_strike: {groww_data['atm_strike']}")
     print(f"atm_ce_price: {groww_data['atm_current_ce_price']}, atm_pe_price: {groww_data['atm_current_pe_price']}")
-    print(f"\nHighest OI:")
+    print("\nHighest OI:")
     print(f"  CE: Strike {groww_data['ce_highest_strike']}, OI {groww_data['ce_highest_open_interest']}")
     print(f"  PE: Strike {groww_data['pe_highest_strike']}, OI {groww_data['pe_highest_open_interest']}")
 

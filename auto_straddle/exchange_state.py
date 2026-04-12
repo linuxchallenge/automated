@@ -48,10 +48,9 @@ class ExchangeData:
             # Process the JSON response
             print(data)
             return data
-        else:
-            print("Failed to retrieve data. Status code:",
-                  response.status_code)
-            return None
+        print("Failed to retrieve data. Status code:",
+              response.status_code)
+        return None
 
     def is_nfo_holiday(self, date_to_check):
         """
@@ -80,9 +79,8 @@ class ExchangeData:
                         return False
                 # If NFO not found, treat as holiday
                 return True
-            else:
-                print(f"Failed to retrieve data. Status code: {response.status_code}")
-                return None
+            print(f"Failed to retrieve data. Status code: {response.status_code}")
+            return None
         except Exception as e:
             print(f"Error checking NFO holiday: {e}")
             return None

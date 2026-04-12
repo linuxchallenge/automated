@@ -418,9 +418,8 @@ class fivepaise_api(object):
             # Check if there's a next row before accessing
             if len(df) > 1:
                 return df.iloc[1]
-            else:
-                print(f"No future expiry found for {symbol} {strike_price} {pe_ce}")
-                return None
+            print(f"No future expiry found for {symbol} {strike_price} {pe_ce}")
+            return None
         return df.iloc[0]
 
     def _find_recent_order(self, scrip_code, buy_sell, qty, is_intraday=None):
@@ -479,10 +478,9 @@ class fivepaise_api(object):
         # Check if the first expiry is within 10 days
         if len(df) > 1 and pd.to_datetime(df.iloc[0]['Expiry']) - pd.Timestamp.now() <= pd.Timedelta(days=10):
             return df.iloc[1]  # Return the next expiry
-        elif len(df) > 0:
+        if len(df) > 0:
             return df.iloc[0]  # Return the first expiry
-        else:
-            return None
+        return None
 
     def get_best_price(self, token, exchange, exchange_type, buy_sell):
         """Fetch best market depth price for limit orders (SEBI compliance - no market orders).
@@ -518,9 +516,8 @@ class fivepaise_api(object):
             if buy_sell == 'B':
                 asks = [e for e in entries if e.get('BbBuySellFlag') == 83 and e.get('Price', 0) > 0]
                 return float(asks[0]['Price']) if asks else 0
-            else:
-                bids = [e for e in entries if e.get('BbBuySellFlag') == 66 and e.get('Price', 0) > 0]
-                return float(bids[0]['Price']) if bids else 0
+            bids = [e for e in entries if e.get('BbBuySellFlag') == 66 and e.get('Price', 0) > 0]
+            return float(bids[0]['Price']) if bids else 0
 
         # First market depth attempt
         try:
@@ -1056,7 +1053,7 @@ class fivepaise_api(object):
                                  or float(pos.get('BuyAvgRate', 0) or 0))
                     logger.info(f"[{self.account}] Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'long', avg_price
-                elif net_qty < 0 and trade_type == 'short':
+                if net_qty < 0 and trade_type == 'short':
                     # AvgRate holds the carry-forward avg price; SellAvgRate is only non-zero for same-day sells.
                     # AvgCFQty is a tertiary fallback — 5paisa raw data shows it also holds the CF avg rate
                     # (same as AvgRate) despite the misleading "Qty" name.

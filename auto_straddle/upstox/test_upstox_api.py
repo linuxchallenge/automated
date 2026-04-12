@@ -135,7 +135,7 @@ class TestGetHeaders(unittest.TestCase):
 class TestGetTokenInfo(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     def test_nse_equity_lookup(self):
@@ -164,7 +164,7 @@ class TestGetTokenInfo(unittest.TestCase):
 class TestPlaceUpstoxOrder(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -194,17 +194,18 @@ class TestPlaceUpstoxOrder(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("upstox.upstox_api.requests.post")
-    def test_timeout_returns_none(self, mock_post):
+    def test_timeout_propagates(self, mock_post):
+        """_place_upstox_order now propagates Timeout so callers can retry."""
         import requests as real_requests
         mock_post.side_effect = real_requests.exceptions.Timeout("timeout")
-        result = self.api._place_upstox_order({"quantity": 1})
-        self.assertIsNone(result)
+        with self.assertRaises(real_requests.exceptions.Timeout):
+            self.api._place_upstox_order({"quantity": 1})
 
 
 class TestPlaceOrderCash(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -225,7 +226,7 @@ class TestPlaceOrderCash(unittest.TestCase):
 class TestPlaceOrderCommodity(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -247,7 +248,7 @@ class TestPlaceOrderCommodity(unittest.TestCase):
 class TestPlaceOrder(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -282,7 +283,7 @@ class TestPlaceOrder(unittest.TestCase):
 class TestPlaceOrderOptionBuy(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -303,7 +304,7 @@ class TestPlaceOrderOptionBuy(unittest.TestCase):
 class TestPlaceOrderSyntheticFuture(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.post")
@@ -326,7 +327,7 @@ class TestPlaceOrderSyntheticFuture(unittest.TestCase):
 class TestGetCommodityPosition(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.get")
@@ -381,7 +382,7 @@ class TestGetCommodityPosition(unittest.TestCase):
 class TestGetLedgerBalance(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.get")
@@ -415,7 +416,7 @@ class TestGetLedgerBalance(unittest.TestCase):
 class TestGetOrderStatus(unittest.TestCase):
     @patch("upstox.upstox_api.credentials")
     @patch("upstox.upstox_api.requests")
-    def setUp(self, mock_requests, mock_creds):
+    def setUp(self, mock_requests, mock_creds):  # pylint: disable=arguments-differ
         self.api = _build_api(mock_requests, mock_creds)
 
     @patch("upstox.upstox_api.requests.get")
@@ -432,7 +433,8 @@ class TestGetOrderStatus(unittest.TestCase):
         self.assertEqual(price, 250.5)
         mock_get.assert_called_once_with(
             "https://api.upstox.com/v2/order/details?order_id=ORD123",
-            headers=self.api.get_headers()
+            headers=self.api.get_headers(),
+            timeout=10,
         )
 
     @patch("upstox.upstox_api.requests.get")
@@ -522,7 +524,7 @@ class TestGetOrderStatus(unittest.TestCase):
     def test_order_status_exception(self, mock_get):
         mock_get.side_effect = Exception("Network error")
         status, price = self.api.get_order_status("ORD999")
-        self.assertEqual(status, -1)
+        self.assertEqual(status, "NotFound")
         self.assertEqual(price, -1)
 
 

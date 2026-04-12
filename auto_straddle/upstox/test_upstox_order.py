@@ -46,7 +46,7 @@ print("\nFetching LTP...")
 price = 0
 try:
     url = f"{api.base_url}/market-quote/ltp?instrument_key={instrument_token}"
-    resp = req.get(url, headers=api.get_headers())
+    resp = req.get(url, headers=api.get_headers(), timeout=10)
     data = resp.json()
     print(f"Quote response: {data}")
     ltp = data.get('data', {}).get(instrument_token.replace('|', '%7C'), {}).get('last_price', 0)
@@ -83,9 +83,8 @@ orderparams = {
     "is_amo": False
 }
 
-import requests as req
 url = api.order_url
-resp = req.post(url, headers=api.get_headers(), json=orderparams)
+resp = req.post(url, headers=api.get_headers(), json=orderparams, timeout=30)
 print(f"Status: {resp.status_code}")
 print(f"Response: {resp.json()}")
 

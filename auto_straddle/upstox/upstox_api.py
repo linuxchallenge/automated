@@ -1,6 +1,5 @@
 """Module providing a function for upstox"""
 
-import traceback
 import time
 import logging
 import base64
@@ -126,15 +125,29 @@ class PyCurlSession:
 
 
 class upstox_api(object):
+    # MCX commodity display name -> actual mini/micro contract prefix.
+    # Used by both place_order_commodity (to look up the contract) and
+    # get_commodity_position (to match open positions in the portfolio).
+    SYMBOL_PREFIX_MAP = {
+        'GOLD': 'GOLDM',
+        'SILVER': 'SILVERMIC',
+        'COPPER': 'COPPER',
+        'CRUDEOIL': 'CRUDEOILM',
+        'NATURALGAS': 'NATGASMINI',
+        'LEAD': 'LEADMINI',
+        'ZINC': 'ZINCMINI',
+        'ALUMINIUM': 'ALUMINI',
+    }
+
     def __init__(self):
         self.client_id = credentials.API_KEY
         self.client_secret = credentials.API_SECRET
         self.redirect_uri = credentials.REDIRECT_URI
         self.access_token = None
-        
+
         self.base_url = "https://api.upstox.com/v2"
         self.order_url = "https://api-hft.upstox.com/v2/order/place"
-        
+
         self._authenticate()
         self.intializeSymbolTokenMap()
 
@@ -272,7 +285,7 @@ class upstox_api(object):
         try:
             url = "https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz"
             self.token_df = pd.read_csv(url)
-            
+
             # Additional cleanup for Upstox instruments if needed
             self.token_df['expiry'] = pd.to_datetime(self.token_df['expiry'])
             if 'strike' in self.token_df.columns:
@@ -291,7 +304,7 @@ class upstox_api(object):
 
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
         df = self.token_df
-        
+
         # Map exchange segment names to Upstox CSV exchange values
         exch_map = {
             'NSE': 'NSE_EQ',
@@ -307,78 +320,102 @@ class upstox_api(object):
 
         # Note: Upstox option_type is 'PE' or 'CE'
         # Upstox strike is normally actual float without the *100 used by AngelOne, but check data if needed.
-        
+
         # We approximate the standard filtering:
         if exch_seg == 'NSE':
             return df[(df['exchange'] == 'NSE_EQ') & (df['instrument_type'] == 'EQUITY') & (df['name'] == symbol)]
-            
-        elif exch_seg == 'NFO' and instrumenttype in ['FUTSTK', 'FUTIDX']:
+
+        if exch_seg == 'NFO' and instrumenttype in ['FUTSTK', 'FUTIDX']:
             filtered = df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) & (df['name'] == symbol)]
             filtered = filtered.sort_values(by=['expiry'])
-            
+
             today = datetime.now().date()
             if expiry is not None:
                 filtered['expiry_date'] = pd.to_datetime(filtered['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
                 return filtered[filtered['expiry_date'] == date_obj]
-            else:
-                if filtered.empty: return filtered
-                expiry_str = filtered.iloc[0]['expiry'].strftime('%Y-%m-%d')
-                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
-                if (expiry_date - today).days <= 10 and len(filtered) > 1:
-                    return filtered.iloc[1:2]
+            if filtered.empty:
                 return filtered
-                
-        elif exch_seg in ['NFO', 'BFO'] and instrumenttype in ['OPTSTK', 'OPTIDX']:
-            return df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) & 
+            expiry_str = filtered.iloc[0]['expiry'].strftime('%Y-%m-%d')
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            if (expiry_date - today).days <= 10 and len(filtered) > 1:
+                return filtered.iloc[1:2]
+            return filtered
+
+        if exch_seg in ['NFO', 'BFO'] and instrumenttype in ['OPTSTK', 'OPTIDX']:
+            return df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) &
                       (df['name'] == symbol) & (df['strike'] == float(strike_price)) &
                       (df['option_type'] == pe_ce)].sort_values(by=['expiry'])
-                      
-        elif exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
+
+        if exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
             filtered = df[(df['exchange'] == 'MCX_FO') & (df['instrument_type'] == 'FUTCOM') & (df['name'] == symbol)]
             filtered = filtered.sort_values(by=['expiry'])
-            
+
             today = datetime.now().date()
             if expiry is not None:
                 filtered['expiry_date'] = pd.to_datetime(filtered['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
                 return filtered[filtered['expiry_date'] == date_obj]
-            else:
-                if filtered.empty: return filtered
-                expiry_str = filtered.iloc[0]['expiry'].strftime('%Y-%m-%d')
-                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
-                if (expiry_date - today).days <= 10 and len(filtered) > 1:
-                    return filtered.iloc[1:2]
+            if filtered.empty:
                 return filtered
+            expiry_str = filtered.iloc[0]['expiry'].strftime('%Y-%m-%d')
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            if (expiry_date - today).days <= 10 and len(filtered) > 1:
+                return filtered.iloc[1:2]
+            return filtered
 
         return pd.DataFrame()
 
     def _place_upstox_order(self, orderparams):
         url = self.order_url
+        response = requests.post(url, headers=self.get_headers(), json=orderparams, timeout=30)
+        res_json = response.json()
+        if response.status_code == 200 and res_json.get('status') == 'success':
+            return res_json['data']['order_id']
+        logger.error(f"Upstox Order placement failed: {res_json}")
+        print(f"Upstox Order placement failed: {res_json}")
+        return None
+
+    def _find_recent_order(self, instrument_token, transaction_type, qty, product=None):
+        """Check order book for a non-rejected order matching the given params.
+
+        Used after a timeout to detect if the server processed the order before
+        the client gave up, to avoid placing a duplicate on retry.
+
+        Returns the order_id string if found, None otherwise.
+        """
         try:
-            response = requests.post(url, headers=self.get_headers(), json=orderparams)
-            res_json = response.json()
-            if response.status_code == 200 and res_json.get('status') == 'success':
-                return res_json['data']['order_id']
-            else:
-                logger.error(f"Upstox Order placement failed: {res_json}")
-                print(f"Upstox Order placement failed: {res_json}")
+            url = f"{self.base_url}/order/retrieve-all"
+            response = requests.get(url, headers=self.get_headers(), timeout=15)
+            if response.status_code != 200:
                 return None
-        except requests.exceptions.Timeout:
-            logger.warning("Upstox Order placement timed out")
-            # Implement recent order check here if necessary
-            return None
+            data = response.json().get('data') or []
+            for o in data:
+                status = str(o.get('status', '')).lower()
+                if status in ('rejected', 'cancelled'):
+                    continue
+                if (str(o.get('instrument_token', '')) == str(instrument_token)
+                        and str(o.get('transaction_type', '')) == str(transaction_type)
+                        and int(o.get('quantity', 0)) == int(qty)):
+                    if product is not None and str(o.get('product', '')) != str(product):
+                        continue
+                    return o.get('order_id')
         except Exception as e:
-            logger.error(f"Error placing order via target Upstox API: {e}")
-            return None
+            logger.error(f"Error checking Upstox order book for recent order: {e}")
+        return None
+
+    def _validate_order_id(self, order_id):
+        """Return True if order_id is a non-empty, non-zero value."""
+        return order_id is not None and order_id != '' and order_id != 0
 
     def place_order_cash(self, symbol, qty, buy_sell):
         try:
             tokenInfo = self.getTokenInfo('NSE', 'EQUITY', symbol, 0, 'X')
-            if tokenInfo.empty: return -1
-            
+            if tokenInfo.empty:
+                return -1
+
             instrument_token = tokenInfo.iloc[0]['instrument_key']
-            
+
             orderparams = {
                 "quantity": int(qty),
                 "product": "D",
@@ -391,7 +428,7 @@ class upstox_api(object):
                 "trigger_price": 0.0,
                 "is_amo": False
             }
-            
+
             order_id = self._place_upstox_order(orderparams)
             return order_id if order_id else -1
         except Exception as e:
@@ -399,31 +436,28 @@ class upstox_api(object):
             return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
+        original_symbol = symbol  # preserve before remapping for position check
         try:
-            # Map symbol names similarly
-            original_symbol = symbol
-            if symbol == 'GOLD': symbol = 'GOLDM'
-            elif symbol == 'SILVER': symbol = 'SILVERMIC'
-            elif symbol == 'CRUDEOIL': symbol = 'CRUDEOILM'
-            elif symbol == 'LEAD': symbol = 'LEADMINI'
-            elif symbol == 'ZINC': symbol = 'ZINCMINI'
-            elif symbol == 'ALUMINIUM': symbol = 'ALUMINI'
-            
+            # Map display name to actual mini/micro contract symbol
+            symbol = self.SYMBOL_PREFIX_MAP.get(symbol.upper(), symbol)
+
             if iscommodity:
                 tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry)
             else:
                 tokenInfo = self.getTokenInfo('NFO', 'FUTIDX', symbol, 0, 'X', expiry)
-            
-            if tokenInfo.empty: return -1, -1
-            
+
+            if tokenInfo.empty:
+                return -1, -1
+
             t_info = tokenInfo.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
             total_qty = qty * lot
-            
+            product = "D"  # carryforward
+
             orderparams = {
                 "quantity": total_qty,
-                "product": "D", # carryforward
+                "product": product,
                 "validity": "DAY",
                 "price": 0.0,
                 "instrument_token": instrument_token,
@@ -433,11 +467,55 @@ class upstox_api(object):
                 "trigger_price": 0.0,
                 "is_amo": False
             }
-            
-            # Retry logic could be added here
-            order_id = self._place_upstox_order(orderparams)
-            return (order_id, t_info['expiry']) if order_id else (-1, -1)
-            
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Token: {instrument_token}, Lot: {lot}")
+            order_id = None
+            try:
+                try:
+                    order_id = self._place_upstox_order(orderparams)
+                except requests.exceptions.Timeout:
+                    logger.warning("Upstox place_order_commodity timed out, checking order book before retry")
+                    time.sleep(5)
+                    existing = self._find_recent_order(instrument_token, buy_sell, total_qty, product)
+                    if existing:
+                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        order_id = existing
+                    else:
+                        try:
+                            order_id = self._place_upstox_order(orderparams)
+                        except Exception as e2:
+                            logger.error(f"Error executing place_order_commodity after timeout: {e2}")
+                            return -1, -1
+            except Exception as e:
+                try:
+                    logger.error(f"Error placing commodity order, trying again: {e}")
+                    try:
+                        TelegramSend.telegram_send_api().send_message(
+                            "-4008545231", f"Warning upstox {symbol} order Pls check")
+                    except Exception as telegram_error:
+                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                    time.sleep(2)
+
+                    # Before retrying, check if the position already exists at the broker.
+                    # The order may have been processed despite the exception, and retrying
+                    # would create a duplicate position.
+                    trade_type = 'long' if buy_sell == 'BUY' else 'short'
+                    pos_type, _ = self.get_commodity_position(original_symbol, trade_type)
+                    if pos_type is not None:
+                        logger.info(f"Position already exists for {original_symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
+                        return -1, t_info['expiry']
+
+                    order_id = self._place_upstox_order(orderparams)
+                except Exception as e1:
+                    logger.error(f"Error executing place_order_commodity: {e1}")
+                    return -1, -1
+
+            if not self._validate_order_id(order_id):
+                logger.error(f"Upstox API returned invalid order ID: {order_id} for commodity {symbol}")
+                return -1, -1
+
+            return order_id, t_info['expiry']
+
         except Exception as e:
             logger.error(f"Error executing place_order_commodity: {e}")
             return -1, -1
@@ -445,7 +523,8 @@ class upstox_api(object):
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, intraday=True):
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
-            if df.empty: return -1
+            if df.empty:
+                return -1
 
             # Skip past-expiry contracts
             try:
@@ -454,18 +533,20 @@ class upstox_api(object):
             except Exception:
                 pass
 
-            if df.empty: return -1
+            if df.empty:
+                return -1
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            
+
             if qty % lot != 0:
                 logger.error(f"Upstox Quantity {qty} not multiple of lot size {lot}")
                 return -1
 
+            product = "I" if intraday else "D"
             orderparams = {
                 "quantity": qty,
-                "product": "I" if intraday else "D",
+                "product": product,
                 "validity": "DAY",
                 "price": 0.0,
                 "instrument_token": instrument_token,
@@ -475,10 +556,45 @@ class upstox_api(object):
                 "trigger_price": 0.0,
                 "is_amo": False
             }
-            
-            order_id = self._place_upstox_order(orderparams)
-            return order_id if order_id else -1
-            
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Token: {instrument_token}, Lot: {lot}")
+            order_id = None
+            try:
+                try:
+                    order_id = self._place_upstox_order(orderparams)
+                except requests.exceptions.Timeout:
+                    logger.warning("Upstox place_order timed out, checking order book before retry")
+                    time.sleep(5)
+                    existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
+                    if existing:
+                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        order_id = existing
+                    else:
+                        try:
+                            order_id = self._place_upstox_order(orderparams)
+                        except Exception as e2:
+                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            return -1
+            except Exception as e:
+                try:
+                    logger.error(f"Error executing place_order again: {e}")
+                    try:
+                        TelegramSend.telegram_send_api().send_message(
+                            "-4008545231", f"Warning upstox {symbol} order Pls check")
+                    except Exception as telegram_error:
+                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                    time.sleep(2)
+                    order_id = self._place_upstox_order(orderparams)
+                except Exception as e1:
+                    logger.error(f"Error executing place_order: {e1}")
+                    return -1
+
+            if not self._validate_order_id(order_id):
+                logger.error(f"Upstox API returned invalid order ID: {order_id} for {symbol}")
+                return -1
+
+            return order_id
+
         except Exception as e:
             logger.error(f"Error executing place_order: {e}")
             return -1
@@ -486,7 +602,8 @@ class upstox_api(object):
     def place_order_option_buy(self, symbol, qty, buy_sell, strike_price, pe_ce):
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
-            if df.empty: return -1
+            if df.empty:
+                return -1
 
             # Pick current month's last expiry (same logic as AngelOne)
             try:
@@ -505,12 +622,15 @@ class upstox_api(object):
 
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            
-            if qty % lot != 0: return -1
 
+            if qty % lot != 0:
+                logger.error(f"Upstox Quantity {qty} not multiple of lot size {lot}")
+                return -1
+
+            product = "D"
             orderparams = {
                 "quantity": qty,
-                "product": "D",
+                "product": product,
                 "validity": "DAY",
                 "price": 0.0,
                 "instrument_token": instrument_token,
@@ -520,10 +640,45 @@ class upstox_api(object):
                 "trigger_price": 0.0,
                 "is_amo": False
             }
-            
-            order_id = self._place_upstox_order(orderparams)
-            return order_id if order_id else -1
-            
+
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Token: {instrument_token}, Lot: {lot}")
+            order_id = None
+            try:
+                try:
+                    order_id = self._place_upstox_order(orderparams)
+                except requests.exceptions.Timeout:
+                    logger.warning("Upstox place_order_option_buy timed out, checking order book before retry")
+                    time.sleep(5)
+                    existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
+                    if existing:
+                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        order_id = existing
+                    else:
+                        try:
+                            order_id = self._place_upstox_order(orderparams)
+                        except Exception as e2:
+                            logger.error(f"Error executing place_order_option_buy after timeout: {e2}")
+                            return -1
+            except Exception as e:
+                try:
+                    logger.error(f"Error placing option buy order, trying again: {e}")
+                    try:
+                        TelegramSend.telegram_send_api().send_message(
+                            "-4008545231", f"Warning upstox {symbol} option buy order Pls check")
+                    except Exception as telegram_error:
+                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                    time.sleep(2)
+                    order_id = self._place_upstox_order(orderparams)
+                except Exception as e1:
+                    logger.error(f"Error executing place_order_option_buy: {e1}")
+                    return -1
+
+            if not self._validate_order_id(order_id):
+                logger.error(f"Upstox API returned invalid order ID: {order_id} for option buy {symbol}")
+                return -1
+
+            return order_id
+
         except Exception as e:
             logger.error(f"Error executing option buy: {e}")
             return -1
@@ -531,7 +686,8 @@ class upstox_api(object):
     def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce, expiry)
-            if df.empty: return -1, None
+            if df.empty:
+                return -1, None
 
             # Pick expiry at least 8 days out (same logic as AngelOne)
             try:
@@ -544,16 +700,20 @@ class upstox_api(object):
             except Exception:
                 pass
 
-            if df.empty: return -1, None
+            if df.empty:
+                return -1, None
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            
-            if qty % lot != 0: return -1, None
 
+            if qty % lot != 0:
+                logger.error(f"Quantity {qty} not multiple of lot size {lot}")
+                return -1, None
+
+            product = "D"
             orderparams = {
                 "quantity": qty,
-                "product": "D",
+                "product": product,
                 "validity": "DAY",
                 "price": 0.0,
                 "instrument_token": instrument_token,
@@ -563,31 +723,48 @@ class upstox_api(object):
                 "trigger_price": 0.0,
                 "is_amo": False
             }
-            
-            order_id = self._place_upstox_order(orderparams)
-            return (order_id, t_info['expiry']) if order_id else (-1, None)
-            
+
+            # Try twice with retry + telegram alert on first failure
+            for attempt in range(2):
+                try:
+                    order_id = self._place_upstox_order(orderparams)
+                    if not self._validate_order_id(order_id):
+                        logger.error(f"Upstox API returned invalid order ID: {order_id} for synthetic future {symbol}")
+                        continue
+                    logger.info(f"Order placed successfully: {order_id}")
+                    return order_id, t_info['expiry']
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Order placement timeout (attempt {attempt+1})")
+                    time.sleep(2)
+                    # On timeout, check order book to avoid duplicate
+                    existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
+                    if existing:
+                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        return existing, t_info['expiry']
+                except Exception as e:
+                    logger.error(f"Order placement error (attempt {attempt+1}): {e}")
+                    if attempt == 0:
+                        time.sleep(2)
+                        try:
+                            TelegramSend.telegram_send_api().send_message(
+                                "-4008545231",
+                                f"Warning upstox {symbol} synthetic order failed: {str(e)[:100]}")
+                        except Exception as telegram_error:
+                            logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+
+            return -1, None
+
         except Exception as e:
             logger.error(f"Error executing synthetic future: {e}")
             return -1, None
 
     def get_commodity_position(self, symbol, trade_type):
         try:
-            symbol_prefix_map = {
-                'GOLD': 'GOLDM',
-                'SILVER': 'SILVERMIC',
-                'COPPER': 'COPPER',
-                'CRUDEOIL': 'CRUDEOILM',
-                'NATURALGAS': 'NATGASMINI',
-                'LEAD': 'LEADMINI',
-                'ZINC': 'ZINCMINI',
-                'ALUMINIUM': 'ALUMINI',
-            }
-            mcx_prefix = symbol_prefix_map.get(symbol.upper(), symbol.upper())
+            mcx_prefix = self.SYMBOL_PREFIX_MAP.get(symbol.upper(), symbol.upper())
 
             # MCX carryforward positions are under long-term-positions
             url = f"{self.base_url}/portfolio/long-term-positions"
-            response = requests.get(url, headers=self.get_headers())
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
 
             if response.status_code == 200:
                 data = response.json().get('data', [])
@@ -599,7 +776,7 @@ class upstox_api(object):
                             avg = float(pos.get('average_price', 0.0))
                             logger.info(f"Upstox: Found LONG position for {symbol}: qty={net_qty} avg={avg}")
                             return 'long', avg
-                        elif net_qty < 0 and trade_type == 'short':
+                        if net_qty < 0 and trade_type == 'short':
                             avg = float(pos.get('average_price', 0.0))
                             logger.info(f"Upstox: Found SHORT position for {symbol}: qty={net_qty} avg={avg}")
                             return 'short', avg
@@ -613,7 +790,7 @@ class upstox_api(object):
     def get_ledger_balance(self):
         try:
             url = f"{self.base_url}/user/get-funds-and-margin"
-            response = requests.get(url, headers=self.get_headers())
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
 
             if response.status_code == 200:
                 res = response.json()
@@ -630,8 +807,13 @@ class upstox_api(object):
 
     def get_order_status(self, order_id):
         try:
+            # Defensive check for NaN, None or non-numeric values
+            if pd.isna(order_id) or order_id is None or order_id == -1 or order_id == '' or str(order_id).lower() == 'nan':
+                logger.error(f"Invalid order_id received for status check: {order_id}")
+                return "NotFound", -1
+
             url = f"{self.base_url}/order/details?order_id={order_id}"
-            response = requests.get(url, headers=self.get_headers())
+            response = requests.get(url, headers=self.get_headers(), timeout=10)
 
             if response.status_code == 200:
                 res = response.json()
@@ -644,13 +826,17 @@ class upstox_api(object):
                         order_status = data.get('status', '').lower()
                         average_price = data.get('average_price', 0.0)
 
-                        if order_status == 'complete': return "Complete", average_price
-                        elif order_status in ['open', 'pending']: return "Open", average_price
-                        elif order_status == 'rejected': return "Rejected", average_price
-                        elif order_status == 'cancelled': return "Cancelled", average_price
-                        else: return "Open", average_price
+                        if order_status == 'complete':
+                            return "Complete", average_price
+                        if order_status in ['open', 'pending']:
+                            return "Open", average_price
+                        if order_status == 'rejected':
+                            return "Rejected", average_price
+                        if order_status == 'cancelled':
+                            return "Cancelled", average_price
+                        return "Open", average_price
 
             return "NotFound", -1
         except Exception as e:
             logger.error(f"Error executing get_order_status: {e}")
-            return -1, -1
+            return "NotFound", -1

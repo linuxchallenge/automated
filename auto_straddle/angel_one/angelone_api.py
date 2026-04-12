@@ -93,7 +93,7 @@ class angelone_api(object):
         if exch_seg == 'NSE':
             eq_df = df[(df['exch_seg'] == 'NSE') & (df['symbol'].str.contains('EQ'))]
             return eq_df[eq_df['name'] == symbol]
-        elif exch_seg == 'NFO' and ((instrumenttype == 'FUTSTK') or (instrumenttype == 'FUTIDX')):
+        if exch_seg == 'NFO' and instrumenttype in ('FUTSTK', 'FUTIDX'):
             # if expiry is within 10 days then return the next expiry
             today = datetime.now().date()
 
@@ -102,20 +102,19 @@ class angelone_api(object):
                 date_obj = pd.to_datetime(expiry).date()
                 return df[(df['exch_seg'] == 'NFO') &  (df['instrumenttype'] == instrumenttype) & \
                         (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
-            else:
-                expiry_str = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
-                                (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
-                expiry_str = expiry_str.strftime('%Y-%m-%d')
-                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
-                if (expiry_date - today).days <= 10:
-                    return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
-                            (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+            expiry_str = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
+                            (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
+            expiry_str = expiry_str.strftime('%Y-%m-%d')
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            if (expiry_date - today).days <= 10:
                 return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
-                        (df['name'] == symbol)].sort_values(by=['expiry'])
-        elif exch_seg == 'NFO' and (instrumenttype == 'OPTSTK' or instrumenttype == 'OPTIDX'):
+                        (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+            return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & \
+                    (df['name'] == symbol)].sort_values(by=['expiry'])
+        if exch_seg == 'NFO' and instrumenttype in ('OPTSTK', 'OPTIDX'):
             return df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol) & (
                         df['strike'] == strike_price) & (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
-        elif exch_seg == 'MCX' and (instrumenttype == 'FUTCOM'):
+        if exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
 
             logger.info(f"Getting token info for MCX {symbol} {expiry}")
             print(f"Getting token info for MCX {symbol} {expiry}")
@@ -126,15 +125,15 @@ class angelone_api(object):
                 df['expiry'] = pd.to_datetime(df['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
                 return df[(df['exch_seg'] == 'MCX') & (df['name'] == symbol) & (df['expiry'] == date_obj)].sort_values(by=['expiry'])
-            else:
-                expiry_str = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
-                logger.info(f"Nearest expiry for {symbol} is {expiry_str}")
-                expiry_str = expiry_str.strftime('%Y-%m-%d')
-                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
-                logger.info(f"Expiry date object for {symbol} is {expiry_date}")
-                if (expiry_date - today).days <= 10:
-                    return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
-                return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
+            expiry_str = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[0]['expiry']
+            logger.info(f"Nearest expiry for {symbol} is {expiry_str}")
+            expiry_str = expiry_str.strftime('%Y-%m-%d')
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            logger.info(f"Expiry date object for {symbol} is {expiry_date}")
+            if (expiry_date - today).days <= 10:
+                return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry']).iloc[1:2]
+            return df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) & (df['name'] == symbol)].sort_values(by=['expiry'])
+        return None
 
     def place_order_cash(self, symbol, qty, buy_sell):
         try:
@@ -671,7 +670,7 @@ class angelone_api(object):
                                  or float(pos.get('buyavgprice', 0) or 0))
                     logger.info(f"AngelOne: Found LONG position for {symbol}: qty={net_qty} avg={avg_price}")
                     return 'long', avg_price
-                elif net_qty < 0 and trade_type == 'short':
+                if net_qty < 0 and trade_type == 'short':
                     avg_price = (float(pos.get('totalsellavgprice', 0) or 0)
                                  or float(pos.get('cfsellavgprice', 0) or 0)
                                  or float(pos.get('sellavgprice', 0) or 0))

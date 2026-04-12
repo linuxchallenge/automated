@@ -30,7 +30,7 @@ from cash_stratergy import cash_stratergy
 from IndexFutureStratergy import IndexFutureStratergy
 from NiftyPositionalStrategy import NiftyPositionalStrategy
 #from optionbuy_stratergy import OptionBuyStrategy
-import logging_config  # This sets up the logging
+import logging_config  # pylint: disable=unused-import  # side-effect: configures logging
 from TelegramSend import telegram_send_api
 from ledger_calculation import LedgerCalculator
 from update_cash_sl import run_cash_sl_update
@@ -253,11 +253,11 @@ def main():
 
     #optionbuy_stratergy = OptionBuyStrategy()
 
-    # Set the signal handler
-    signal.signal(signal.SIGALRM, timeout_handler)
+    # Set the signal handler (Linux-only — pylint suppressed as this runs on Raspberry Pi)
+    signal.signal(signal.SIGALRM, timeout_handler)  # pylint: disable=no-member
 
     # Set an alarm to trigger SIGALRM after 300 seconds
-    signal.alarm(300)
+    signal.alarm(300)  # pylint: disable=no-member
 
     # Flag to track if Cash SL update has run today (runs at 11:10 PM)
     cash_sl_updated_today = False
@@ -276,7 +276,7 @@ def main():
                 current_time = datetime.now().second
 
                 # Reset alarm for index future strategy (runs at 9:15+)
-                signal.alarm(300)
+                signal.alarm(300)  # pylint: disable=no-member
                 try:
                     index_future_stratergy.execute_strategy(accounts_index, place_order, index_account_details)
                 except Exception as e:
@@ -284,7 +284,7 @@ def main():
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Reset alarm for nifty position strategy (runs at 9:15+, must be before option strategy)
-                signal.alarm(300)
+                signal.alarm(300)  # pylint: disable=no-member
                 try:
                     nifty_position_stratergy.execute_strategy(place_order, nifty_position_account_details)
                 except Exception as e:
@@ -292,7 +292,7 @@ def main():
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Reset alarm for option strategy (has 60s sleep if time < 9:23)
-                signal.alarm(300)
+                signal.alarm(300)  # pylint: disable=no-member
                 try:
                     execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
                                              accounts, symbols, place_order, account_details, \
@@ -302,7 +302,7 @@ def main():
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Reset alarm for commodity strategy
-                signal.alarm(300)
+                signal.alarm(300)  # pylint: disable=no-member
                 try:
                     execute_commity_stratergy(commodity_stratergy, accounts_commodity, place_order, commodity_account_details)
                 except Exception as e:
@@ -317,7 +317,7 @@ def main():
                 #    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Reset alarm before cash strategy (can take long due to rate limiting)
-                signal.alarm(300)
+                signal.alarm(300)  # pylint: disable=no-member
                 try:
                     cash_stratergy_obj.execute_strategy(place_order)
                 except Exception as e:
@@ -328,7 +328,7 @@ def main():
                 if time_dt(23, 10) <= current_time_dt <= time_dt(23, 15):
                     if not cash_sl_updated_today:
                         logging.info("Running Cash SL Update at 11:10 PM")
-                        signal.alarm(600)  # 10 minutes for SL update
+                        signal.alarm(600)  # pylint: disable=no-member  # 10 minutes for SL update
                         try:
                             run_cash_sl_update(dry_run=False)
                             cash_sl_updated_today = True

@@ -9,7 +9,7 @@ from datetime import datetime
 def setup_logging(log_level=logging.INFO):
     # Generate log file name with the current date
     log_file_name = f"/tmp/auto_trade_{datetime.now().strftime('%Y-%m-%d')}.log"
-    
+
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,

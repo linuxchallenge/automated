@@ -90,7 +90,7 @@ class commodity_data:
             logging.info(f"TV connection attempt {attempt + 1}/5 with user: {username}")
 
             try:
-                self.tv_obj = TvDatafeed(username, password, random_user_agent=True)
+                self.tv_obj = TvDatafeed(username, password, random_user_agent=True)  # pylint: disable=unexpected-keyword-arg
 
                 if self.tv_obj.token != 'unauthorized_user_token':
                     logging.info(f"TV connection successful with token: {self.tv_obj.token}")
@@ -494,7 +494,7 @@ class commodity_data:
                 candleData = candleData.drop(['vol','oi'], axis=1)
 
                 # From candleData['date'] remove time zone info
-                candleData = candleData.assign(date=candleData['date'].dt.tz_localize(None))
+                candleData = candleData.assign(date=candleData['date'].dt.tz_localize(None))  # pylint: disable=unsubscriptable-object
 
                 # Sort by date
                 candleData = candleData.sort_values(by='date', ascending=True)
@@ -518,7 +518,7 @@ class commodity_data:
                     candleData_min = candleData_min.drop(['vol','oi'], axis=1)
 
                     # From candleData['date'] remove time zone info
-                    candleData_min = candleData_min.assign(date=candleData_min['date'].dt.tz_localize(None))
+                    candleData_min = candleData_min.assign(date=candleData_min['date'].dt.tz_localize(None))  # pylint: disable=unsubscriptable-object
 
                     # Reverse the data
                     candleData_min = candleData_min.sort_values(by='date', ascending=True)
