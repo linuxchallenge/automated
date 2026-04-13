@@ -543,7 +543,7 @@ class fivepaise_api(object):
         # Fallback: use market feed scrip LTP ± 0.5% buffer
         try:
             self._fix_shared_payload_bug()
-            req_list = [{"Exch": exchange, "ExchangeType": exchange_type, "ScripCode": int(token)}]
+            req_list = [{"Exch": exchange, "ExchType": exchange_type, "ScripCode": int(token)}]
             snap = self.obj.fetch_market_feed_scrip(req_list)
             data = snap.get('Data')
             if not data:
@@ -595,8 +595,13 @@ class fivepaise_api(object):
             if isCommodity:
                 price = self.get_best_price(int(token), 'M', 'D', buy_sell)
                 if price <= 0:
-                    logger.error(f"[{self.account}] ❌ No price for commodity token {token}. Aborting order.")
-                    return -1, -1
+                    logger.warning(f"[{self.account}] ⚠️ Price=0 for commodity token {token}, attempting session refresh before aborting...")
+                    if self._refresh_session():
+                        time.sleep(1)
+                        price = self.get_best_price(int(token), 'M', 'D', buy_sell)
+                    if price <= 0:
+                        logger.error(f"[{self.account}] ❌ No price for commodity token {token} even after session refresh. Aborting order.")
+                        return -1, -1
                 if ENABLE_ORDER_DEBUG:
                     logger.info(f"[{self.account}] 🔧 PRE-COMMODITY-ORDER: client_code={self.obj.client_code}, Exchange=M, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='M', ExchangeType='D', \
@@ -605,8 +610,13 @@ class fivepaise_api(object):
                 qty = qty * lot
                 price = self.get_best_price(int(token), 'N', 'D', buy_sell)
                 if price <= 0:
-                    logger.error(f"[{self.account}] ❌ No price for index token {token}. Aborting order.")
-                    return -1, -1
+                    logger.warning(f"[{self.account}] ⚠️ Price=0 for index token {token}, attempting session refresh before aborting...")
+                    if self._refresh_session():
+                        time.sleep(1)
+                        price = self.get_best_price(int(token), 'N', 'D', buy_sell)
+                    if price <= 0:
+                        logger.error(f"[{self.account}] ❌ No price for index token {token} even after session refresh. Aborting order.")
+                        return -1, -1
                 if ENABLE_ORDER_DEBUG:
                     logger.info(f"[{self.account}] 🔧 PRE-INDEX-ORDER: client_code={self.obj.client_code}, Exchange=N, token={token}, price={price}, qty={qty}")
                 order_id = self.obj.place_order(OrderType=buy_sell, Exchange='N', ExchangeType='D', \
@@ -777,8 +787,13 @@ class fivepaise_api(object):
             # Use the isIntraday parameter in the order placement
             price = self.get_best_price(int(token), exchange, 'D', buy_sell)
             if price <= 0:
-                logger.error(f"[{self.account}] ❌ Could not get price for token {token}. Aborting order to avoid market-order rejection.")
-                return -1, None
+                logger.warning(f"[{self.account}] ⚠️ Price=0 for token {token}, attempting session refresh before aborting...")
+                if self._refresh_session():
+                    time.sleep(1)
+                    price = self.get_best_price(int(token), exchange, 'D', buy_sell)
+                if price <= 0:
+                    logger.error(f"[{self.account}] ❌ Could not get price for token {token} even after session refresh. Aborting order.")
+                    return -1, None
             if ENABLE_ORDER_DEBUG:
                 logger.info(f"[{self.account}] 🔧 PRE-ORDER: client_code={self.obj.client_code}, Exchange={exchange}, token={token}, price={price}, qty={qty}, jwt={self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'}")
             order_id = self.obj.place_order(
