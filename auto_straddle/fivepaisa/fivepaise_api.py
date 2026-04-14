@@ -260,12 +260,13 @@ class fivepaise_api(object):
         This method sets the correct client_code and credentials on this instance
         before every API call.
         """
-        # 1. Fix the main payload: ensure client_code and key belong to THIS account.
-        #    order_request() reads self.payload["body"]["ClientCode"] and self.payload["head"]["key"]
-        #    so we must ensure they are correct for this account.
-        #    Do NOT replace self.obj.payload with a new empty dict — the library's
-        #    order_request() resets it to GENERIC_PAYLOAD after each call, which may carry
-        #    accumulated state that the API server expects.
+        # 1. Fix the main payload: ensure client_code and key belong to THIS account,
+        #    and reset the body to a clean state so leftover keys from previous calls
+        #    (e.g. MarketFeedData, Email_ID, TOTP) don't pollute the next request.
+        self.obj.payload = {
+            'head': {'key': self.obj.USER_KEY if self.obj.USER_KEY else ''},
+            'body': {}
+        }
         old_client = self.obj.client_code
         old_key = self.obj.USER_KEY[:8] if self.obj.USER_KEY else 'None'
         old_jwt = self.obj.Jwt_token[:20] if self.obj.Jwt_token else 'None'
@@ -501,9 +502,9 @@ class fivepaise_api(object):
         def _fetch_depth_price():
             self._fix_shared_payload_bug()
             response = self.obj.fetch_market_depth_by_scrip(
-                Exch=exchange,
+                Exchange=exchange,
                 ExchangeType=exchange_type,
-                ScripCode=str(token)
+                ScripCode=int(token)
             )
             if ENABLE_ORDER_DEBUG:
                 logger.info(f"[{self.account}] 🔧 Market depth raw for token {token}: Status={response.get('Status') if response else 'None'}, entries={len(response.get('MarketDepthData', [])) if response else 0}")
