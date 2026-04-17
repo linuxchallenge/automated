@@ -375,7 +375,8 @@ class upstox_api(object):
             return result
 
         if exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
-            filtered = df[(df['exchange'] == 'MCX_FO') & (df['instrument_type'] == 'FUTCOM') & (df['name'] == symbol)]
+            filtered = df[(df['exchange'] == 'MCX_FO') & (df['instrument_type'] == 'FUTCOM') &
+                          (df['tradingsymbol'].str.upper().str.startswith(symbol.upper()))]
             filtered = filtered.sort_values(by=['expiry'])
 
             today = datetime.now().date()
@@ -749,7 +750,21 @@ class upstox_api(object):
                 df['expiry_date'] = pd.to_datetime(df['expiry']).dt.date
                 if expiry is None:
                     future = df[df['expiry_date'] > (today + timedelta(days=8))]
-                    df = future if not future.empty else df
+                    if future.empty:
+                        logger.error(f"place_order_synthetic_future: no valid future expiries found for {symbol}")
+                        return -1, None
+                    df = future
+                else:
+                    try:
+                        target_expiry = pd.to_datetime(expiry).date()
+                        matching = df[df['expiry_date'] == target_expiry]
+                        if matching.empty:
+                            logger.error(f"place_order_synthetic_future: no contract found for specified expiry {target_expiry}")
+                            return -1, None
+                        df = matching
+                    except Exception as e:
+                        logger.error(f"place_order_synthetic_future: error parsing expiry {expiry}: {e}")
+                        return -1, None
             except Exception:
                 pass
 
@@ -758,6 +773,7 @@ class upstox_api(object):
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
+            logger.info(f"Upstox: Selected contract: {instrument_token}, lot={lot}, expiry={t_info['expiry']}")
             logger.debug(f"place_order_synthetic_future: token={instrument_token} lot={lot} expiry={t_info['expiry']}")
 
             if qty % lot != 0:
