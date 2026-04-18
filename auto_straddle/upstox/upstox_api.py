@@ -394,6 +394,68 @@ class upstox_api(object):
 
         return pd.DataFrame()
 
+    def get_best_price(self, instrument_token, buy_sell):
+        """Fetch best price for limit orders using Upstox market depth, falling back to LTP.
+
+        For BUY returns best ask; for SELL returns best bid.
+        Falls back to LTP ± 0.5% buffer if depth is unavailable.
+
+        Args:
+            instrument_token: Upstox instrument key (e.g. 'MCX_FO|466029')
+            buy_sell: 'BUY' or 'SELL'
+
+        Returns:
+            float: price to use in limit order, or 0 if all methods fail
+        """
+        # Attempt 1: market depth via /market-quote/full
+        try:
+            url = f"{self.base_url}/market-quote/full"
+            params = {"instrument_key": instrument_token}
+            response = requests.get(url, headers=self.get_headers(), params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get('data', {})
+                quote = next(iter(data.values()), {}) if data else {}
+                depth = quote.get('depth', {})
+                if buy_sell == 'BUY':
+                    asks = depth.get('sell', [])
+                    for ask in asks:
+                        p = float(ask.get('price', 0))
+                        if p > 0:
+                            logger.info(f"Upstox market depth ask price for {instrument_token}: {p}")
+                            return p
+                else:
+                    bids = depth.get('buy', [])
+                    for bid in bids:
+                        p = float(bid.get('price', 0))
+                        if p > 0:
+                            logger.info(f"Upstox market depth bid price for {instrument_token}: {p}")
+                            return p
+            logger.warning(f"Upstox market depth returned no usable price for {instrument_token}, falling back to LTP")
+        except Exception as e:
+            logger.warning(f"Upstox market depth failed for {instrument_token}: {e}, falling back to LTP")
+
+        # Fallback: LTP via /market-quote/ltp
+        try:
+            url = f"{self.base_url}/market-quote/ltp"
+            params = {"instrument_key": instrument_token}
+            response = requests.get(url, headers=self.get_headers(), params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get('data', {})
+                quote = next(iter(data.values()), {}) if data else {}
+                ltp = float(quote.get('last_price', 0))
+                if ltp > 0:
+                    if buy_sell == 'BUY':
+                        price = round(ltp * 1.005, 2)
+                    else:
+                        price = round(ltp * 0.995, 2)
+                    logger.info(f"Upstox LTP fallback price for {instrument_token}: {price} (ltp={ltp})")
+                    return price
+            logger.error(f"Upstox LTP also returned no price for {instrument_token}")
+        except Exception as e:
+            logger.error(f"Upstox LTP fallback failed for {instrument_token}: {e}")
+
+        return 0
+
     def _place_upstox_order(self, orderparams):
         url = self.order_url
         if self.DEBUG:
@@ -501,20 +563,25 @@ class upstox_api(object):
             logger.debug(f"place_order_commodity: token={instrument_token} lot={lot} total_qty={total_qty} expiry={t_info['expiry']}")
             product = "D"  # carryforward
 
+            price = self.get_best_price(instrument_token, buy_sell)
+            if price <= 0:
+                logger.error(f"place_order_commodity: could not get price for {instrument_token}, aborting")
+                return -1, -1
+
             orderparams = {
                 "quantity": total_qty,
                 "product": product,
                 "validity": "DAY",
-                "price": 0.0,
+                "price": price,
                 "instrument_token": instrument_token,
-                "order_type": "MARKET",
+                "order_type": "LIMIT",
                 "transaction_type": buy_sell,
                 "disclosed_quantity": 0,
                 "trigger_price": 0.0,
                 "is_amo": False
             }
 
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Token: {instrument_token}, Lot: {lot}")
+            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Token: {instrument_token}, Lot: {lot}, Price: {price}")
             order_id = None
             try:
                 try:
