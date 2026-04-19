@@ -34,6 +34,8 @@ import logging_config  # pylint: disable=unused-import  # side-effect: configure
 from TelegramSend import telegram_send_api
 from ledger_calculation import LedgerCalculator
 from update_cash_sl import run_cash_sl_update
+from elliot_wave_signals import ElliotWaveSignalGenerator
+from elliot_cash_stratergy import ElliotCashStratergy
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -221,6 +223,20 @@ def main():
     cash_stratergy_obj = cash_stratergy()
     cash_stratergy_obj.sync_cash_strategy()
 
+    # Elliott Wave strategy setup
+    # TODO: Set to True after code review
+    EW_STRATEGY_ENABLED = False
+
+    EW_ACCOUNTS_URL = "https://docs.google.com/spreadsheets/d/PLACEHOLDER_EW_ACCOUNTS_SHEET_ID/export?format=csv"
+    NIFTY200_CSV = str(Path(__file__).resolve().parent.parent / 'elliot_backtest' / 'ind_nifty200list.csv')
+    if EW_STRATEGY_ENABLED:
+        ew_generator = ElliotWaveSignalGenerator(EW_ACCOUNTS_URL, NIFTY200_CSV)
+        elliot_cash_obj = ElliotCashStratergy()
+        elliot_cash_obj.sync_elliot_strategy()
+    else:
+        ew_generator = None
+        elliot_cash_obj = None
+
     logging.info("After creating instance of PlaceOrder")
 
     # Initalize all accounts
@@ -261,6 +277,8 @@ def main():
 
     # Flag to track if Cash SL update has run today (runs at 11:10 PM)
     cash_sl_updated_today = False
+    # Flag to track if EW signals have been generated today (runs at 3:30–4:00 PM)
+    ew_signals_generated_today = False
 
     try:
         while True:
@@ -324,6 +342,28 @@ def main():
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Elliott Wave strategy execution (same timing as cash strategy)
+                if EW_STRATEGY_ENABLED:
+                    signal.alarm(300)  # pylint: disable=no-member
+                    try:
+                        elliot_cash_obj.execute_strategy(place_order)
+                    except Exception as e:
+                        logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                        print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
+                # Generate EW signals at 3:30–4:00 PM daily
+                if EW_STRATEGY_ENABLED and time_dt(15, 30) <= current_time_dt <= time_dt(16, 0):
+                    if not ew_signals_generated_today:
+                        logging.info("Generating EW signals at 3:30 PM")
+                        signal.alarm(600)  # pylint: disable=no-member  # 10 minutes for signal generation
+                        try:
+                            ew_generator.generate_daily_signals(str(cur_dir / 'elliot_cash_stratergy.csv'))
+                            ew_signals_generated_today = True
+                            logging.info("EW signal generation completed successfully")
+                        except Exception as e:
+                            logging.error(f"EW signal generation failed: {e}")
+                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
                 # Run Cash SL Update at 11:10 PM daily
                 if time_dt(23, 10) <= current_time_dt <= time_dt(23, 15):
                     if not cash_sl_updated_today:
@@ -337,9 +377,10 @@ def main():
                             logging.error(f"Cash SL Update failed: {e}")
                             logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
-                # Reset the flag at midnight
+                # Reset flags at midnight
                 if current_time_dt < time_dt(0, 5):
                     cash_sl_updated_today = False
+                    ew_signals_generated_today = False
 
                 # Sleep for a specified interval (e.g., 1 minute)
                 # Use full timestamp to handle minute boundary correctly
