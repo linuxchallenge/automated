@@ -8,6 +8,7 @@
 # pylint: disable=C0103
 # pylint: disable=R0902
 # pylint: disable=R0903
+# pylint: disable=R0912
 # pylint: disable=R0914
 # pylint: disable=R0915
 # pylint: disable=R1702
@@ -18,13 +19,6 @@ import os
 import random
 import time
 import traceback
-
-# Google Sheet URL for EW account config (account | initial_amount | delta_change | date_sync)
-ACCOUNTS_URL = (
-    "https://docs.google.com/spreadsheets/d/e/"
-    "2PACX-1vTjXLK6OU5QmCMC_GOk88MWL5a5IIKTjq0tlcbrbXAoQiOryhCj78dyv4MR07qBTag8RGwH4twtIrTw"
-    "/pub?output=csv"
-)
 from datetime import datetime
 from io import StringIO
 
@@ -39,6 +33,13 @@ from elliot_wave_strategy import (
     detect_swing_points,
     identify_wave_structures,
     generate_signals,
+)
+
+# Google Sheet URL for EW account config (account | initial_amount | delta_change | date_sync)
+ACCOUNTS_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vTjXLK6OU5QmCMC_GOk88MWL5a5IIKTjq0tlcbrbXAoQiOryhCj78dyv4MR07qBTag8RGwH4twtIrTw"
+    "/pub?output=csv"
 )
 
 logger = logging.getLogger(__name__)
@@ -236,12 +237,133 @@ class ElliotWaveSignalGenerator:
         nifty_df.columns = [c.strip() for c in nifty_df.columns]
         return nifty_df['Symbol'].dropna().unique().tolist()
 
+    # ------------------------------------------------------------------
+    # Account amount tracking with compound delta_change
+    # ------------------------------------------------------------------
+
+    ACCOUNTS_CSV_COLUMNS = ['account', 'sync_date', 'delta_change_pct', 'current_amount']
+
+    def sync_account_amounts(self, accounts_csv_path: str):
+        """Sync local account amounts from Google Sheet using compound delta_change.
+
+        Google Sheet columns: account | initial_amount | delta_change | date_sync
+          - delta_change: percentage (e.g. 10 means +10%)
+          - date_sync: date when delta_change was last applied
+
+        Local CSV columns: account | sync_date | delta_change_pct | current_amount
+          - One row appended per sync event (history preserved).
+          - Latest row per account (by sync_date) is the active state.
+
+        Logic per account:
+          - If account absent in local CSV → append seed row:
+            current_amount = initial_amount, sync_date = date_sync, delta_change_pct = 0
+          - If date_sync > latest local sync_date → append new row:
+            current_amount = prev_amount * (1 + delta_change / 100)
+          - If date_sync <= latest local sync_date → no-op (prevents double-apply)
+
+        Returns list of dicts with keys: account, current_amount, per_trade_amount.
+        """
+        max_positions = self.config.max_positions
+
+        # Download remote sheet
+        try:
+            remote_df = _read_csv_from_url(self.accounts_url)
+            remote_df.columns = [c.strip().lower() for c in remote_df.columns]
+            remote_df['delta_change'] = pd.to_numeric(
+                remote_df.get('delta_change', 0), errors='coerce').fillna(0)
+            remote_df['initial_amount'] = pd.to_numeric(
+                remote_df['initial_amount'], errors='coerce').fillna(0)
+            remote_df['date_sync'] = pd.to_datetime(
+                remote_df['date_sync'], dayfirst=True, errors='coerce')
+        except Exception as e:
+            logger.error(f"Failed to download accounts sheet: {e}")
+            return []
+
+        # Load local history CSV; build map: account → latest row
+        try:
+            local_df = pd.read_csv(accounts_csv_path)
+            local_df['sync_date'] = pd.to_datetime(local_df['sync_date'], errors='coerce')
+            local_df['current_amount'] = pd.to_numeric(local_df['current_amount'], errors='coerce')
+        except FileNotFoundError:
+            local_df = pd.DataFrame(columns=self.ACCOUNTS_CSV_COLUMNS)
+
+        # Latest entry per account
+        latest_map = {}
+        if not local_df.empty:
+            for acct, grp in local_df.groupby('account'):
+                latest_row = grp.sort_values('sync_date').iloc[-1]
+                latest_map[str(acct).strip()] = {
+                    'current_amount': float(latest_row['current_amount']),
+                    'sync_date': latest_row['sync_date'],
+                }
+
+        new_rows = []
+        result = []
+
+        for _, remote_row in remote_df.iterrows():
+            account = str(remote_row['account']).strip()
+            initial_amount = float(remote_row['initial_amount'])
+            delta_change = float(remote_row['delta_change'])
+            remote_date = remote_row['date_sync']
+
+            if account not in latest_map:
+                # First time — seed with initial_amount, delta 0
+                new_amount = initial_amount
+                new_rows.append({
+                    'account': account,
+                    'sync_date': remote_date.date() if pd.notna(remote_date) else '',
+                    'delta_change_pct': 0,
+                    'current_amount': round(new_amount, 2),
+                })
+                latest_map[account] = {'current_amount': new_amount, 'sync_date': remote_date}
+                logger.info(f"New account '{account}' seeded with {initial_amount}")
+            else:
+                local_date = latest_map[account]['sync_date']
+                remote_date_valid = pd.notna(remote_date)
+                local_date_valid = pd.notna(local_date)
+
+                if remote_date_valid and (not local_date_valid or remote_date > local_date):
+                    old_amount = latest_map[account]['current_amount']
+                    new_amount = old_amount * (1 + delta_change / 100)
+                    new_rows.append({
+                        'account': account,
+                        'sync_date': remote_date.date(),
+                        'delta_change_pct': delta_change,
+                        'current_amount': round(new_amount, 2),
+                    })
+                    latest_map[account] = {'current_amount': new_amount, 'sync_date': remote_date}
+                    logger.info(
+                        f"Account '{account}': {old_amount:.2f} → {new_amount:.2f} "
+                        f"(delta={delta_change}%, date={remote_date.date()})"
+                    )
+                else:
+                    new_amount = latest_map[account]['current_amount']
+
+            result.append({
+                'account': account,
+                'current_amount': round(latest_map[account]['current_amount'], 2),
+                'per_trade_amount': round(latest_map[account]['current_amount'] / max_positions, 2),
+            })
+
+        if new_rows:
+            appended = pd.concat(
+                [local_df, pd.DataFrame(new_rows, columns=self.ACCOUNTS_CSV_COLUMNS)],
+                ignore_index=True,
+            )
+            appended.to_csv(accounts_csv_path, index=False)
+            logger.info(f"Appended {len(new_rows)} row(s) to {accounts_csv_path}")
+
+        return result
+
     def load_accounts(self):
         """Download and parse account config from Google Sheet.
 
         Sheet columns: account | initial_amount | delta_change | date_sync
         Returns list of dicts with keys: account, amount, current_capital.
         amount = (initial_amount + delta_change) * 10%
+
+        NOTE: For production use, prefer sync_account_amounts() which applies
+        compound delta_change correctly. This method is kept for backward compatibility.
         """
         MAX_ALLOCATION_PCT = 10.0
         try:
@@ -264,41 +386,54 @@ class ElliotWaveSignalGenerator:
             logger.error(f"Failed to load accounts from {self.accounts_url}: {e}")
             return []
 
-    def generate_daily_signals(self, csv_path: str):
+    def generate_daily_signals(self, csv_path: str, accounts_csv_path: str = None):
         """
         Generate Elliott Wave signals for today and append to the EW strategy CSV.
 
         Args:
             csv_path: Path to elliot_cash_stratergy.csv
+            accounts_csv_path: Optional path to elliot_accounts.csv for compound
+                delta_change tracking. When provided, sync_account_amounts() is
+                called and per_trade_amount = current_amount / max_positions.
+                When None, falls back to simple (initial_amount + delta_change) * 10%.
         """
         today = datetime.now().date()
         logger.info(f"Generating EW signals for {today}")
 
         # 1. Load accounts config
-        # Sheet columns: account | initial_amount | delta_change | date_sync
-        # Per-trade amount = (initial_amount + delta_change) * 10% of capital
-        MAX_ALLOCATION_PCT = 10.0
-        try:
-            accounts_df = _read_csv_from_url(self.accounts_url)
-            accounts_df.columns = [c.strip().lower() for c in accounts_df.columns]
-            required_cols = {'account', 'initial_amount'}
-            if not required_cols.issubset(accounts_df.columns):
-                logger.error(f"Accounts sheet missing required columns. Found: {list(accounts_df.columns)}")
-                return
-            # Compute per-trade amount from capital
-            accounts_df['delta_change'] = pd.to_numeric(accounts_df.get('delta_change', 0), errors='coerce').fillna(0)
-            accounts_df['initial_amount'] = pd.to_numeric(accounts_df['initial_amount'], errors='coerce').fillna(0)
-            accounts_df['amount'] = (accounts_df['initial_amount'] + accounts_df['delta_change']) * MAX_ALLOCATION_PCT / 100
-        except Exception as e:
-            logger.error(f"Failed to load accounts from {self.accounts_url}: {e}")
-            return
+        if accounts_csv_path is not None:
+            accounts_list = self.sync_account_amounts(accounts_csv_path)
+            if not accounts_list:
+                logger.error("No accounts returned from sync_account_amounts()")
+                return 0
+            # Normalise to DataFrame with 'account' and 'amount' columns
+            accounts_df = pd.DataFrame([
+                {'account': a['account'], 'amount': a['per_trade_amount']}
+                for a in accounts_list
+            ])
+        else:
+            # Fallback: simple (initial_amount + delta_change) * 10%
+            MAX_ALLOCATION_PCT = 10.0
+            try:
+                accounts_df = _read_csv_from_url(self.accounts_url)
+                accounts_df.columns = [c.strip().lower() for c in accounts_df.columns]
+                required_cols = {'account', 'initial_amount'}
+                if not required_cols.issubset(accounts_df.columns):
+                    logger.error(f"Accounts sheet missing required columns. Found: {list(accounts_df.columns)}")
+                    return 0
+                accounts_df['delta_change'] = pd.to_numeric(accounts_df.get('delta_change', 0), errors='coerce').fillna(0)
+                accounts_df['initial_amount'] = pd.to_numeric(accounts_df['initial_amount'], errors='coerce').fillna(0)
+                accounts_df['amount'] = (accounts_df['initial_amount'] + accounts_df['delta_change']) * MAX_ALLOCATION_PCT / 100
+            except Exception as e:
+                logger.error(f"Failed to load accounts from {self.accounts_url}: {e}")
+                return 0
 
         # 2. Load Nifty 200 tickers
         try:
             symbols = self.load_nifty200()
         except Exception as e:
             logger.error(f"Failed to load Nifty 200 CSV {self.nifty200_csv}: {e}")
-            return
+            return 0
 
         logger.info(f"Processing {len(symbols)} Nifty 200 symbols")
 

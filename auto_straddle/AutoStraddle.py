@@ -8,7 +8,15 @@
 # pylint: disable=C0116
 # pylint: disable=C0115
 # pylint: disable=C0103
+# pylint: disable=R0912
+# pylint: disable=R0913
+# pylint: disable=R0914
+# pylint: disable=R0915
+# pylint: disable=R0917
+# pylint: disable=R1702
+# pylint: disable=W0511
 
+import sys
 import time
 import signal
 from datetime import datetime, timedelta
@@ -85,6 +93,7 @@ def read_csv_from_google_sheet(url, max_retries=3):
                 time.sleep(2)  # Wait before retry
             else:
                 raise e
+    return None
 
 def main():
     # Replace these lists with your desired accounts and symbols
@@ -100,7 +109,7 @@ def main():
         time.sleep(60)
         print("Exiting the program.")
         logging.info("Exiting the program.")
-        exit(1)
+        sys.exit(1)
 
     logging.info("Starting the program, welcome to AutoStraddle")
 
@@ -122,7 +131,7 @@ def main():
             if current_time_dt > time_dt(23, 50):
                 print("Exiting the program.")
                 logging.info("Exiting the program.")
-                exit(1)
+                sys.exit(1)
             continue
 
         break
@@ -397,7 +406,7 @@ def main():
                 if current_time_dt > time_dt(23, 50):
                     print("Exiting the program.")
                     logging.info("Exiting the program.")
-                    exit(1)
+                    sys.exit(1)
 
             except Exception as e:
                 logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))

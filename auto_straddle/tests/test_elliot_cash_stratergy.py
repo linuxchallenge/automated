@@ -347,5 +347,144 @@ class TestElliotCashStratergy(unittest.TestCase):
         self.assertEqual(row_out["close_order_status"], "Complete")
 
 
+    # -----------------------------------------------------------------------
+    # 5. sync_manual_corrections — entry/exit from Google Sheet
+    # -----------------------------------------------------------------------
+
+    MANUAL_CORRECTIONS_URL = (
+        "https://docs.google.com/spreadsheets/d/e/"
+        "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
+        "/pub?output=csv"
+    )
+
+    def _corrections_df(self, rows):
+        return pd.DataFrame(rows, columns=["sl_no", "account", "symbol", "entry_exit", "price", "date"])
+
+    def test_manual_entry_updates_buy_fields(self):
+        """Manual 'entry' row should set buy_price, open_date, profit_target, status=open."""
+        row = _base_row(status="new", sl=2800.0, percent_increase=15.0, amount=10000.0)
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "entry", "price": 3000.0, "date": "2026-04-19",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        row_out = result.iloc[0]
+        self.assertEqual(row_out["status"], "open")
+        self.assertAlmostEqual(row_out["buy_price"], 3000.0, places=0)
+        self.assertEqual(row_out["open_order_status"], "Complete")
+        # profit_target = 3000 * 1.15 = 3450
+        self.assertAlmostEqual(row_out["profit_target"], 3450.0, places=0)
+        # quantity = int(10000 / 3000) = 3
+        self.assertEqual(int(row_out["quantity"]), 3)
+
+    def test_manual_exit_updates_sell_fields(self):
+        """Manual 'exit' row should set sell_price, close_date, status=close."""
+        row = _base_row(
+            status="open", account="dummy",
+            buy_price=3000.0, quantity=3,
+            open_order_status="Complete",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "exit", "price": 3450.0, "date": "2026-04-25",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        row_out = result.iloc[0]
+        self.assertEqual(row_out["status"], "close")
+        self.assertAlmostEqual(row_out["sell_price"], 3450.0, places=0)
+        self.assertEqual(row_out["close_order_status"], "Complete")
+
+    def test_manual_entry_no_double_apply(self):
+        """Entry correction with same or older date must not overwrite existing open_date."""
+        row = _base_row(
+            status="open", buy_price=3000.0,
+            open_order_status="Complete", open_date="2026-04-19",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "entry", "price": 2800.0, "date": "2026-04-18",  # older date
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        # buy_price must remain at original 3000, not be overwritten with 2800
+        self.assertAlmostEqual(result.iloc[0]["buy_price"], 3000.0, places=0)
+
+    def test_manual_exit_no_double_apply(self):
+        """Exit correction with same or older date must not overwrite existing close_date."""
+        row = _base_row(
+            status="close", buy_price=3000.0, sell_price=3450.0,
+            open_order_status="Complete", close_order_status="Complete",
+            close_date="2026-04-25",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "exit", "price": 2900.0, "date": "2026-04-20",  # older date
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        self.assertAlmostEqual(result.iloc[0]["sell_price"], 3450.0, places=0)
+
+    def test_manual_correction_unknown_sl_no_skipped(self):
+        """Correction for an sl_no not in local CSV should be silently skipped."""
+        row = _base_row(status="new")
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "EW_UNKNOWN_XYZ_dummy",
+            "account": "dummy", "symbol": "XYZ",
+            "entry_exit": "entry", "price": 500.0, "date": "2026-04-19",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_manual_corrections()
+
+        # Original row untouched
+        result = _read_csv(self.csv_path)
+        self.assertEqual(result.iloc[0]["status"], "new")
+
+    def test_manual_correction_empty_sheet_no_op(self):
+        """Empty corrections sheet should not modify local CSV."""
+        row = _base_row(status="new")
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([])   # empty
+
+        with patch("elliot_cash_stratergy.pd.read_csv", return_value=corrections):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        self.assertEqual(result.iloc[0]["status"], "new")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -92,7 +92,7 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
     # -----------------------------------------------------------------------
 
     def test_load_accounts_real_sheet(self):
-        """Fetch real accounts from Google Sheet and validate dummy entry."""
+        """Fetch real accounts from Google Sheet and validate dummy entry structure."""
         accounts = self.generator.load_accounts()
 
         self.assertIsInstance(accounts, list, "load_accounts should return a list")
@@ -102,11 +102,14 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
         dummy = next((a for a in accounts if a["account"] == "dummy"), None)
         self.assertIsNotNone(dummy, "Expected 'dummy' account in the sheet")
 
-        # initial_amount=100000, delta_change=0 → current_capital=100000
-        # amount = 100000 * 10% = 10000
-        self.assertAlmostEqual(dummy["current_capital"], 100_000.0, places=0)
-        self.assertAlmostEqual(dummy["amount"], 10_000.0, places=0,
-                               msg="Per-trade amount should be 10% of current capital")
+        # Validate structure and relationship: amount should be 10% of current_capital
+        self.assertIn("current_capital", dummy)
+        self.assertIn("amount", dummy)
+        self.assertGreater(dummy["current_capital"], 0)
+        self.assertAlmostEqual(
+            dummy["amount"], dummy["current_capital"] * 0.10, places=0,
+            msg="Per-trade amount should be 10% of current capital"
+        )
 
     # -----------------------------------------------------------------------
     # 2. Signal generation writes correct rows to CSV
@@ -232,6 +235,190 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
             self.assertIn(today_str, row["sl_no"])
             self.assertIn("INFY", row["sl_no"])
             self.assertIn(row["account"], row["sl_no"])
+
+
+    # -----------------------------------------------------------------------
+    # 6. sync_account_amounts — delta_change compound tracking
+    # -----------------------------------------------------------------------
+
+    def _make_remote_df(self, rows):
+        """Build a fake remote accounts DataFrame (mimics Google Sheet download)."""
+        return pd.DataFrame(rows)
+
+    def _accounts_csv(self, rows=None):
+        """Write a local elliot_accounts.csv and return its path.
+
+        rows use the new multi-entry schema:
+          account | sync_date | delta_change_pct | current_amount
+        """
+        path = os.path.join(self.tmp_dir, "elliot_accounts.csv")
+        if rows is not None:
+            pd.DataFrame(rows).to_csv(path, index=False)
+        return path
+
+    def test_sync_new_account_seeded_with_initial_amount(self):
+        """First sync: account absent locally → one seed row appended."""
+        accounts_path = self._accounts_csv()   # file does not exist yet
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 100000,
+            "delta_change": 0, "date_sync": "19/04/2026",
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        self.assertEqual(len(result), 1)
+        acct = result[0]
+        self.assertEqual(acct["account"], "dummy")
+        self.assertAlmostEqual(acct["current_amount"], 100_000.0, places=0)
+        # per_trade = 100000 / max_positions (default 15)
+        self.assertAlmostEqual(acct["per_trade_amount"], 100_000.0 / 15, places=0)
+
+        # Verify local CSV was created with exactly one row
+        local_df = pd.read_csv(accounts_path)
+        self.assertEqual(len(local_df), 1)
+        self.assertAlmostEqual(local_df.iloc[0]["current_amount"], 100_000.0, places=0)
+        self.assertEqual(local_df.iloc[0]["delta_change_pct"], 0)
+
+    def test_sync_applies_delta_on_newer_date(self):
+        """When remote date_sync > latest local sync_date, a new row is appended."""
+        accounts_path = self._accounts_csv([{
+            "account": "dummy",
+            "sync_date": "2026-04-15",
+            "delta_change_pct": 0,
+            "current_amount": 100000.0,
+        }])
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 100000,
+            "delta_change": 10, "date_sync": "16/04/2026",
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        acct = result[0]
+        self.assertAlmostEqual(acct["current_amount"], 110_000.0, places=0)
+        self.assertAlmostEqual(acct["per_trade_amount"], 110_000.0 / 15, places=0)
+
+        # CSV now has 2 rows (history preserved)
+        local_df = pd.read_csv(accounts_path)
+        self.assertEqual(len(local_df), 2)
+        latest = local_df.sort_values("sync_date").iloc[-1]
+        self.assertAlmostEqual(latest["current_amount"], 110_000.0, places=0)
+        self.assertEqual(latest["delta_change_pct"], 10)
+
+    def test_sync_no_double_apply_same_date(self):
+        """Calling sync twice with same date_sync must not append a second row."""
+        accounts_path = self._accounts_csv([
+            {"account": "dummy", "sync_date": "2026-04-15", "delta_change_pct": 0,  "current_amount": 100000.0},
+            {"account": "dummy", "sync_date": "2026-04-16", "delta_change_pct": 10, "current_amount": 110000.0},
+        ])
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 100000,
+            "delta_change": 10, "date_sync": "16/04/2026",
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        # Amount unchanged, no extra row written
+        self.assertAlmostEqual(result[0]["current_amount"], 110_000.0, places=0)
+        local_df = pd.read_csv(accounts_path)
+        self.assertEqual(len(local_df), 2, "No new row should be appended on same date")
+
+    def test_sync_no_apply_when_local_date_newer(self):
+        """If local sync_date >= remote date_sync, amount must remain unchanged."""
+        accounts_path = self._accounts_csv([{
+            "account": "dummy",
+            "sync_date": "2026-04-20",
+            "delta_change_pct": 0,
+            "current_amount": 120000.0,
+        }])
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 100000,
+            "delta_change": 10, "date_sync": "16/04/2026",
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        self.assertAlmostEqual(result[0]["current_amount"], 120_000.0, places=0)
+        local_df = pd.read_csv(accounts_path)
+        self.assertEqual(len(local_df), 1, "No new row when remote date is older")
+
+    def test_sync_multiple_accounts_tracked_independently(self):
+        """Each account's delta is applied independently; history rows per account."""
+        accounts_path = self._accounts_csv([
+            {"account": "deepti", "sync_date": "2026-04-15", "delta_change_pct": 0, "current_amount": 200000.0},
+            {"account": "dummy",  "sync_date": "2026-04-10", "delta_change_pct": 0, "current_amount": 100000.0},
+        ])
+
+        remote_df = self._make_remote_df([
+            {"account": "deepti", "initial_amount": 200000, "delta_change": 5,  "date_sync": "16/04/2026"},
+            {"account": "dummy",  "initial_amount": 100000, "delta_change": 10, "date_sync": "16/04/2026"},
+        ])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        by_acct = {r["account"]: r for r in result}
+        self.assertAlmostEqual(by_acct["deepti"]["current_amount"], 200000.0 * 1.05, places=0)
+        self.assertAlmostEqual(by_acct["dummy"]["current_amount"],  100000.0 * 1.10, places=0)
+
+        # CSV should now have 4 rows (2 original + 2 new)
+        local_df = pd.read_csv(accounts_path)
+        self.assertEqual(len(local_df), 4)
+
+    def test_sync_negative_delta_reduces_amount(self):
+        """Negative delta_change should reduce current_amount (e.g. loss period)."""
+        accounts_path = self._accounts_csv([{
+            "account": "dummy",
+            "sync_date": "2026-04-15",
+            "delta_change_pct": 0,
+            "current_amount": 100000.0,
+        }])
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 100000,
+            "delta_change": -10, "date_sync": "16/04/2026",
+
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df):
+            result = self.generator.sync_account_amounts(accounts_path)
+
+        self.assertAlmostEqual(result[0]["current_amount"], 90_000.0, places=0)
+
+    def test_generate_daily_signals_uses_per_trade_amount(self):
+        """When accounts_csv_path supplied, amount in CSV rows = per_trade_amount."""
+        accounts_path = self._accounts_csv([{
+            "account": "dummy",
+            "sync_date": "2026-04-15",
+            "delta_change_pct": 0,
+            "current_amount": 150000.0,
+        }])
+
+        remote_df = self._make_remote_df([{
+            "account": "dummy", "initial_amount": 150000,
+            "delta_change": 0, "date_sync": "15/04/2026",
+        }])
+
+        with patch("elliot_wave_signals._read_csv_from_url", return_value=remote_df), \
+             patch.object(ElliotWaveSignalGenerator, "load_nifty200", return_value=["RELIANCE"]), \
+             patch.object(ElliotWaveSignalGenerator, "_fetch_ohlcv", return_value=_make_dummy_ohlcv()), \
+             patch("elliot_wave_signals.detect_swing_points", return_value=[]), \
+             patch("elliot_wave_signals.identify_wave_structures", return_value=[]), \
+             patch("elliot_wave_signals.generate_signals", return_value=[_make_fake_signal("RELIANCE")]), \
+             patch.object(ElliotWaveSignalGenerator, "_send_telegram_summary"):
+            self.generator.generate_daily_signals(self.csv_path, accounts_csv_path=accounts_path)
+
+        df = pd.read_csv(self.csv_path)
+        expected_per_trade = round(150_000.0 / 15, 2)
+        self.assertAlmostEqual(df.iloc[0]["amount"], expected_per_trade, places=1)
 
 
 if __name__ == "__main__":

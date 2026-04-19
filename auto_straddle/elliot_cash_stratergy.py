@@ -148,6 +148,38 @@ class TelegramNotifier:
             logger.error(f"Failed to send Telegram notification: {e}")
             return False
 
+    def send_buy_failed(self, account, symbol, sl, percent_increase):
+        chat_id = self._get_chat_id(account)
+        if not chat_id:
+            return False
+        message = (
+            f"EW BUY FAILED {account} {symbol}\n"
+            f"SL: {sl} | Target: +{percent_increase}%\n"
+            f"Please buy manually and update Google Sheet, or will retry tomorrow."
+        )
+        try:
+            self.telegram_api.send_message(chat_id, message)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send Telegram notification: {e}")
+            return False
+
+    def send_sell_failed(self, account, symbol, quantity, price):
+        chat_id = self._get_chat_id(account)
+        if not chat_id:
+            return False
+        message = (
+            f"EW SELL FAILED {account} {symbol}\n"
+            f"Qty: {quantity} | Price ~{price:.2f}\n"
+            f"Please sell manually and update Google Sheet, or will retry next trigger."
+        )
+        try:
+            self.telegram_api.send_message(chat_id, message)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send Telegram notification: {e}")
+            return False
+
 
 class ElliotCashStratergy:
     """Executes BUY/SELL equity orders driven by Elliott Wave signals CSV."""
@@ -160,9 +192,14 @@ class ElliotCashStratergy:
 
     def __init__(self):
         self.csv_path = "elliot_cash_stratergy.csv"
-        # Remote Google Sheet URL for manual corrections (same column structure as local CSV)
-        # User must set this to the correct URL
+        # Remote Google Sheet URL for date-based full-row corrections (same column structure as local CSV)
         self.remote_csv_url = "https://docs.google.com/spreadsheets/d/PLACEHOLDER_EW_SHEET_ID/export?format=csv"
+        # Manual entry/exit corrections sheet — columns: sl_no | account | symbol | entry_exit | price | date
+        self.manual_corrections_url = (
+            "https://docs.google.com/spreadsheets/d/e/"
+            "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
+            "/pub?output=csv"
+        )
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
         self._cached_positions = None
@@ -369,6 +406,122 @@ class ElliotCashStratergy:
         local_data.to_csv(self.csv_path, index=False)
         logger.info("EW sync completed.")
 
+    def sync_manual_corrections(self):
+        """Sync manual entry/exit corrections from the Google Sheet.
+
+        Sheet columns: sl_no | account | symbol | entry_exit | price | date
+
+        entry_exit = 'entry' (manual BUY) or 'exit' (manual SELL).
+
+        Dedup logic per sl_no + entry_exit:
+          - entry: skip if local open_date is already >= sheet date
+          - exit:  skip if local close_date is already >= sheet date
+
+        On entry apply:
+          buy_price = price, open_order_status = 'Complete', status = 'open',
+          open_date = date, profit_target recomputed from percent_increase.
+
+        On exit apply:
+          sell_price = price, close_order_status = 'Complete',
+          close_date = date, status = 'close'.
+        """
+        try:
+            corrections = pd.read_csv(self.manual_corrections_url)
+            corrections.columns = [c.strip().lower() for c in corrections.columns]
+        except Exception as e:
+            logger.error(f"Failed to download manual corrections sheet: {e}")
+            return
+
+        if corrections.empty:
+            logger.info("Manual corrections sheet is empty, nothing to sync.")
+            return
+
+        corrections['date'] = pd.to_datetime(corrections['date'], errors='coerce')
+        corrections['price'] = pd.to_numeric(corrections['price'], errors='coerce')
+
+        try:
+            local_data = pd.read_csv(self.csv_path)
+        except FileNotFoundError:
+            logger.warning("Local EW CSV not found, skipping manual corrections sync.")
+            return
+
+        local_data['open_date'] = pd.to_datetime(local_data.get('open_date'), errors='coerce')
+        local_data['close_date'] = pd.to_datetime(local_data.get('close_date'), errors='coerce')
+
+        changed = False
+
+        for _, corr in corrections.iterrows():
+            sl_no = str(corr.get('sl_no', '')).strip()
+            entry_exit = str(corr.get('entry_exit', '')).strip().lower()
+            price = corr.get('price')
+            corr_date = corr.get('date')
+
+            if not sl_no or entry_exit not in ('entry', 'exit'):
+                logger.warning(f"Skipping invalid correction row: sl_no={sl_no} entry_exit={entry_exit}")
+                continue
+
+            if pd.isna(corr_date) or pd.isna(price):
+                logger.warning(f"Skipping correction row with missing date/price: {sl_no}")
+                continue
+
+            mask = local_data['sl_no'] == sl_no
+            if not mask.any():
+                logger.warning(f"Manual correction: sl_no '{sl_no}' not found in local CSV, skipping.")
+                continue
+
+            idx = local_data[mask].index[0]
+            row = local_data.loc[idx]
+
+            if entry_exit == 'entry':
+                local_open_date = row.get('open_date')
+                if pd.notna(local_open_date) and local_open_date >= corr_date:
+                    logger.debug(f"Skipping entry correction for {sl_no} — already applied (local={local_open_date.date()}, sheet={corr_date.date()})")
+                    continue
+
+                local_data.loc[idx, 'buy_price'] = price
+                local_data.loc[idx, 'open_order_status'] = 'Complete'
+                local_data.loc[idx, 'status'] = 'open'
+                local_data.loc[idx, 'open_date'] = corr_date.strftime("%Y-%m-%d")
+                # Recompute profit_target
+                try:
+                    pct = float(row['percent_increase'])
+                    local_data.loc[idx, 'profit_target'] = price * (1 + pct / 100)
+                except Exception:
+                    pass
+                # Compute quantity if missing
+                try:
+                    if pd.isna(row.get('quantity')):
+                        qty = int(float(row['amount']) / price)
+                        local_data.loc[idx, 'quantity'] = qty
+                except Exception:
+                    pass
+
+                changed = True
+                logger.info(f"Manual entry applied for {sl_no}: buy_price={price}, open_date={corr_date.date()}")
+                self.notifier.send_success(row['account'], row['symbol'], "manual entry synced",
+                                           f"buy_price={price}")
+
+            elif entry_exit == 'exit':
+                local_close_date = row.get('close_date')
+                if pd.notna(local_close_date) and local_close_date >= corr_date:
+                    logger.debug(f"Skipping exit correction for {sl_no} — already applied (local={local_close_date.date()}, sheet={corr_date.date()})")
+                    continue
+
+                local_data.loc[idx, 'sell_price'] = price
+                local_data.loc[idx, 'close_order_status'] = 'Complete'
+                local_data.loc[idx, 'close_date'] = corr_date.strftime("%Y-%m-%d")
+                local_data.loc[idx, 'status'] = 'close'
+                changed = True
+                logger.info(f"Manual exit applied for {sl_no}: sell_price={price}, close_date={corr_date.date()}")
+                self.notifier.send_success(row['account'], row['symbol'], "manual exit synced",
+                                           f"sell_price={price}")
+
+        if changed:
+            local_data.to_csv(self.csv_path, index=False)
+            logger.info("Manual corrections sync completed.")
+        else:
+            logger.info("Manual corrections sync: no updates needed.")
+
     # ------------------------------------------------------------------
     # Order processing
     # ------------------------------------------------------------------
@@ -406,7 +559,12 @@ class ElliotCashStratergy:
 
                     if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
                         logger.error(f"EW: BUY order failed after all retries for {symbol}")
-                        self.notifier.send_error(row['account'], symbol, "open", "Order placement failed after retries")
+                        data.loc[idx, 'open_order_status'] = 'buy_failed'
+                        data.to_csv(self.csv_path, index=False)
+                        self.notifier.send_buy_failed(
+                            row['account'], symbol,
+                            row['sl'], row['percent_increase']
+                        )
                         continue
 
                     # Compute profit_target from percent_increase
@@ -446,8 +604,12 @@ class ElliotCashStratergy:
                 return last_sl_no, False
 
             try:
-                if pd.notna(row.get('close_order_id')) and row['close_order_id'] != -1 and row.get('close_order_status') != 'rejected':
-                    if row.get('close_order_status') != 'Complete':
+                close_status = row.get('close_order_status')
+                # Skip rows already in a terminal or pending close state,
+                # but allow retry when previous SELL attempt failed.
+                if pd.notna(row.get('close_order_id')) and row['close_order_id'] != -1 \
+                        and close_status not in ('rejected', 'sell_failed'):
+                    if close_status != 'Complete':
                         last_sl_no = row['sl_no']
                         continue
 
@@ -490,7 +652,14 @@ class ElliotCashStratergy:
 
                         if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
                             logger.error(f"EW: SELL order failed after retries for {symbol}")
-                            self.notifier.send_error(row['account'], symbol, "close", "Order placement failed after retries")
+                            # Clear any stale close_order_id so price check reruns next trigger
+                            data.loc[idx, 'close_order_id'] = None
+                            data.loc[idx, 'close_order_status'] = 'sell_failed'
+                            data.to_csv(self.csv_path, index=False)
+                            self.notifier.send_sell_failed(
+                                row['account'], symbol,
+                                row['quantity'], last_price
+                            )
                             last_sl_no = row['sl_no']
                             continue
 
