@@ -42,7 +42,7 @@ import logging_config  # pylint: disable=unused-import  # side-effect: configure
 from TelegramSend import telegram_send_api
 from ledger_calculation import LedgerCalculator
 from update_cash_sl import run_cash_sl_update
-from elliot_wave_signals import ElliotWaveSignalGenerator
+from elliot_wave_signals import ElliotWaveSignalGenerator, ACCOUNTS_URL as EW_ACCOUNTS_URL
 from elliot_cash_stratergy import ElliotCashStratergy
 
 # Set up logging
@@ -236,12 +236,12 @@ def main():
     # TODO: Set to True after code review
     EW_STRATEGY_ENABLED = False
 
-    EW_ACCOUNTS_URL = "https://docs.google.com/spreadsheets/d/PLACEHOLDER_EW_ACCOUNTS_SHEET_ID/export?format=csv"
-    NIFTY200_CSV = str(Path(__file__).resolve().parent.parent / 'elliot_backtest' / 'ind_nifty200list.csv')
+    NIFTY200_CSV = str(cur_dir / 'elliot' / 'ind_nifty200list.csv')
     if EW_STRATEGY_ENABLED:
         ew_generator = ElliotWaveSignalGenerator(EW_ACCOUNTS_URL, NIFTY200_CSV)
         elliot_cash_obj = ElliotCashStratergy()
         elliot_cash_obj.sync_elliot_strategy()
+        elliot_cash_obj.sync_manual_corrections()
     else:
         ew_generator = None
         elliot_cash_obj = None
@@ -288,6 +288,8 @@ def main():
     cash_sl_updated_today = False
     # Flag to track if EW signals have been generated today (runs at 3:30–4:00 PM)
     ew_signals_generated_today = False
+    # Flag to track if EW manual corrections have been synced today (runs at 9:00–9:15 AM)
+    ew_corrections_synced_today = False
 
     try:
         while True:
@@ -351,6 +353,16 @@ def main():
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Sync EW manual corrections once per day at 9:00–9:15 AM
+                if EW_STRATEGY_ENABLED and time_dt(9, 0) <= current_time_dt <= time_dt(9, 15):
+                    if not ew_corrections_synced_today:
+                        logging.info("EW: Syncing manual corrections")
+                        try:
+                            elliot_cash_obj.sync_manual_corrections()
+                            ew_corrections_synced_today = True
+                        except Exception as e:
+                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
                 # Elliott Wave strategy execution (same timing as cash strategy)
                 if EW_STRATEGY_ENABLED:
                     signal.alarm(300)  # pylint: disable=no-member
@@ -366,7 +378,11 @@ def main():
                         logging.info("Generating EW signals at 3:30 PM")
                         signal.alarm(600)  # pylint: disable=no-member  # 10 minutes for signal generation
                         try:
-                            ew_generator.generate_daily_signals(str(cur_dir / 'elliot_cash_stratergy.csv'))
+                            elliot_dir = Path(elliot_cash_obj.csv_path).parent
+                            ew_generator.generate_daily_signals(
+                                elliot_cash_obj.csv_path,
+                                accounts_csv_path=str(elliot_dir / 'elliot_accounts.csv'),
+                            )
                             ew_signals_generated_today = True
                             logging.info("EW signal generation completed successfully")
                         except Exception as e:
@@ -390,6 +406,7 @@ def main():
                 if current_time_dt < time_dt(0, 5):
                     cash_sl_updated_today = False
                     ew_signals_generated_today = False
+                    ew_corrections_synced_today = False
 
                 # Sleep for a specified interval (e.g., 1 minute)
                 # Use full timestamp to handle minute boundary correctly

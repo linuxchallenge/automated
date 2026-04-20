@@ -95,6 +95,8 @@ class TestElliotCashStratergy(unittest.TestCase):
             self.strategy = ElliotCashStratergy()
 
         self.strategy.csv_path = self.csv_path
+        # Use a real-looking URL so the PLACEHOLDER guard doesn't skip sync in tests
+        self.strategy.remote_csv_url = "https://docs.google.com/spreadsheets/d/TEST_SHEET/export?format=csv"
         # Bypass market-open check in tests
         self.strategy.nso_open = True
 

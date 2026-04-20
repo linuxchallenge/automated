@@ -17,6 +17,7 @@
 
 from datetime import datetime, timedelta
 import os
+from pathlib import Path
 import traceback
 import logging
 from time import sleep
@@ -28,6 +29,8 @@ import TelegramSend
 import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
+
+ELLIOT_DATA_DIR = Path.home() / 'temp' / 'data_collection' / 'elliot'
 
 
 headers = {
@@ -191,7 +194,8 @@ class ElliotCashStratergy:
     }
 
     def __init__(self):
-        self.csv_path = "elliot_cash_stratergy.csv"
+        ELLIOT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.csv_path = str(ELLIOT_DATA_DIR / 'elliot_cash_stratergy.csv')
         # Remote Google Sheet URL for date-based full-row corrections (same column structure as local CSV)
         self.remote_csv_url = "https://docs.google.com/spreadsheets/d/PLACEHOLDER_EW_SHEET_ID/export?format=csv"
         # Manual entry/exit corrections sheet — columns: sl_no | account | symbol | entry_exit | price | date
@@ -358,6 +362,9 @@ class ElliotCashStratergy:
           - If sl_no IN local AND gsheet_row['date'] > local_row['date'] → update local row
             (handles manual corrections: buy_price, status, etc.)
         """
+        if not self.remote_csv_url or 'PLACEHOLDER' in self.remote_csv_url:
+            logger.info("EW sync_elliot_strategy: remote URL not configured, skipping.")
+            return
         try:
             remote_data = pd.read_csv(self.remote_csv_url)
         except Exception as e:
@@ -665,8 +672,10 @@ class ElliotCashStratergy:
 
                         data.loc[idx, 'close_order_id'] = order_id
                         data.loc[idx, 'close_order_status'] = 'close_pending'
+                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
                     else:
                         data.loc[idx, 'close_order_status'] = 'close_pending'
+                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
                         self.notifier.send_manual_close_request(row['account'], symbol)
 
                     data.to_csv(self.csv_path, index=False)
@@ -706,7 +715,13 @@ class ElliotCashStratergy:
                 if status == "Complete":
                     if not is_open_pending:
                         data.loc[idx, 'sell_price'] = final_price
-                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        # close_date was set when the SELL order was placed; keep it.
+                        # Fall back to today only if missing (e.g. legacy rows).
+                        close_date_val = row.get('close_date')
+                        if pd.isna(close_date_val) or not close_date_val:
+                            close_date_val = datetime.now().strftime("%Y-%m-%d")
+                            data.loc[idx, 'close_date'] = close_date_val
+
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
 
                         self.notifier.send_success(row['account'], row['symbol'], "p/l",
@@ -717,7 +732,7 @@ class ElliotCashStratergy:
                         brokerage = brokerage_dict['total_charges']
 
                         pl_dict = {
-                            'Date': datetime.now().strftime("%Y-%m-%d"),
+                            'Date': str(close_date_val)[:10],
                             'Account': row['account'],
                             'Symbol': row['symbol'],
                             'Quantity': row['quantity'],
@@ -729,9 +744,10 @@ class ElliotCashStratergy:
                             'NetPNL': profit_loss - brokerage
                         }
 
-                        current_month = datetime.now().strftime("%m")
-                        file_name = f"pnl/consolidated_pnl_{current_month}.csv"
-                        os.makedirs("pnl", exist_ok=True)
+                        current_month = str(close_date_val)[5:7]  # MM from YYYY-MM-DD
+                        pnl_dir = Path.home() / 'temp' / 'data_collection' / 'pnl'
+                        pnl_dir.mkdir(parents=True, exist_ok=True)
+                        file_name = str(pnl_dir / f"consolidated_pnl_{current_month}.csv")
 
                         if os.path.exists(file_name):
                             df = pd.read_csv(file_name)

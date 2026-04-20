@@ -272,8 +272,8 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
         acct = result[0]
         self.assertEqual(acct["account"], "dummy")
         self.assertAlmostEqual(acct["current_amount"], 100_000.0, places=0)
-        # per_trade = 100000 / max_positions (default 15)
-        self.assertAlmostEqual(acct["per_trade_amount"], 100_000.0 / 15, places=0)
+        # per_trade = 100000 / max_positions (default 10)
+        self.assertAlmostEqual(acct["per_trade_amount"], 100_000.0 / 10, places=0)
 
         # Verify local CSV was created with exactly one row
         local_df = pd.read_csv(accounts_path)
@@ -300,7 +300,7 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
 
         acct = result[0]
         self.assertAlmostEqual(acct["current_amount"], 110_000.0, places=0)
-        self.assertAlmostEqual(acct["per_trade_amount"], 110_000.0 / 15, places=0)
+        self.assertAlmostEqual(acct["per_trade_amount"], 110_000.0 / 10, places=0)
 
         # CSV now has 2 rows (history preserved)
         local_df = pd.read_csv(accounts_path)
@@ -417,7 +417,7 @@ class TestElliotWaveSignalGenerator(unittest.TestCase):
             self.generator.generate_daily_signals(self.csv_path, accounts_csv_path=accounts_path)
 
         df = pd.read_csv(self.csv_path)
-        expected_per_trade = round(150_000.0 / 15, 2)
+        expected_per_trade = round(150_000.0 / 10, 2)
         self.assertAlmostEqual(df.iloc[0]["amount"], expected_per_trade, places=1)
 
 
