@@ -231,11 +231,37 @@ class ElliotWaveSignalGenerator:
     # Main signal generation
     # ------------------------------------------------------------------
 
+    NSE_NIFTY200_URL = "https://nsearchives.nseindia.com/content/indices/ind_nifty200list.csv"
+
     def load_nifty200(self):
-        """Load NSE symbols from Nifty 200 CSV. Returns list of plain symbols."""
+        """Download Nifty 200 symbols from NSE archives daily. Falls back to local cache."""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.nseindia.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        try:
+            resp = requests.get(self.NSE_NIFTY200_URL, headers=headers, timeout=15)
+            resp.raise_for_status()
+            content = resp.text
+            # Save as local cache for fallback
+            os.makedirs(os.path.dirname(self.nifty200_csv), exist_ok=True)
+            with open(self.nifty200_csv, "w", encoding="utf-8") as f:
+                f.write(content)
+            nifty_df = pd.read_csv(StringIO(content))
+            nifty_df.columns = [c.strip() for c in nifty_df.columns]
+            symbols = nifty_df['Symbol'].dropna().unique().tolist()
+            logger.info(f"Downloaded {len(symbols)} Nifty 200 symbols from NSE")
+            return symbols
+        except Exception as e:
+            logger.warning(f"NSE download failed: {e}. Falling back to local cache.")
+
+        # Fallback: local cache
         nifty_df = pd.read_csv(self.nifty200_csv)
         nifty_df.columns = [c.strip() for c in nifty_df.columns]
-        return nifty_df['Symbol'].dropna().unique().tolist()
+        symbols = nifty_df['Symbol'].dropna().unique().tolist()
+        logger.info(f"Loaded {len(symbols)} Nifty 200 symbols from local cache")
+        return symbols
 
     # ------------------------------------------------------------------
     # Account amount tracking with compound delta_change
@@ -462,6 +488,7 @@ class ElliotWaveSignalGenerator:
             try:
                 df = self._fetch_ohlcv(symbol)
                 if df.empty or len(df) < 60:
+                    logger.warning(f"EW signals: {symbol} skipped — insufficient data ({len(df)} bars)")
                     continue
 
                 df.attrs["symbol"] = symbol
@@ -504,6 +531,12 @@ class ElliotWaveSignalGenerator:
                         }
                         new_rows.append(row)
                         signals_found += 1
+                        logger.info(
+                            f"EW signal: {symbol} account={account} "
+                            f"type={signal.signal_type.value} entry={signal.entry_price:.2f} "
+                            f"sl={signal.stop_loss:.2f} target={signal.target_price:.2f} "
+                            f"confidence={signal.confidence:.2f} pct={percent_increase:.2f}%"
+                        )
 
             except Exception as e:
                 logger.error(f"Error processing {symbol}: {e}")

@@ -560,7 +560,7 @@ class ElliotCashStratergy:
                         if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
                             self._reset_retry_count(row['account'], symbol, "open")
                             break
-                        logger.warning(f"EW: BUY attempt {attempt + 1}/{self._max_order_retries} failed for {symbol}")
+                        logger.warning(f"EW: BUY attempt {attempt + 1}/{self._max_order_retries} failed for {symbol} (order_id={order_id})")
                         if attempt < self._max_order_retries - 1:
                             sleep(2 * (attempt + 1))
 
@@ -846,6 +846,11 @@ class ElliotCashStratergy:
         except FileNotFoundError:
             logger.warning("EW: CSV not found, nothing to process.")
             return
+
+        new_count = len(data[data['status'] == 'new']) if 'status' in data.columns else 0
+        open_count = len(data[data['status'] == 'open']) if 'status' in data.columns else 0
+        pending_count = len(data[data['status'] == 'pending']) if 'status' in data.columns else 0
+        logger.info(f"EW: Rows — new={new_count} open={open_count} pending={pending_count}")
 
         current_phase = self._resume_state.get('phase') or 'new'
 

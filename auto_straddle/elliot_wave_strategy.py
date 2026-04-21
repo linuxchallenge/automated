@@ -1149,30 +1149,47 @@ NIFTY_50_STOCKS = [
 
 def load_nifty200_from_csv(csv_path: str = "ind_nifty200list.csv") -> list:
     """
-    Load Nifty 200 symbols from the official NSE CSV file.
-    Reads the 'Symbol' column and appends '.NS' for Yahoo Finance.
-
-    Args:
-        csv_path: Path to ind_nifty200list.csv
+    Download Nifty 200 symbols from NSE archives (daily fresh download).
+    Falls back to local cache, then Nifty 50 list on failure.
 
     Returns:
         List of Yahoo Finance symbols (e.g., ['RELIANCE.NS', 'TCS.NS', ...])
     """
     import os
-    if not os.path.exists(csv_path):
-        print(f"  CSV not found at: {csv_path}")
-        print(f"  Falling back to Nifty 50 list...")
-        return NIFTY_50_STOCKS
+    import urllib.request
+
+    NSE_URL = "https://nsearchives.nseindia.com/content/indices/ind_nifty200list.csv"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.nseindia.com/",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
 
     try:
-        csv_df = pd.read_csv(csv_path)
+        req = urllib.request.Request(NSE_URL, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            content = response.read().decode("utf-8")
+        with open(csv_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        csv_df = pd.read_csv(pd.io.common.StringIO(content))
         symbols = [f"{sym.strip()}.NS" for sym in csv_df["Symbol"].dropna()]
-        print(f"  Loaded {len(symbols)} symbols from {csv_path}")
+        print(f"  Downloaded {len(symbols)} Nifty 200 symbols from NSE")
         return symbols
     except Exception as e:
-        print(f"  Error reading CSV: {e}")
-        print(f"  Falling back to Nifty 50 list...")
-        return NIFTY_50_STOCKS
+        print(f"  NSE download failed: {e}")
+
+    # Fallback: use local cache if available
+    if os.path.exists(csv_path):
+        try:
+            csv_df = pd.read_csv(csv_path)
+            symbols = [f"{sym.strip()}.NS" for sym in csv_df["Symbol"].dropna()]
+            print(f"  Loaded {len(symbols)} symbols from local cache {csv_path}")
+            return symbols
+        except Exception as e2:
+            print(f"  Local cache read failed: {e2}")
+
+    print("  Falling back to Nifty 50 list...")
+    return NIFTY_50_STOCKS
 
 
 # Default: try to load from CSV, else use Nifty 50
@@ -1227,8 +1244,8 @@ def load_stock_data(symbols: list, start: str = "2020-01-01",
                     stock_data[sym] = df
                     cached_count += 1
                     continue
-            except Exception:
-                pass  # Cache corrupted, re-download
+            except Exception as cache_err:
+                print(f"  ✗ {sym}: cache corrupted ({cache_err}), re-downloading")
 
         # Not in cache — download
         if not has_yfinance:

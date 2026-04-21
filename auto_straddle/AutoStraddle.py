@@ -233,8 +233,7 @@ def main():
     cash_stratergy_obj.sync_cash_strategy()
 
     # Elliott Wave strategy setup
-    # TODO: Set to True after code review
-    EW_STRATEGY_ENABLED = False
+    EW_STRATEGY_ENABLED = True
 
     NIFTY200_CSV = str(cur_dir / 'elliot' / 'ind_nifty200list.csv')
     if EW_STRATEGY_ENABLED:
