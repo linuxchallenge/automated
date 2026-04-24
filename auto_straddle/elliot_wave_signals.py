@@ -161,7 +161,7 @@ class ElliotWaveSignalGenerator:
         """
         return self._fetch_ohlcv_tv(symbol)
 
-    def _fetch_ohlcv_tv(self, symbol: str, max_retries: int = 2) -> pd.DataFrame:
+    def _fetch_ohlcv_tv(self, symbol: str, max_retries: int = 3) -> pd.DataFrame:
         """Fetch daily OHLCV from TradingView for an NSE equity symbol."""
         if self.tv_obj is None:
             logger.error(f"TV not connected, cannot fetch {symbol}")
@@ -183,7 +183,7 @@ class ElliotWaveSignalGenerator:
                         logger.warning("Multiple consecutive TV failures, reconnecting...")
                         self._reconnect_tv()
                         self.tv_timeout_retries = 0
-                    time.sleep(1)
+                    time.sleep(2 * (retry + 1))
                     continue
 
                 # Drop the symbol column added by tvDatafeed
@@ -216,7 +216,7 @@ class ElliotWaveSignalGenerator:
                         logger.warning("Multiple TV timeouts, reconnecting...")
                         self._reconnect_tv()
                         self.tv_timeout_retries = 0
-                    time.sleep(1)
+                    time.sleep(2 * (retry + 1))
                     continue
                 logger.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                 self.tv_error += 1
@@ -480,10 +480,14 @@ class ElliotWaveSignalGenerator:
         signals_found = 0
         date_str = today.strftime("%Y%m%d")
 
-        for symbol in symbols:
+        for idx, symbol in enumerate(symbols):
             if symbol in skip_symbols:
                 logger.debug(f"Skipping {symbol} — already active")
                 continue
+
+            # Throttle TV requests to avoid connection drops (free account: max 2 connections)
+            if idx > 0:
+                time.sleep(0.5)
 
             try:
                 df = self._fetch_ohlcv(symbol)

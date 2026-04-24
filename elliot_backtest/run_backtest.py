@@ -30,8 +30,8 @@ pd.set_option("display.float_format", lambda x: f"{x:.2f}")
 def main():
     # ── Configuration ────────────────────────────────────────────────────
     config = StrategyConfig(
-        swing_lookback=20,
-        min_swing_pct=2.0,
+        swing_lookback=5,
+        min_swing_pct=3.0,
         wave2_retrace_min=0.382,
         wave2_retrace_max=0.786,
         wave3_ext_min=1.618,

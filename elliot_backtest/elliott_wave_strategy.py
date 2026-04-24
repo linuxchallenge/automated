@@ -78,7 +78,7 @@ class StrategyConfig:
     """All tunable parameters in one place."""
 
     # --- Swing Detection ---
-    swing_lookback: int = 10          # Bars to look left/right for swing pivots
+    swing_lookback: int = 5           # Bars to look left/right for swing pivots
     min_swing_pct: float = 3.0        # Minimum swing size (% move) to count
 
     # --- Fibonacci Validation ---
@@ -94,7 +94,7 @@ class StrategyConfig:
     # --- RSI Filter ---
     rsi_period: int = 14
     rsi_wave3_entry_min: float = 40   # RSI range for Wave 3 entry
-    rsi_wave3_entry_max: float = 65
+    rsi_wave3_entry_max: float = 70
     rsi_wave5_entry_min: float = 45
     rsi_wave5_entry_max: float = 70
 
@@ -108,15 +108,15 @@ class StrategyConfig:
     # --- Exit / Risk Management ---
     atr_period: int = 14
     trailing_atr_multiplier: float = 2.5
-    time_stop_days: int = 65          # Max holding period
+    time_stop_days: int = 90          # Max holding period
     wave3_target_extension: float = 1.618  # Target as extension of Wave 1
     wave5_target_extension: float = 0.786  # Smaller target for Wave 5
     risk_per_trade_pct: float = 2.0   # Max risk per trade as % of capital
 
     # --- Portfolio ---
     initial_capital: float = 1_000_000.0
-    max_positions: int = 15
-    max_allocation_pct: float = 6.67   # 100/15 = 6.67% per position
+    max_positions: int = 10
+    max_allocation_pct: float = 10.0   # 10% of total equity per position
 
     # --- Transaction Costs ---
     transaction_cost_per_trade: float = 60.0   # ₹60 per trade (one side)
