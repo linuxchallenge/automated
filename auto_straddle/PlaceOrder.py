@@ -17,7 +17,6 @@ import time
 import pandas as pd
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_module
-import upstox.upstox_api as upstox_module
 import zerodha.zerodha_api as zerodha_module
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,7 @@ class PlaceOrder:
         if account == 'leelu':
             self.obj_2 = fivepaise_module.fivepaise_api(account)
         if account == 'avanthi':
-            self.obj_3 = upstox_module.upstox_api()
+            self.obj_3 = zerodha_module.zerodha_api()
         if account == 'kite':
             self.obj_4 = zerodha_module.zerodha_api()
 

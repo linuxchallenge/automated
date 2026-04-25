@@ -18,12 +18,12 @@ import requests
 from kiteconnect import KiteConnect
 import pyotp
 import TelegramSend
-import zerodha.credentials as credentials
+from zerodha import credentials
 
 logger = logging.getLogger(__name__)
 
 
-class zerodha_api(object):
+class zerodha_api:
 
     SYMBOL_PREFIX_MAP = {
         'GOLD': 'GOLDM',
@@ -62,11 +62,9 @@ class zerodha_api(object):
         self.intializeSymbolTokenMap()
 
     def _get_request_token(self, totp):
-        """Get request token via Kite login flow with TOTP.
-        Based on: https://medium.com/@yasheshlele/how-to-fully-automate-your-zerodha-kite-api-login-with-python
-        """
-        import re
-        from urllib.parse import urlparse, parse_qs
+        """Get request token via Kite login flow with TOTP."""
+        import re  # pylint: disable=C0415
+        from urllib.parse import urlparse, parse_qs  # pylint: disable=C0415
         session = requests.Session()
 
         # Step 1: GET the login page (establishes session cookies)
@@ -224,7 +222,7 @@ class zerodha_api(object):
 
         return None
 
-    def get_best_price(self, symbol, token, exchange, buy_sell):
+    def get_best_price(self, symbol, token, exchange, buy_sell):  # pylint: disable=W0613
         """Fetch best price for limit orders using Kite market depth, falling back to LTP.
 
         For BUY returns best ask; for SELL returns best bid.
