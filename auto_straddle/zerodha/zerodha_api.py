@@ -62,51 +62,60 @@ class zerodha_api(object):
         self.intializeSymbolTokenMap()
 
     def _get_request_token(self, totp):
-        """Get request token via Kite login flow with TOTP."""
+        """Get request token via Kite login flow with TOTP.
+        Based on: https://medium.com/@yasheshlele/how-to-fully-automate-your-zerodha-kite-api-login-with-python
+        """
+        import re
+        from urllib.parse import urlparse, parse_qs
         session = requests.Session()
 
-        # Step 1: Login with user_id, password and totp
-        login_url = "https://kite.zerodha.com/api/login"
-        login_data = {
-            "user_id": credentials.USER_ID,
-            "password": credentials.PASSWORD,
-        }
-        response = session.post(login_url, data=login_data, timeout=30)
-        login_resp = response.json()
+        # Step 1: GET the login page (establishes session cookies)
+        login_page_url = f"https://kite.trade/connect/login?v=3&api_key={credentials.API_KEY}"
+        session.get(url=login_page_url, timeout=30)
 
-        if login_resp.get('status') != 'success':
-            raise RuntimeError(f"Kite login failed: {login_resp}")
+        # Step 2: POST login credentials
+        login_resp = session.post(
+            url="https://kite.zerodha.com/api/login",
+            data={"user_id": credentials.USER_ID, "password": credentials.PASSWORD},
+            timeout=30,
+        )
+        login_json = login_resp.json()
+        if login_json.get('status') != 'success':
+            raise RuntimeError(f"Kite login failed: {login_json}")
 
-        request_id = login_resp['data']['request_id']
+        request_id = login_json['data']['request_id']
 
-        # Step 2: Two-factor auth with TOTP
-        twofa_url = "https://kite.zerodha.com/api/twofa"
-        twofa_data = {
-            "user_id": credentials.USER_ID,
-            "request_id": request_id,
-            "twofa_value": totp,
-            "twofa_type": "totp",
-        }
-        response = session.post(twofa_url, data=twofa_data, timeout=30)
-        twofa_resp = response.json()
+        # Step 3: POST 2FA with TOTP
+        twofa_resp = session.post(
+            url="https://kite.zerodha.com/api/twofa",
+            data={
+                "user_id": credentials.USER_ID,
+                "request_id": request_id,
+                "twofa_value": totp,
+            },
+            timeout=30,
+        )
+        twofa_json = twofa_resp.json()
+        if twofa_json.get('status') != 'success':
+            raise RuntimeError(f"Kite 2FA failed: {twofa_json}")
 
-        if twofa_resp.get('status') != 'success':
-            raise RuntimeError(f"Kite 2FA failed: {twofa_resp}")
+        # Step 4: GET login page again — Kite redirects to redirect_uri with request_token
+        # If redirect_uri (e.g. 127.0.0.1:5000) isn't running, we catch the
+        # ConnectionError and extract request_token from the URL in the exception.
+        try:
+            response = session.get(url=login_page_url, allow_redirects=True, timeout=30)
+            if "request_token" in response.url:
+                return parse_qs(urlparse(response.url).query)["request_token"][0]
+        except requests.exceptions.ConnectionError as e:
+            match = re.findall(r"request_token=([A-Za-z0-9]+)", str(e))
+            if match:
+                return match[0]
+        except Exception as e:
+            match = re.findall(r"request_token=([A-Za-z0-9]+)", str(e))
+            if match:
+                return match[0]
 
-        # Step 3: Get request token from redirect
-        redirect_url = f"https://kite.trade/connect/login?v=3&api_key={credentials.API_KEY}"
-        response = session.get(redirect_url, allow_redirects=True, timeout=30)
-
-        # Extract request_token from final URL
-        from urllib.parse import urlparse, parse_qs
-        parsed = urlparse(response.url)
-        params = parse_qs(parsed.query)
-        request_token = params.get('request_token', [None])[0]
-
-        if not request_token:
-            raise RuntimeError(f"Could not extract request_token from URL: {response.url}")
-
-        return request_token
+        raise RuntimeError("Could not extract request_token from login flow")
 
     def intializeSymbolTokenMap(self):
         try:
@@ -155,14 +164,16 @@ class zerodha_api(object):
         # But we receive strike_price in the same format as AngelOne, so multiply
         strike_price_actual = strike_price * 100
 
+        # Kite instrument types: EQ, FUT, CE, PE (not OPTIDX/OPTSTK/FUTCOM/FUTIDX)
+
         if symbol == "SENSEX":
-            return df[(df['exch_seg'] == 'BFO') & (df['instrumenttype'] == instrumenttype) &
+            return df[(df['exch_seg'] == 'BFO') & (df['instrumenttype'] == pe_ce) &
                        (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                        (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
 
         if exch_seg == 'NSE':
             eq_df = df[(df['exch_seg'] == 'NSE') & (df['instrumenttype'] == 'EQ')]
-            return eq_df[eq_df['name'] == symbol]
+            return eq_df[eq_df['symbol'] == symbol]
 
         if exch_seg == 'NFO' and instrumenttype in ('FUTSTK', 'FUTIDX'):
             today = datetime.now().date()
@@ -171,10 +182,10 @@ class zerodha_api(object):
                 df_copy = df.copy()
                 df_copy['expiry_date'] = pd.to_datetime(df_copy['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
-                return df_copy[(df_copy['exch_seg'] == 'NFO') & (df_copy['instrumenttype'] == instrumenttype) &
+                return df_copy[(df_copy['exch_seg'] == 'NFO') & (df_copy['instrumenttype'] == 'FUT') &
                                (df_copy['name'] == symbol) & (df_copy['expiry_date'] == date_obj)].sort_values(by=['expiry'])
 
-            filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == instrumenttype) &
+            filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == 'FUT') &
                           (df['name'] == symbol)].sort_values(by=['expiry'])
             if filtered.empty:
                 return filtered
@@ -185,7 +196,7 @@ class zerodha_api(object):
             return filtered
 
         if exch_seg in ['NFO', 'BFO'] and instrumenttype in ('OPTSTK', 'OPTIDX'):
-            return df[(df['exch_seg'] == exch_seg) & (df['instrumenttype'] == instrumenttype) &
+            return df[(df['exch_seg'] == exch_seg) & (df['instrumenttype'] == pe_ce) &
                        (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                        (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
 
@@ -198,9 +209,10 @@ class zerodha_api(object):
                 df_copy['expiry_date'] = pd.to_datetime(df_copy['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
                 return df_copy[(df_copy['exch_seg'] == 'MCX') & (df_copy['name'] == symbol) &
+                               (df_copy['instrumenttype'] == 'FUT') &
                                (df_copy['expiry_date'] == date_obj)].sort_values(by=['expiry'])
 
-            filtered = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == instrumenttype) &
+            filtered = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == 'FUT') &
                           (df['name'] == symbol)].sort_values(by=['expiry'])
             if filtered.empty:
                 return filtered
@@ -531,7 +543,7 @@ class zerodha_api(object):
         try:
             df = self.token_df
             strike_price_actual = strike_price * 100
-            filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == 'OPTIDX') &
+            filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == pe_ce) &
                           (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                           (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
 
