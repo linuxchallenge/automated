@@ -28,20 +28,20 @@ class CSVFetcher:
         """Load the local record of processed files."""
         if os.path.exists(self.tracking_file):
             try:
-                with open(self.tracking_file, 'r') as f:
+                with open(self.tracking_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                logger.error(f"Error loading tracking file: {e}")
+                logger.error("Error loading tracking file: %s", e)
                 return {}
         return {}
 
     def _save_tracking(self):
         """Save the local record of processed files."""
         try:
-            with open(self.tracking_file, 'w') as f:
+            with open(self.tracking_file, 'w', encoding='utf-8') as f:
                 json.dump(self.processed_data, f, indent=4)
         except Exception as e:
-            logger.error(f"Error saving tracking file: {e}")
+            logger.error("Error saving tracking file: %s", e)
 
     def fetch_and_process(self, once=False):
         """Fetch CSV, identify files, and move them."""
@@ -66,7 +66,7 @@ class CSVFetcher:
             logger.info("Fetch and process cycle completed.")
 
         except Exception as e:
-            logger.error(f"Error in fetch_and_process: {e}")
+            logger.error("Error in fetch_and_process: %s", e)
 
         if once:
             logger.info("Single run completed. Exiting.")
@@ -76,7 +76,7 @@ class CSVFetcher:
         """Process a single row from the CSV."""
         try:
             # Extract info
-            sl_no = str(row.get('Sl no', ''))
+            _sl_no = str(row.get('Sl no', ''))
             instrument = str(row.get('Instrument', ''))
             account = str(row.get('account', ''))
             strategy = str(row.get('stratergy', ''))
@@ -84,7 +84,7 @@ class CSVFetcher:
             date_col = str(row.get('date', '')) # e.g., 2026-01-07:19-21
 
             if not all([instrument, account, strategy, expiry]):
-                logger.warning(f"Skipping incomplete row: {row.to_dict()}")
+                logger.warning("Skipping incomplete row: %s", row.to_dict())
                 return
 
             # Construct the target filename
@@ -95,22 +95,22 @@ class CSVFetcher:
             tracking_key = f"{filename}_{date_col}"
 
             if tracking_key in self.processed_data:
-                logger.debug(f"File already processed: {filename}")
+                logger.debug("File already processed: %s", filename)
                 return
 
             source_path = os.path.join(self.source_dir, filename)
             dest_path = os.path.join(self.dest_dir, filename)
 
             if os.path.exists(source_path):
-                logger.info(f"Processing file: {filename}")
+                logger.info("Processing file: %s", filename)
 
                 # Copy the file to local directory
                 shutil.copy2(source_path, dest_path)
-                logger.info(f"Copied {filename} to {self.dest_dir}")
+                logger.info("Copied %s to %s", filename, self.dest_dir)
 
                 # Delete from source
                 os.remove(source_path)
-                logger.info(f"Deleted {filename} from {self.source_dir}")
+                logger.info("Deleted %s from %s", filename, self.source_dir)
 
                 # Record as processed
                 self.processed_data[tracking_key] = {
@@ -119,10 +119,10 @@ class CSVFetcher:
                     "row_data": row.to_dict()
                 }
             else:
-                logger.warning(f"File not found in source: {source_path}")
+                logger.warning("File not found in source: %s", source_path)
 
         except Exception as e:
-            logger.error(f"Error processing row {row.get('Sl no')}: {e}")
+            logger.error("Error processing row %s: %s", row.get('Sl no'), e)
 
     def run_loop(self):
         """Run the fetcher every 5 minutes."""

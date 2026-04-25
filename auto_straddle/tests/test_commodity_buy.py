@@ -18,8 +18,6 @@ buy_sell = 'BUY'
 
 print(f"\nFetching best price for {symbol}...")
 # First test get_best_price standalone
-from upstox.upstox_api import upstox_api
-import pandas as pd
 
 token_info = api.getTokenInfo('MCX', 'FUTCOM', 'GOLDM', 0, 'X')
 if token_info.empty:

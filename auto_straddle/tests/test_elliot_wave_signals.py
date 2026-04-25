@@ -14,11 +14,10 @@ Run:
 """
 
 import os
-import sys
 import unittest
 import tempfile
-from datetime import date, datetime
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import date
+from unittest.mock import patch
 
 import pandas as pd
 

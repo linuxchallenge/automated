@@ -36,7 +36,7 @@ print(f"Response: {res}")
 
 if resp.status_code == 200 and "access_token" in res:
     token = res["access_token"]
-    with open("upstox_access_token.txt", "w") as f:
+    with open("upstox_access_token.txt", "w", encoding="utf-8") as f:
         f.write(token)
     print("\nToken saved to upstox_access_token.txt")
     print(f"Token (first 40 chars): {token[:40]}...")

@@ -13,14 +13,14 @@ Run with:
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import pandas as pd
 from datetime import datetime, timedelta
 
 
 def _make_api():
     """Build a fivepaise_api instance without calling __init__ (no real login)."""
-    import importlib, sys
+    import sys
 
     # Stub out heavy imports before loading the module
     for mod in ['py5paisa', 'pyotp', 'TelegramSend',
@@ -140,7 +140,7 @@ class TestPlaceOrderCommodityUsesPrice(unittest.TestCase):
     def test_buy_commodity_uses_best_price(self):
         with patch.object(self.api, 'get_best_price', return_value=5510.0) as mock_price, \
              patch.object(self.api, '_fix_shared_payload_bug'):
-            order_id, _ = self.api.place_order_commodity('GOLD', 1, 'BUY')
+            _order_id, _ = self.api.place_order_commodity('GOLD', 1, 'BUY')
         mock_price.assert_called_once_with(55555, 'M', 'D', 'B')
         # Verify Price kwarg forwarded to broker call
         _, kwargs = self.api.obj.place_order.call_args
@@ -149,7 +149,7 @@ class TestPlaceOrderCommodityUsesPrice(unittest.TestCase):
     def test_sell_commodity_uses_best_price(self):
         with patch.object(self.api, 'get_best_price', return_value=5490.0) as mock_price, \
              patch.object(self.api, '_fix_shared_payload_bug'):
-            order_id, _ = self.api.place_order_commodity('GOLD', 1, 'SELL')
+            _order_id, _ = self.api.place_order_commodity('GOLD', 1, 'SELL')
         mock_price.assert_called_once_with(55555, 'M', 'D', 'S')
         _, kwargs = self.api.obj.place_order.call_args
         self.assertEqual(kwargs['Price'], 5490.0)
@@ -203,8 +203,8 @@ class TestPlaceOrderUsesPrice(unittest.TestCase):
         self.api.obj.place_order.return_value = {'BrokerOrderID': 9001, 'Message': 'Success'}
         with patch.object(self.api, '_refresh_session', return_value=True) as mock_refresh, \
              patch.object(self.api, '_fix_shared_payload_bug'), \
-             patch('fivepaisa.fivepaise_api.time') as mock_time:
-            order_id, _ = self.api.place_order('NIFTY', 50, 'SELL', 24000, 'CE')
+             patch('fivepaisa.fivepaise_api.time') as _mock_time:
+            _order_id, _ = self.api.place_order('NIFTY', 50, 'SELL', 24000, 'CE')
         mock_refresh.assert_called_once()
         self.assertEqual(self.api.get_best_price.call_count, 2)
         _, kwargs = self.api.obj.place_order.call_args

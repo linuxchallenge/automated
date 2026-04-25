@@ -61,7 +61,7 @@ Real-world usage should combine with discretionary oversight.
 
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 import warnings
@@ -474,7 +474,7 @@ def generate_signals(df: pd.DataFrame, structures: list,
     # Pre-compute indicators
     rsi = compute_rsi(df["Close"], config.rsi_period)
     vol_ma = compute_volume_ma(df["Volume"], config.volume_ma_period)
-    atr = compute_atr(df["High"], df["Low"], df["Close"], config.atr_period)
+    _atr = compute_atr(df["High"], df["Low"], df["Close"], config.atr_period)
 
     for ws in structures:
         if not ws.is_valid:
@@ -689,7 +689,7 @@ class Backtester:
         """
         # Collect all signals, sort by date
         signal_list = []
-        for symbol, signals in all_signals.items():
+        for _symbol, signals in all_signals.items():
             for sig in signals:
                 signal_list.append(sig)
         signal_list.sort(key=lambda s: s.date)
@@ -1390,7 +1390,7 @@ def run_strategy(symbols: list = None, start: str = "2021-01-01",
         if key != "Exit Breakdown":
             print(f"  {key:.<35} {val}")
 
-    print(f"\n  Exit Breakdown:")
+    print("\n  Exit Breakdown:")
     for reason, count in metrics.get("Exit Breakdown", {}).items():
         print(f"    {reason:.<30} {count}")
 

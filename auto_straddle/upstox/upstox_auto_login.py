@@ -86,7 +86,7 @@ def refresh_token():
     client_id = params.get("client_id", [None])[0]
     if not user_id:
         raise RuntimeError(f"Could not get user_id from redirect. URL: {r.url}")
-    log.info(f"user_id: {user_id}")
+    log.info("user_id: %s", user_id)
     time.sleep(1)
 
     # Step 2 — generate OTP
@@ -156,9 +156,9 @@ def refresh_token():
         raise RuntimeError(f"Token exchange failed: {res}")
 
     token = res["access_token"]
-    with open(TOKEN_FILE, "w") as f:
+    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
         f.write(token)
-    log.info(f"Token saved for user: {res.get('user_name')} (expires 3:30 AM IST)")
+    log.info("Token saved for user: %s (expires 3:30 AM IST)", res.get('user_name'))
     return token
 
 
@@ -167,5 +167,5 @@ if __name__ == "__main__":
         refresh_token()
         log.info("Done.")
     except Exception as e:
-        log.error(f"Login failed: {e}")
+        log.error("Login failed: %s", e)
         sys.exit(1)

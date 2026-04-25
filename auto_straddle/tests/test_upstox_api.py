@@ -9,7 +9,6 @@ import unittest
 from unittest.mock import patch, MagicMock, mock_open
 from datetime import datetime, timedelta
 import pandas as pd
-import json
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +235,12 @@ class TestPlaceOrderCommodity(unittest.TestCase):
         mock_resp.json.return_value = {"status": "success", "data": {"order_id": "COM1"}}
         mock_post.return_value = mock_resp
 
-        order_id, expiry = self.api.place_order_commodity("GOLD", 1, "BUY")
+        order_id, _expiry = self.api.place_order_commodity("GOLD", 1, "BUY")
         self.assertEqual(order_id, "COM1")
-        self.assertIsNotNone(expiry)
+        self.assertIsNotNone(_expiry)
 
     def test_place_commodity_unknown_returns_error(self):
-        order_id, expiry = self.api.place_order_commodity("UNKNOWN_COMMODITY", 1, "BUY")
+        order_id, _expiry = self.api.place_order_commodity("UNKNOWN_COMMODITY", 1, "BUY")
         self.assertEqual(order_id, -1)
 
 
@@ -446,7 +445,7 @@ class TestGetOrderStatus(unittest.TestCase):
         }
         mock_get.return_value = mock_resp
 
-        status, price = self.api.get_order_status("ORD124")
+        status, _price = self.api.get_order_status("ORD124")
         self.assertEqual(status, "Open")
 
     @patch("upstox.upstox_api.requests.get")
@@ -458,7 +457,7 @@ class TestGetOrderStatus(unittest.TestCase):
         }
         mock_get.return_value = mock_resp
 
-        status, price = self.api.get_order_status("ORD125")
+        status, _price = self.api.get_order_status("ORD125")
         self.assertEqual(status, "Rejected")
 
     @patch("upstox.upstox_api.requests.get")
@@ -470,7 +469,7 @@ class TestGetOrderStatus(unittest.TestCase):
         }
         mock_get.return_value = mock_resp
 
-        status, price = self.api.get_order_status("ORD126")
+        status, _price = self.api.get_order_status("ORD126")
         self.assertEqual(status, "Cancelled")
 
     @patch("upstox.upstox_api.requests.get")
@@ -503,7 +502,7 @@ class TestGetOrderStatus(unittest.TestCase):
         }
         mock_get.return_value = mock_resp
 
-        status, price = self.api.get_order_status("ORD127")
+        status, _price = self.api.get_order_status("ORD127")
         self.assertEqual(status, "Open")
 
     @patch("upstox.upstox_api.requests.get")

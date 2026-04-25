@@ -17,8 +17,8 @@ except ImportError:
     curl_requests = None
     CURL_CFFI_AVAILABLE = False
 try:
-    import pycurl
-    import certifi
+    import pycurl  # pylint: disable=unused-import  # re-imported locally in PycurlSession
+    import certifi  # pylint: disable=unused-import  # re-imported locally in PycurlSession
     PYCURL_AVAILABLE = True
 except ImportError:
     pycurl = None
@@ -160,12 +160,12 @@ class upstox_api(object):
             attempts -= 1
             try:
                 self.access_token = self._headless_login()
-                with open('upstox_access_token.txt', 'w') as f:
+                with open('upstox_access_token.txt', 'w', encoding='utf-8') as f:
                     f.write(self.access_token)
                 logger.info("Successfully authenticated with Upstox")
                 return
             except Exception as e:
-                logger.error(f"Upstox login attempt failed: {e}")
+                logger.error("Upstox login attempt failed: %s", e)
                 if attempts > 0:
                     time.sleep(2)
         logger.error("All Upstox login attempts failed")
@@ -196,7 +196,7 @@ class upstox_api(object):
             "x-request-id": request_id,
         }
         session_type = 'curl_cffi' if CURL_CFFI_AVAILABLE else ('pycurl' if PYCURL_AVAILABLE else 'requests')
-        logger.debug(f"_headless_login: starting with session={session_type}")
+        logger.debug("_headless_login: starting with session=%s", session_type)
         if CURL_CFFI_AVAILABLE:
             session = curl_requests.Session(impersonate="chrome131", headers=headers)
         elif PYCURL_AVAILABLE:
@@ -212,13 +212,13 @@ class upstox_api(object):
             params={"response_type": "code", "client_id": self.client_id, "redirect_uri": self.redirect_uri},
             allow_redirects=True,
         )
-        logger.debug(f"_headless_login step 1: status={r.status_code}, final_url={r.url}")
+        logger.debug("_headless_login step 1: status=%s, final_url=%s", r.status_code, r.url)
         params    = parse_qs(urlparse(r.url).query)
         user_id   = params.get("user_id", [None])[0]
         client_id = params.get("client_id", [None])[0]
         if not user_id:
             raise RuntimeError(f"Could not get user_id. URL: {r.url}")
-        logger.debug(f"_headless_login step 1: got user_id={user_id}")
+        logger.debug("_headless_login step 1: got user_id=%s", user_id)
         time.sleep(1)
 
         # Step 2 — generate OTP
@@ -227,7 +227,7 @@ class upstox_api(object):
             f"{SERVICE_BASE}/login/open/v6/auth/1fa/otp/generate",
             json={"data": {"mobileNumber": credentials.MOBILE, "userId": user_id}},
         )
-        logger.debug(f"_headless_login step 2: status={r.status_code}")
+        logger.debug("_headless_login step 2: status=%s", r.status_code)
         validate_otp_token = r.json().get("data", {}).get("validateOTPToken")
         if not validate_otp_token:
             raise RuntimeError(f"OTP generation failed: {r.json()}")
@@ -240,7 +240,7 @@ class upstox_api(object):
             f"{SERVICE_BASE}/login/open/v4/auth/1fa/otp-totp/verify",
             json={"data": {"otp": totp, "validateOtpToken": validate_otp_token}},
         )
-        logger.debug(f"_headless_login step 3: status={r.status_code}")
+        logger.debug("_headless_login step 3: status=%s", r.status_code)
         if r.status_code != 200:
             raise RuntimeError(f"TOTP validation failed: {r.text}")
         time.sleep(1)
@@ -254,7 +254,7 @@ class upstox_api(object):
             json={"data": {"twoFAMethod": "SECRET_PIN", "inputText": pin_b64}},
             allow_redirects=True,
         )
-        logger.debug(f"_headless_login step 4: status={r.status_code}")
+        logger.debug("_headless_login step 4: status=%s", r.status_code)
         if r.status_code != 200:
             raise RuntimeError(f"PIN submission failed: {r.text}")
         time.sleep(1)
@@ -267,7 +267,7 @@ class upstox_api(object):
             json={"data": {"userOAuthApproval": True}},
             allow_redirects=True,
         )
-        logger.debug(f"_headless_login step 5: status={r.status_code}")
+        logger.debug("_headless_login step 5: status=%s", r.status_code)
         redirect_uri = r.json().get("data", {}).get("redirectUri", "")
         auth_code    = parse_qs(urlparse(redirect_uri).query).get("code", [None])[0]
         if not auth_code:
@@ -287,7 +287,7 @@ class upstox_api(object):
             headers={"accept": "application/json", "content-type": "application/x-www-form-urlencoded"},
             data=f"code={auth_code}&client_id={self.client_id}&client_secret={self.client_secret}&redirect_uri={self.redirect_uri}&grant_type=authorization_code",
         )
-        logger.debug(f"_headless_login step 6: status={r.status_code}")
+        logger.debug("_headless_login step 6: status=%s", r.status_code)
         res = r.json()
         if r.status_code != 200 or "access_token" not in res:
             raise RuntimeError(f"Token exchange failed: {res}")
@@ -312,20 +312,20 @@ class upstox_api(object):
                 self.token_df['strike'] = pd.to_numeric(self.token_df['strike'], errors='coerce')
 
             self.token_df.to_csv('token_map_upstox.csv', index=False)
-            logger.debug(f"intializeSymbolTokenMap: loaded {len(self.token_df)} rows from network")
+            logger.debug("intializeSymbolTokenMap: loaded %s rows from network", len(self.token_df))
         except Exception as e:
             print(f"Error executing intializeSymbolTokenMap: {e}")
-            logging.error(f"Error executing intializeSymbolTokenMap: {e}")
+            logging.error("Error executing intializeSymbolTokenMap: %s", e)
             try:
                 self.token_df = pd.read_csv('token_map_upstox.csv')
-                logger.debug(f"intializeSymbolTokenMap: loaded {len(self.token_df)} rows from local cache")
+                logger.debug("intializeSymbolTokenMap: loaded %s rows from local cache", len(self.token_df))
             except Exception as e1:
                 print(f"Error reading local token map: {e1}")
-                logging.error(f"Error reading local token map: {e1}")
+                logging.error("Error reading local token map: %s", e1)
                 raise e1
 
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
-        logger.debug(f"getTokenInfo: exch={exch_seg} type={instrumenttype} symbol={symbol} strike={strike_price} pe_ce={pe_ce} expiry={expiry}")
+        logger.debug("getTokenInfo: exch=%s type=%s symbol=%s strike=%s pe_ce=%s expiry=%s", exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry)
         df = self.token_df
 
         # Map exchange segment names to Upstox CSV exchange values
@@ -347,7 +347,7 @@ class upstox_api(object):
         # We approximate the standard filtering:
         if exch_seg == 'NSE':
             result = df[(df['exchange'] == 'NSE_EQ') & (df['instrument_type'] == 'EQUITY') & (df['name'] == symbol)]
-            logger.debug(f"getTokenInfo NSE_EQ result: {len(result)} row(s)")
+            logger.debug("getTokenInfo NSE_EQ result: %s row(s)", len(result))
             return result
 
         if exch_seg == 'NFO' and instrumenttype in ['FUTSTK', 'FUTIDX']:
@@ -371,7 +371,7 @@ class upstox_api(object):
             result = df[(df['exchange'] == exchange) & (df['instrument_type'] == instrumenttype) &
                         (df['name'] == symbol) & (df['strike'] == float(strike_price)) &
                         (df['option_type'] == pe_ce)].sort_values(by=['expiry'])
-            logger.debug(f"getTokenInfo OPTIDX result: {len(result)} row(s) for {symbol} {strike_price} {pe_ce}")
+            logger.debug("getTokenInfo OPTIDX result: %s row(s) for %s %s %s", len(result), symbol, strike_price, pe_ce)
             return result
 
         if exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
@@ -421,18 +421,18 @@ class upstox_api(object):
                     for ask in asks:
                         p = float(ask.get('price', 0))
                         if p > 0:
-                            logger.info(f"Upstox market depth ask price for {instrument_token}: {p}")
+                            logger.info("Upstox market depth ask price for %s: %s", instrument_token, p)
                             return p
                 else:
                     bids = depth.get('buy', [])
                     for bid in bids:
                         p = float(bid.get('price', 0))
                         if p > 0:
-                            logger.info(f"Upstox market depth bid price for {instrument_token}: {p}")
+                            logger.info("Upstox market depth bid price for %s: %s", instrument_token, p)
                             return p
-            logger.warning(f"Upstox market depth returned no usable price for {instrument_token}, falling back to LTP")
+            logger.warning("Upstox market depth returned no usable price for %s, falling back to LTP", instrument_token)
         except Exception as e:
-            logger.warning(f"Upstox market depth failed for {instrument_token}: {e}, falling back to LTP")
+            logger.warning("Upstox market depth failed for %s: %s, falling back to LTP", instrument_token, e)
 
         # Fallback: LTP via /market-quote/ltp
         try:
@@ -448,28 +448,28 @@ class upstox_api(object):
                         price = round(ltp * 1.005, 2)
                     else:
                         price = round(ltp * 0.995, 2)
-                    logger.info(f"Upstox LTP fallback price for {instrument_token}: {price} (ltp={ltp})")
+                    logger.info("Upstox LTP fallback price for %s: %s (ltp=%s)", instrument_token, price, ltp)
                     return price
-            logger.error(f"Upstox LTP also returned no price for {instrument_token}")
+            logger.error("Upstox LTP also returned no price for %s", instrument_token)
         except Exception as e:
-            logger.error(f"Upstox LTP fallback failed for {instrument_token}: {e}")
+            logger.error("Upstox LTP fallback failed for %s: %s", instrument_token, e)
 
         return 0
 
     def _place_upstox_order(self, orderparams):
         url = self.order_url
         if self.DEBUG:
-            logger.debug(f"_place_upstox_order payload: {orderparams}")
+            logger.debug("_place_upstox_order payload: %s", orderparams)
         response = requests.post(url, headers=self.get_headers(), json=orderparams, timeout=30)
         res_json = response.json()
-        logger.debug(f"_place_upstox_order response: status={response.status_code}")
+        logger.debug("_place_upstox_order response: status=%s", response.status_code)
         if self.DEBUG:
-            logger.debug(f"_place_upstox_order response body: {res_json}")
+            logger.debug("_place_upstox_order response body: %s", res_json)
         if response.status_code == 200 and res_json.get('status') == 'success':
             order_id = res_json['data']['order_id']
-            logger.debug(f"_place_upstox_order: order_id={order_id}")
+            logger.debug("_place_upstox_order: order_id=%s", order_id)
             return order_id
-        logger.error(f"Upstox Order placement failed: {res_json}")
+        logger.error("Upstox Order placement failed: %s", res_json)
         print(f"Upstox Order placement failed: {res_json}")
         return None
 
@@ -481,15 +481,15 @@ class upstox_api(object):
 
         Returns the order_id string if found, None otherwise.
         """
-        logger.debug(f"_find_recent_order: token={instrument_token} side={transaction_type} qty={qty} product={product}")
+        logger.debug("_find_recent_order: token=%s side=%s qty=%s product=%s", instrument_token, transaction_type, qty, product)
         try:
             url = f"{self.base_url}/order/retrieve-all"
             response = requests.get(url, headers=self.get_headers(), timeout=15)
             if response.status_code != 200:
-                logger.debug(f"_find_recent_order: order book fetch failed status={response.status_code}")
+                logger.debug("_find_recent_order: order book fetch failed status=%s", response.status_code)
                 return None
             data = response.json().get('data') or []
-            logger.debug(f"_find_recent_order: scanning {len(data)} orders")
+            logger.debug("_find_recent_order: scanning %s orders", len(data))
             for o in data:
                 status = str(o.get('status', '')).lower()
                 if status in ('rejected', 'cancelled'):
@@ -500,10 +500,10 @@ class upstox_api(object):
                     if product is not None and str(o.get('product', '')) != str(product):
                         continue
                     found_id = o.get('order_id')
-                    logger.debug(f"_find_recent_order: matched order_id={found_id} status={o.get('status')}")
+                    logger.debug("_find_recent_order: matched order_id=%s status=%s", found_id, o.get('status'))
                     return found_id
         except Exception as e:
-            logger.error(f"Error checking Upstox order book for recent order: {e}")
+            logger.error("Error checking Upstox order book for recent order: %s", e)
         logger.debug("_find_recent_order: no matching order found")
         return None
 
@@ -535,16 +535,16 @@ class upstox_api(object):
             order_id = self._place_upstox_order(orderparams)
             return order_id if order_id else -1
         except Exception as e:
-            logger.error(f"Order placement failed: {str(e)}")
+            logger.error("Order placement failed: %s", str(e))
             return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):  # pylint: disable=too-many-branches
         original_symbol = symbol  # preserve before remapping for position check
-        logger.debug(f"place_order_commodity: {symbol} qty={qty} side={buy_sell} expiry={expiry} iscommodity={iscommodity}")
+        logger.debug("place_order_commodity: %s qty=%s side=%s expiry=%s iscommodity=%s", symbol, qty, buy_sell, expiry, iscommodity)
         try:
             # Map display name to actual mini/micro contract symbol
             mapped = self.SYMBOL_PREFIX_MAP.get(symbol.upper(), symbol)
-            logger.debug(f"place_order_commodity: symbol mapped {symbol} -> {mapped}")
+            logger.debug("place_order_commodity: symbol mapped %s -> %s", symbol, mapped)
             symbol = mapped
 
             if iscommodity:
@@ -553,19 +553,19 @@ class upstox_api(object):
                 tokenInfo = self.getTokenInfo('NFO', 'FUTIDX', symbol, 0, 'X', expiry)
 
             if tokenInfo.empty:
-                logger.error(f"place_order_commodity: no token found for {symbol} expiry={expiry}")
+                logger.error("place_order_commodity: no token found for %s expiry=%s", symbol, expiry)
                 return -1, -1
 
             t_info = tokenInfo.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
             total_qty = qty * lot
-            logger.debug(f"place_order_commodity: token={instrument_token} lot={lot} total_qty={total_qty} expiry={t_info['expiry']}")
+            logger.debug("place_order_commodity: token=%s lot=%s total_qty=%s expiry=%s", instrument_token, lot, total_qty, t_info['expiry'])
             product = "D"  # carryforward
 
             price = self.get_best_price(instrument_token, buy_sell)
             if price <= 0:
-                logger.error(f"place_order_commodity: could not get price for {instrument_token}, aborting")
+                logger.error("place_order_commodity: could not get price for %s, aborting", instrument_token)
                 return -1, -1
 
             orderparams = {
@@ -591,22 +591,22 @@ class upstox_api(object):
                     time.sleep(5)
                     existing = self._find_recent_order(instrument_token, buy_sell, total_qty, product)
                     if existing:
-                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        logger.info("Order %s already exists after timeout, skipping retry", existing)
                         order_id = existing
                     else:
                         try:
                             order_id = self._place_upstox_order(orderparams)
                         except Exception as e2:
-                            logger.error(f"Error executing place_order_commodity after timeout: {e2}")
+                            logger.error("Error executing place_order_commodity after timeout: %s", e2)
                             return -1, -1
             except Exception as e:
                 try:
-                    logger.error(f"Error placing commodity order, trying again: {e}")
+                    logger.error("Error placing commodity order, trying again: %s", e)
                     try:
                         TelegramSend.telegram_send_api().send_message(
                             "-4008545231", f"Warning upstox {symbol} order Pls check")
                     except Exception as telegram_error:
-                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                        logger.debug("Failed to send Telegram alert: %s", telegram_error)
                     time.sleep(2)
 
                     # Before retrying, check if the position already exists at the broker.
@@ -615,30 +615,30 @@ class upstox_api(object):
                     trade_type = 'long' if buy_sell == 'BUY' else 'short'
                     pos_type, _ = self.get_commodity_position(original_symbol, trade_type)
                     if pos_type is not None:
-                        logger.info(f"Position already exists for {original_symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
+                        logger.info("Position already exists for %s (%s) after exception. Skipping retry to avoid duplicate.", original_symbol, trade_type)
                         return -1, t_info['expiry']
 
                     order_id = self._place_upstox_order(orderparams)
                 except Exception as e1:
-                    logger.error(f"Error executing place_order_commodity: {e1}")
+                    logger.error("Error executing place_order_commodity: %s", e1)
                     return -1, -1
 
             if not self._validate_order_id(order_id):
-                logger.error(f"Upstox API returned invalid order ID: {order_id} for commodity {symbol}")
+                logger.error("Upstox API returned invalid order ID: %s for commodity %s", order_id, symbol)
                 return -1, -1
 
             return order_id, t_info['expiry']
 
         except Exception as e:
-            logger.error(f"Error executing place_order_commodity: {e}")
+            logger.error("Error executing place_order_commodity: %s", e)
             return -1, -1
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, intraday=True):  # pylint: disable=too-many-branches
-        logger.debug(f"place_order: {symbol} {strike_price}{pe_ce} qty={qty} side={buy_sell} intraday={intraday}")
+        logger.debug("place_order: %s %s%s qty=%s side=%s intraday=%s", symbol, strike_price, pe_ce, qty, buy_sell, intraday)
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df.empty:
-                logger.error(f"place_order: no token found for {symbol} {strike_price}{pe_ce}")
+                logger.error("place_order: no token found for %s %s%s", symbol, strike_price, pe_ce)
                 return -1
 
             # Skip past-expiry contracts
@@ -653,10 +653,10 @@ class upstox_api(object):
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            logger.debug(f"place_order: token={instrument_token} lot={lot} expiry={t_info['expiry']}")
+            logger.debug("place_order: token=%s lot=%s expiry=%s", instrument_token, lot, t_info['expiry'])
 
             if qty % lot != 0:
-                logger.error(f"Upstox Quantity {qty} not multiple of lot size {lot}")
+                logger.error("Upstox Quantity %s not multiple of lot size %s", qty, lot)
                 return -1
 
             product = "I" if intraday else "D"
@@ -683,44 +683,44 @@ class upstox_api(object):
                     time.sleep(5)
                     existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
                     if existing:
-                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        logger.info("Order %s already exists after timeout, skipping retry", existing)
                         order_id = existing
                     else:
                         try:
                             order_id = self._place_upstox_order(orderparams)
                         except Exception as e2:
-                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            logger.error("Error executing place_order after timeout: %s", e2)
                             return -1
             except Exception as e:
                 try:
-                    logger.error(f"Error executing place_order again: {e}")
+                    logger.error("Error executing place_order again: %s", e)
                     try:
                         TelegramSend.telegram_send_api().send_message(
                             "-4008545231", f"Warning upstox {symbol} order Pls check")
                     except Exception as telegram_error:
-                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                        logger.debug("Failed to send Telegram alert: %s", telegram_error)
                     time.sleep(2)
                     order_id = self._place_upstox_order(orderparams)
                 except Exception as e1:
-                    logger.error(f"Error executing place_order: {e1}")
+                    logger.error("Error executing place_order: %s", e1)
                     return -1
 
             if not self._validate_order_id(order_id):
-                logger.error(f"Upstox API returned invalid order ID: {order_id} for {symbol}")
+                logger.error("Upstox API returned invalid order ID: %s for %s", order_id, symbol)
                 return -1
 
             return order_id
 
         except Exception as e:
-            logger.error(f"Error executing place_order: {e}")
+            logger.error("Error executing place_order: %s", e)
             return -1
 
     def place_order_option_buy(self, symbol, qty, buy_sell, strike_price, pe_ce):  # pylint: disable=too-many-branches
-        logger.debug(f"place_order_option_buy: {symbol} {strike_price}{pe_ce} qty={qty} side={buy_sell}")
+        logger.debug("place_order_option_buy: %s %s%s qty=%s side=%s", symbol, strike_price, pe_ce, qty, buy_sell)
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df.empty:
-                logger.error(f"place_order_option_buy: no token found for {symbol} {strike_price}{pe_ce}")
+                logger.error("place_order_option_buy: no token found for %s %s%s", symbol, strike_price, pe_ce)
                 return -1
 
             # Pick current month's last expiry (same logic as AngelOne)
@@ -740,10 +740,10 @@ class upstox_api(object):
 
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            logger.debug(f"place_order_option_buy: token={instrument_token} lot={lot} expiry={t_info['expiry']}")
+            logger.debug("place_order_option_buy: token=%s lot=%s expiry=%s", instrument_token, lot, t_info['expiry'])
 
             if qty % lot != 0:
-                logger.error(f"Upstox Quantity {qty} not multiple of lot size {lot}")
+                logger.error("Upstox Quantity %s not multiple of lot size %s", qty, lot)
                 return -1
 
             product = "D"
@@ -770,44 +770,44 @@ class upstox_api(object):
                     time.sleep(5)
                     existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
                     if existing:
-                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        logger.info("Order %s already exists after timeout, skipping retry", existing)
                         order_id = existing
                     else:
                         try:
                             order_id = self._place_upstox_order(orderparams)
                         except Exception as e2:
-                            logger.error(f"Error executing place_order_option_buy after timeout: {e2}")
+                            logger.error("Error executing place_order_option_buy after timeout: %s", e2)
                             return -1
             except Exception as e:
                 try:
-                    logger.error(f"Error placing option buy order, trying again: {e}")
+                    logger.error("Error placing option buy order, trying again: %s", e)
                     try:
                         TelegramSend.telegram_send_api().send_message(
                             "-4008545231", f"Warning upstox {symbol} option buy order Pls check")
                     except Exception as telegram_error:
-                        logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                        logger.debug("Failed to send Telegram alert: %s", telegram_error)
                     time.sleep(2)
                     order_id = self._place_upstox_order(orderparams)
                 except Exception as e1:
-                    logger.error(f"Error executing place_order_option_buy: {e1}")
+                    logger.error("Error executing place_order_option_buy: %s", e1)
                     return -1
 
             if not self._validate_order_id(order_id):
-                logger.error(f"Upstox API returned invalid order ID: {order_id} for option buy {symbol}")
+                logger.error("Upstox API returned invalid order ID: %s for option buy %s", order_id, symbol)
                 return -1
 
             return order_id
 
         except Exception as e:
-            logger.error(f"Error executing option buy: {e}")
+            logger.error("Error executing option buy: %s", e)
             return -1
 
     def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):  # pylint: disable=too-many-branches
-        logger.debug(f"place_order_synthetic_future: {symbol} {strike_price}{pe_ce} qty={qty} side={buy_sell} expiry={expiry}")
+        logger.debug("place_order_synthetic_future: %s %s%s qty=%s side=%s expiry=%s", symbol, strike_price, pe_ce, qty, buy_sell, expiry)
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce, expiry)
             if df.empty:
-                logger.error(f"place_order_synthetic_future: no token found for {symbol} {strike_price}{pe_ce}")
+                logger.error("place_order_synthetic_future: no token found for %s %s%s", symbol, strike_price, pe_ce)
                 return -1, None
 
             # Pick expiry at least 8 days out (same logic as AngelOne)
@@ -818,7 +818,7 @@ class upstox_api(object):
                 if expiry is None:
                     future = df[df['expiry_date'] > (today + timedelta(days=8))]
                     if future.empty:
-                        logger.error(f"place_order_synthetic_future: no valid future expiries found for {symbol}")
+                        logger.error("place_order_synthetic_future: no valid future expiries found for %s", symbol)
                         return -1, None
                     df = future
                 else:
@@ -826,11 +826,11 @@ class upstox_api(object):
                         target_expiry = pd.to_datetime(expiry).date()
                         matching = df[df['expiry_date'] == target_expiry]
                         if matching.empty:
-                            logger.error(f"place_order_synthetic_future: no contract found for specified expiry {target_expiry}")
+                            logger.error("place_order_synthetic_future: no contract found for specified expiry %s", target_expiry)
                             return -1, None
                         df = matching
                     except Exception as e:
-                        logger.error(f"place_order_synthetic_future: error parsing expiry {expiry}: {e}")
+                        logger.error("place_order_synthetic_future: error parsing expiry %s: %s", expiry, e)
                         return -1, None
             except Exception:
                 pass
@@ -840,11 +840,11 @@ class upstox_api(object):
             t_info = df.iloc[0]
             instrument_token = t_info['instrument_key']
             lot = int(t_info.get('lot_size', 1))
-            logger.info(f"Upstox: Selected contract: {instrument_token}, lot={lot}, expiry={t_info['expiry']}")
-            logger.debug(f"place_order_synthetic_future: token={instrument_token} lot={lot} expiry={t_info['expiry']}")
+            logger.info("Upstox: Selected contract: %s, lot=%s, expiry=%s", instrument_token, lot, t_info['expiry'])
+            logger.debug("place_order_synthetic_future: token=%s lot=%s expiry=%s", instrument_token, lot, t_info['expiry'])
 
             if qty % lot != 0:
-                logger.error(f"Quantity {qty} not multiple of lot size {lot}")
+                logger.error("Quantity %s not multiple of lot size %s", qty, lot)
                 return -1, None
 
             product = "D"
@@ -866,20 +866,20 @@ class upstox_api(object):
                 try:
                     order_id = self._place_upstox_order(orderparams)
                     if not self._validate_order_id(order_id):
-                        logger.error(f"Upstox API returned invalid order ID: {order_id} for synthetic future {symbol}")
+                        logger.error("Upstox API returned invalid order ID: %s for synthetic future %s", order_id, symbol)
                         continue
-                    logger.info(f"Order placed successfully: {order_id}")
+                    logger.info("Order placed successfully: %s", order_id)
                     return order_id, t_info['expiry']
                 except requests.exceptions.Timeout:
-                    logger.warning(f"Order placement timeout (attempt {attempt+1})")
+                    logger.warning("Order placement timeout (attempt %s)", attempt+1)
                     time.sleep(2)
                     # On timeout, check order book to avoid duplicate
                     existing = self._find_recent_order(instrument_token, buy_sell, qty, product)
                     if existing:
-                        logger.info(f"Order {existing} already exists after timeout, skipping retry")
+                        logger.info("Order %s already exists after timeout, skipping retry", existing)
                         return existing, t_info['expiry']
                 except Exception as e:
-                    logger.error(f"Order placement error (attempt {attempt+1}): {e}")
+                    logger.error("Order placement error (attempt %s): %s", attempt+1, e)
                     if attempt == 0:
                         time.sleep(2)
                         try:
@@ -887,19 +887,19 @@ class upstox_api(object):
                                 "-4008545231",
                                 f"Warning upstox {symbol} synthetic order failed: {str(e)[:100]}")
                         except Exception as telegram_error:
-                            logger.debug(f"Failed to send Telegram alert: {telegram_error}")
+                            logger.debug("Failed to send Telegram alert: %s", telegram_error)
 
             return -1, None
 
         except Exception as e:
-            logger.error(f"Error executing synthetic future: {e}")
+            logger.error("Error executing synthetic future: %s", e)
             return -1, None
 
     def get_commodity_position(self, symbol, trade_type):
-        logger.debug(f"get_commodity_position: symbol={symbol} trade_type={trade_type}")
+        logger.debug("get_commodity_position: symbol=%s trade_type=%s", symbol, trade_type)
         try:
             mcx_prefix = self.SYMBOL_PREFIX_MAP.get(symbol.upper(), symbol.upper())
-            logger.debug(f"get_commodity_position: looking for prefix={mcx_prefix}")
+            logger.debug("get_commodity_position: looking for prefix=%s", mcx_prefix)
 
             # MCX carryforward positions are under long-term-positions
             url = f"{self.base_url}/portfolio/long-term-positions"
@@ -907,27 +907,27 @@ class upstox_api(object):
 
             if response.status_code == 200:
                 data = response.json().get('data', [])
-                logger.debug(f"get_commodity_position: {len(data)} long-term position(s) returned")
+                logger.debug("get_commodity_position: %s long-term position(s) returned", len(data))
                 if self.DEBUG:
                     for pos in data:
-                        logger.debug(f"  position: {pos.get('tradingsymbol')} qty={pos.get('quantity')}")
+                        logger.debug("  position: %s qty=%s", pos.get('tradingsymbol'), pos.get('quantity'))
                 for pos in data:
                     tradingsymbol = pos.get('tradingsymbol', '').upper()
                     if tradingsymbol.startswith(mcx_prefix.upper()):
                         net_qty = int(pos.get('quantity', 0))
                         if net_qty > 0 and trade_type == 'long':
                             avg = float(pos.get('average_price', 0.0))
-                            logger.info(f"Upstox: Found LONG position for {symbol}: qty={net_qty} avg={avg}")
+                            logger.info("Upstox: Found LONG position for %s: qty=%s avg=%s", symbol, net_qty, avg)
                             return 'long', avg
                         if net_qty < 0 and trade_type == 'short':
                             avg = float(pos.get('average_price', 0.0))
-                            logger.info(f"Upstox: Found SHORT position for {symbol}: qty={net_qty} avg={avg}")
+                            logger.info("Upstox: Found SHORT position for %s: qty=%s avg=%s", symbol, net_qty, avg)
                             return 'short', avg
 
-            logger.info(f"Upstox: No matching {trade_type} position found for {symbol}")
+            logger.info("Upstox: No matching %s position found for %s", trade_type, symbol)
             return None, 0
         except Exception as e:
-            logger.error(f"Error checking Upstox commodity position: {e}")
+            logger.error("Error checking Upstox commodity position: %s", e)
             return None, 0
 
     def get_ledger_balance(self):
@@ -935,39 +935,39 @@ class upstox_api(object):
         try:
             url = f"{self.base_url}/user/get-funds-and-margin"
             response = requests.get(url, headers=self.get_headers(), timeout=10)
-            logger.debug(f"get_ledger_balance: response status={response.status_code}")
+            logger.debug("get_ledger_balance: response status=%s", response.status_code)
 
             if response.status_code == 200:
                 res = response.json()
                 if self.DEBUG:
-                    logger.debug(f"get_ledger_balance raw: {res}")
+                    logger.debug("get_ledger_balance raw: %s", res)
                 data = res.get('data', {})
                 equity    = float((data.get('equity')    or {}).get('available_margin', 0) or 0)
                 commodity = float((data.get('commodity') or {}).get('available_margin', 0) or 0)
                 balance = equity + commodity
-                logger.info(f"Upstox ledger balance: equity={equity} commodity={commodity} total={balance}")
+                logger.info("Upstox ledger balance: equity=%s commodity=%s total=%s", equity, commodity, balance)
                 return balance
             return 0.0
         except Exception as e:
-            logger.error(f"Error fetching Upstox ledger balance: {e}")
+            logger.error("Error fetching Upstox ledger balance: %s", e)
             return 0.0
 
     def get_order_status(self, order_id):
-        logger.debug(f"get_order_status: order_id={order_id}")
+        logger.debug("get_order_status: order_id=%s", order_id)
         try:
             # Defensive check for NaN, None or non-numeric values
             if pd.isna(order_id) or order_id is None or order_id == -1 or order_id == '' or str(order_id).lower() == 'nan':
-                logger.error(f"Invalid order_id received for status check: {order_id}")
+                logger.error("Invalid order_id received for status check: %s", order_id)
                 return "NotFound", -1
 
             url = f"{self.base_url}/order/details?order_id={order_id}"
             response = requests.get(url, headers=self.get_headers(), timeout=10)
-            logger.debug(f"get_order_status: response status={response.status_code}")
+            logger.debug("get_order_status: response status=%s", response.status_code)
 
             if response.status_code == 200:
                 res = response.json()
                 if self.DEBUG:
-                    logger.debug(f"get_order_status raw: {res}")
+                    logger.debug("get_order_status raw: %s", res)
                 data = res.get('data')
                 if data:
                     # /order/details returns data as an object (not a list)
@@ -976,7 +976,7 @@ class upstox_api(object):
                     if data:
                         order_status = data.get('status', '').lower()
                         average_price = data.get('average_price', 0.0)
-                        logger.debug(f"get_order_status: order_id={order_id} status={order_status} avg_price={average_price}")
+                        logger.debug("get_order_status: order_id=%s status=%s avg_price=%s", order_id, order_status, average_price)
 
                         if order_status == 'complete':
                             return "Complete", average_price
@@ -990,5 +990,5 @@ class upstox_api(object):
 
             return "NotFound", -1
         except Exception as e:
-            logger.error(f"Error executing get_order_status: {e}")
+            logger.error("Error executing get_order_status: %s", e)
             return "NotFound", -1

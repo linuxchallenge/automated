@@ -4,7 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 from urllib.parse import quote
 import time
-import json
 import os
 from TelegramSend import telegram_send_api
 
@@ -188,7 +187,7 @@ def get_historical_data(index_name, from_date, to_date, session=None, max_retrie
         f_str = current_start.strftime('%d-%m-%Y')
         t_str = current_end.strftime('%d-%m-%Y')
         
-        chunk_success = False
+        _chunk_success = False
         for attempt in range(max_retries):
             try:
                 if session is None:
@@ -251,10 +250,10 @@ def get_historical_data(index_name, from_date, to_date, session=None, max_retrie
                 df_chunk['Date'] = pd.to_datetime(df_chunk['Date'], format='%d-%b-%Y')
                 
                 all_dfs.append(df_chunk)
-                chunk_success = True
+                _chunk_success = True
                 break
 
-            except Exception as e:
+            except Exception:
                 if attempt < max_retries - 1:
                     time.sleep(1)
                     continue
@@ -592,28 +591,28 @@ def save_results(df_results, filename=None, send_to_telegram=True, telegram_chat
 
             # Add top 5 performers for 1 week
             top_5_1w = df_results.nlargest(5, 'RS_1W')[['Index', 'RS_1W']]
-            for idx, row in top_5_1w.iterrows():
+            for _, row in top_5_1w.iterrows():
                 message += f"• {row['Index']}: {row['RS_1W']:.2f}%\n"
 
             message += "\n📅 *Top 5 Performers (1 Month):*\n"
 
             # Add top 5 performers for 1 month
             top_5_1m = df_results.nlargest(5, 'RS_1M')[['Index', 'RS_1M']]
-            for idx, row in top_5_1m.iterrows():
+            for _, row in top_5_1m.iterrows():
                 message += f"• {row['Index']}: {row['RS_1M']:.2f}%\n"
 
             message += "\n📅 *Top 5 Performers (6 Months):*\n"
 
             # Add top 5 performers for 6 months
             top_5_6m = df_results.nlargest(5, 'RS_6M')[['Index', 'RS_6M']]
-            for idx, row in top_5_6m.iterrows():
+            for _, row in top_5_6m.iterrows():
                 message += f"• {row['Index']}: {row['RS_6M']:.2f}%\n"
 
             message += "\n📅 *Top 5 Performers (1 Year):*\n"
 
             # Add top 5 performers for 1 year
             top_5_1y = df_results.nlargest(5, 'RS_1Y')[['Index', 'RS_1Y']]
-            for idx, row in top_5_1y.iterrows():
+            for _, row in top_5_1y.iterrows():
                 message += f"• {row['Index']}: {row['RS_1Y']:.2f}%\n"
 
             message += "\n📎 Full results attached as CSV file."

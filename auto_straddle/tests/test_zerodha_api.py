@@ -21,8 +21,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from datetime import datetime
-import pandas as pd
 
 
 def get_api():
@@ -40,7 +38,7 @@ def test_login():
     """Test login and profile fetch."""
     api = get_api()
     profile = api.kite.profile()
-    print(f"\n--- Login Test ---")
+    print("\n--- Login Test ---")
     print(f"User: {profile.get('user_name')}")
     print(f"User ID: {profile.get('user_id')}")
     print(f"Email: {profile.get('email')}")
@@ -54,7 +52,7 @@ def test_token_lookup(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- Token Lookup Tests ---")
+    print("\n--- Token Lookup Tests ---")
 
     # 1. NSE Equity
     print("\n[1] NSE Equity - RELIANCE")
@@ -118,7 +116,7 @@ def test_option_buy_nifty(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- NIFTY Option BUY Test ---")
+    print("\n--- NIFTY Option BUY Test ---")
 
     # Get NIFTY LTP to determine ATM strike
     try:
@@ -166,7 +164,7 @@ def test_option_sell_nifty(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- NIFTY Option SELL Test ---")
+    print("\n--- NIFTY Option SELL Test ---")
 
     try:
         ltp_data = api.kite.ltp("NSE:NIFTY 50")
@@ -206,7 +204,7 @@ def test_option_buy_sensex(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- SENSEX Option BUY Test ---")
+    print("\n--- SENSEX Option BUY Test ---")
 
     try:
         ltp_data = api.kite.ltp("BSE:SENSEX")
@@ -248,7 +246,7 @@ def test_option_sell_sensex(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- SENSEX Option SELL Test ---")
+    print("\n--- SENSEX Option SELL Test ---")
 
     try:
         ltp_data = api.kite.ltp("BSE:SENSEX")
@@ -288,7 +286,7 @@ def test_commodity_buy_silver(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- Commodity BUY SILVER Test ---")
+    print("\n--- Commodity BUY SILVER Test ---")
 
     # place_order_commodity maps SILVER -> SILVERMIC internally
     print("Placing commodity BUY order: SILVER qty=1")
@@ -315,7 +313,7 @@ def test_order_status(api=None, order_id=None):
         print("ERROR: order_id required. Usage: python test_zerodha_api.py order_status <order_id>")
         return api
 
-    print(f"\n--- Order Status Test ---")
+    print("\n--- Order Status Test ---")
     print(f"Checking order: {order_id}")
     status, price = api.get_order_status(order_id)
     print(f"Status: {status}")
@@ -329,7 +327,7 @@ def test_positions(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- Positions Test ---")
+    print("\n--- Positions Test ---")
     try:
         positions = api.kite.positions()
         net = positions.get('net', [])
@@ -352,7 +350,7 @@ def test_balance(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- Balance Test ---")
+    print("\n--- Balance Test ---")
     balance = api.get_ledger_balance()
     print(f"Ledger Balance: {balance}")
 
@@ -372,7 +370,7 @@ def test_commodity_position(api=None):
     if api is None:
         api = get_api()
 
-    print(f"\n--- Commodity Position Test ---")
+    print("\n--- Commodity Position Test ---")
     for symbol in ['GOLD', 'SILVER', 'CRUDEOIL']:
         long_type, long_price = api.get_commodity_position(symbol, 'long')
         short_type, short_price = api.get_commodity_position(symbol, 'short')
