@@ -29,6 +29,7 @@ import TelegramSend
 import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
+from elliot_wave_strategy import StrategyConfig, compute_atr
 
 ELLIOT_DATA_DIR = Path.home() / 'temp' / 'data_collection' / 'elliot'
 
@@ -229,9 +230,57 @@ class ElliotCashStratergy:
         }
         self._time_budget_seconds = 60
 
+        self._config = StrategyConfig()
+        self._ohlcv_cache = {}  # symbol -> DataFrame, refreshed once per execute_strategy call
+        self._tv_obj = None
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _get_tv_obj(self):
+        """Lazy-init TvDatafeed (no credentials needed for NSE)."""
+        if self._tv_obj is None:
+            try:
+                from tvDatafeed import TvDatafeed  # pylint: disable=C0415
+                self._tv_obj = TvDatafeed()
+            except Exception as e:
+                logger.error(f"Failed to init TvDatafeed: {e}")
+        return self._tv_obj
+
+    def _fetch_recent_ohlcv(self, symbol):
+        """Fetch recent 30-bar daily OHLCV for a symbol. Returns DataFrame or None."""
+        if symbol in self._ohlcv_cache:
+            return self._ohlcv_cache[symbol]
+
+        tv = self._get_tv_obj()
+        if tv is None:
+            return None
+
+        try:
+            from tvDatafeed import Interval  # pylint: disable=C0415
+            tv_symbol = symbol.replace('&', '_')
+            df = tv.get_hist(symbol=tv_symbol, exchange='NSE', interval=Interval.in_daily, n_bars=30)
+            if df is not None and not df.empty:
+                df.columns = [c.capitalize() for c in df.columns]
+                if 'Symbol' in df.columns:
+                    df = df.drop(columns=['Symbol'])
+                self._ohlcv_cache[symbol] = df
+                return df
+        except Exception as e:
+            logger.warning(f"Failed to fetch OHLCV for {symbol}: {e}")
+        return None
+
+    def _compute_current_atr(self, symbol):
+        """Get the latest ATR(14) value for a symbol. Returns float or None."""
+        df = self._fetch_recent_ohlcv(symbol)
+        if df is None or len(df) < self._config.atr_period + 1:
+            return None
+        atr_series = compute_atr(df['High'], df['Low'], df['Close'], self._config.atr_period)
+        last_atr = atr_series.iloc[-1]
+        if pd.isna(last_atr):
+            return None
+        return float(last_atr)
 
     def _is_time_budget_exceeded(self):
         if self._resume_state['start_time'] is None:
@@ -583,6 +632,9 @@ class ElliotCashStratergy:
                     data.loc[idx, 'status'] = 'open'
                     data.loc[idx, 'quantity'] = quantity
                     data.loc[idx, 'profit_target'] = profit_target
+                    data.loc[idx, 'trailing_stop'] = float(row.get('sl') or 0)
+                    data.loc[idx, 'highest_close'] = last_price
+                    data.loc[idx, 'days_held'] = 0
 
                     data.to_csv(self.csv_path, index=False)
                     logger.info(f"EW: BUY order placed for {symbol} order_id={order_id} profit_target={profit_target:.2f}")
@@ -594,8 +646,91 @@ class ElliotCashStratergy:
                 logger.error(f"EW: Error processing new row {row['sl_no']}: {e}")
                 self.notifier.send_error(row['account'], symbol, "open", str(e))
 
+    def _update_trailing_stop(self, data, idx, row, last_price):
+        """Update trailing stop and tracking fields for an open position.
+
+        Matches backtest logic:
+          highest_close = max(highest_close, current_price)
+          trailing_stop = max(trailing_stop, highest_close - 2.5 * ATR(14))
+          days_held += 1  (incremented once per execution cycle)
+        """
+        symbol = row['symbol']
+
+        # Update highest close
+        highest_close = float(row.get('highest_close') or 0)
+        if last_price > highest_close:
+            highest_close = last_price
+            data.loc[idx, 'highest_close'] = highest_close
+
+        # Update days held
+        days_held = int(row.get('days_held') or 0)
+        open_date = row.get('open_date')
+        if pd.notna(open_date):
+            try:
+                open_dt = pd.to_datetime(open_date)
+                days_held = (datetime.now() - open_dt).days
+                data.loc[idx, 'days_held'] = days_held
+            except Exception:
+                days_held = days_held + 1
+                data.loc[idx, 'days_held'] = days_held
+
+        # Update trailing stop using ATR
+        trailing_stop = float(row.get('trailing_stop') or row.get('sl') or 0)
+        atr_val = self._compute_current_atr(symbol)
+        if atr_val is not None and highest_close > 0:
+            new_trailing = highest_close - (self._config.trailing_atr_multiplier * atr_val)
+            if new_trailing > trailing_stop:
+                trailing_stop = new_trailing
+                data.loc[idx, 'trailing_stop'] = trailing_stop
+                logger.info(f"EW: Trailing stop updated for {symbol}: {trailing_stop:.2f} (ATR={atr_val:.2f})")
+
+        return trailing_stop, days_held
+
+    def _trigger_sell(self, data, idx, row, place_order, reason, last_price):
+        """Place SELL order (API or manual) and update CSV. Returns True if handled."""
+        symbol = row['symbol']
+
+        if row['account'] == "deepti":
+            order_id = None
+            for attempt in range(self._max_order_retries):
+                order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
+                if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
+                    self._reset_retry_count(row['account'], symbol, "close")
+                    break
+                if attempt < self._max_order_retries - 1:
+                    sleep(2 * (attempt + 1))
+
+            if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
+                logger.error(f"EW: SELL order failed after retries for {symbol}")
+                data.loc[idx, 'close_order_id'] = None
+                data.loc[idx, 'close_order_status'] = 'sell_failed'
+                data.to_csv(self.csv_path, index=False)
+                self.notifier.send_sell_failed(
+                    row['account'], symbol,
+                    row['quantity'], last_price
+                )
+                return False
+
+            data.loc[idx, 'close_order_id'] = order_id
+            data.loc[idx, 'close_order_status'] = 'close_pending'
+            data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
+        else:
+            data.loc[idx, 'close_order_status'] = 'close_pending'
+            data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
+            self.notifier.send_manual_close_request(row['account'], symbol)
+
+        data.to_csv(self.csv_path, index=False)
+        return True
+
     def _process_open_positions(self, data, place_order, resume_from_sl_no=None):
-        """Process rows with status 'open' — check SL/profit target and place SELL orders."""
+        """Process rows with status 'open' — check SL/trailing stop/target/time stop.
+
+        Exit priority (matches backtest):
+          1. Hard stop loss (last_price <= sl)
+          2. Trailing stop   (last_price <= trailing_stop)
+          3. Profit target   (last_price >= profit_target)
+          4. Time stop       (days_held >= time_stop_days, default 90)
+        """
         open_rows = data[data['status'] == 'open']
         should_skip = resume_from_sl_no is not None
         last_sl_no = None
@@ -637,48 +772,43 @@ class ElliotCashStratergy:
                     last_sl_no = row['sl_no']
                     continue
 
+                # Update trailing stop, highest_close, days_held
+                trailing_stop, days_held = self._update_trailing_stop(data, idx, row, last_price)
+
                 profit_target = row.get('profit_target', float('inf'))
                 if pd.isna(profit_target):
                     profit_target = float('inf')
 
-                logger.info(f"EW: {row['sl_no']} ({symbol}): price={last_price} sl={row['sl']} target={profit_target}")
+                hard_sl = float(row.get('sl') or 0)
 
-                if last_price <= row['sl'] or last_price >= profit_target:
-                    reason = "Stop Loss" if last_price <= row['sl'] else "Profit Target"
+                logger.info(
+                    f"EW: {row['sl_no']} ({symbol}): price={last_price} "
+                    f"hard_sl={hard_sl} trailing={trailing_stop:.2f} "
+                    f"target={profit_target} days={days_held}"
+                )
+
+                # --- EXIT CHECKS (priority order, matching backtest) ---
+                reason = None
+
+                # 1. Hard stop loss
+                if last_price <= hard_sl:
+                    reason = "Stop_Loss"
+
+                # 2. Trailing stop
+                elif trailing_stop > hard_sl and last_price <= trailing_stop:
+                    reason = "Trailing_Stop"
+
+                # 3. Profit target
+                elif last_price >= profit_target:
+                    reason = "Target_Hit"
+
+                # 4. Time stop (90 days default)
+                elif days_held >= self._config.time_stop_days:
+                    reason = "Time_Stop"
+
+                if reason:
                     logger.info(f"EW: Exit triggered for {symbol} ({row['sl_no']}). Reason: {reason}")
-
-                    if row['account'] == "deepti":
-                        order_id = None
-                        for attempt in range(self._max_order_retries):
-                            order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
-                            if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
-                                self._reset_retry_count(row['account'], symbol, "close")
-                                break
-                            if attempt < self._max_order_retries - 1:
-                                sleep(2 * (attempt + 1))
-
-                        if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
-                            logger.error(f"EW: SELL order failed after retries for {symbol}")
-                            # Clear any stale close_order_id so price check reruns next trigger
-                            data.loc[idx, 'close_order_id'] = None
-                            data.loc[idx, 'close_order_status'] = 'sell_failed'
-                            data.to_csv(self.csv_path, index=False)
-                            self.notifier.send_sell_failed(
-                                row['account'], symbol,
-                                row['quantity'], last_price
-                            )
-                            last_sl_no = row['sl_no']
-                            continue
-
-                        data.loc[idx, 'close_order_id'] = order_id
-                        data.loc[idx, 'close_order_status'] = 'close_pending'
-                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
-                    else:
-                        data.loc[idx, 'close_order_status'] = 'close_pending'
-                        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
-                        self.notifier.send_manual_close_request(row['account'], symbol)
-
-                    data.to_csv(self.csv_path, index=False)
+                    self._trigger_sell(data, idx, row, place_order, reason, last_price)
 
                 last_sl_no = row['sl_no']
 
@@ -773,6 +903,11 @@ class ElliotCashStratergy:
                         except Exception:
                             pass
 
+                        # Initialize trailing stop tracking with actual fill price
+                        data.loc[idx, 'highest_close'] = final_price
+                        data.loc[idx, 'trailing_stop'] = float(row.get('sl') or 0)
+                        data.loc[idx, 'days_held'] = 0
+
                 elif status in ["Rejected", "Cancelled", "Failed"]:
                     logger.error(f"EW: Order {order_id} for row {row['sl_no']} status: {status}")
                     data.loc[idx, f'{order_type}_order_status'] = 'rejected'
@@ -839,6 +974,7 @@ class ElliotCashStratergy:
             return
 
         self._resume_state['start_time'] = datetime.now()
+        self._ohlcv_cache = {}  # Fresh OHLCV data each execution cycle
 
         logger.info("EW: Executing Elliott Wave cash strategy.")
         try:

@@ -71,7 +71,7 @@ class ElliotWaveSignalGenerator:
         'date', 'status', 'buy_price', 'quantity', 'open_order_status',
         'open_date', 'close_order_status', 'close_order_id', 'sell_price',
         'close_date', 'signal_type', 'confidence', 'profit_target',
-        'buy_order_id',
+        'buy_order_id', 'trailing_stop', 'highest_close', 'days_held',
     ]
 
     def __init__(self, accounts_url: str, nifty200_csv: str):
@@ -532,6 +532,9 @@ class ElliotWaveSignalGenerator:
                             'close_date': None,
                             'profit_target': None,
                             'buy_order_id': None,
+                            'trailing_stop': signal.stop_loss,
+                            'highest_close': 0.0,
+                            'days_held': 0,
                         }
                         new_rows.append(row)
                         signals_found += 1
