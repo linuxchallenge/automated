@@ -435,42 +435,13 @@ class LiveCodeReplayHarness:
                             data.loc[didx, 'sell_price'] = exit_price
                         del pending_exits[sl_no]
 
-                # Inject entries matching backtest
-                if date in entry_by_date:
-                    for trade, sig in entry_by_date[date]:
-                        sl_counter += 1
-                        pct = (
-                            (sig.target_price / trade.entry_price) - 1
-                        ) * 100
-                        new_row = pd.DataFrame([{
-                            'sl_no': sl_counter,
-                            'account': 'deepti',
-                            'symbol': trade.symbol,
-                            'sl': sig.stop_loss,
-                            'amount': trade.shares * trade.entry_price,
-                            'percent_increase': pct,
-                            'status': 'open',
-                            'buy_order_id': sl_counter,
-                            'buy_price': trade.entry_price,
-                            'open_order_status': 'Complete',
-                            'open_date': date.strftime("%Y-%m-%d"),
-                            'quantity': trade.shares,
-                            'profit_target': sig.target_price,
-                            'trailing_stop': sig.stop_loss,
-                            'highest_close': trade.entry_price,
-                            'days_held': 0,
-                            'close_order_id': np.nan,
-                            'close_order_status': np.nan,
-                            'close_date': np.nan,
-                            'sell_price': np.nan,
-                        }])
-                        data = pd.concat(
-                            [data, new_row], ignore_index=True
-                        )
-
                 data.to_csv(self._csv_path, index=False)
 
                 # --- THREE-PASS EXIT LOGIC ---
+                # IMPORTANT: Exits are checked BEFORE new entries (matching
+                # backtest order: Backtester._update_positions() runs first,
+                # then new signals are processed).  This prevents newly-
+                # entered positions from triggering false exits on entry day.
                 # Matches backtest priority: SL > Trailing > Target > Time
                 # Pass 1 (LTP=Low): catches Stop_Loss & Trailing_Stop
                 # Pass 2 (LTP=High): catches Target_Hit
@@ -560,6 +531,39 @@ class LiveCodeReplayHarness:
                                 }
                                 # Keep status='open' but close_order_id set
                                 # so live code skips it on subsequent days
+
+                # --- INJECT NEW ENTRIES (after exit checks, matching backtest order) ---
+                if date in entry_by_date:
+                    for trade, sig in entry_by_date[date]:
+                        sl_counter += 1
+                        pct = (
+                            (sig.target_price / trade.entry_price) - 1
+                        ) * 100
+                        new_row = pd.DataFrame([{
+                            'sl_no': sl_counter,
+                            'account': 'deepti',
+                            'symbol': trade.symbol,
+                            'sl': sig.stop_loss,
+                            'amount': trade.shares * trade.entry_price,
+                            'percent_increase': pct,
+                            'status': 'open',
+                            'buy_order_id': sl_counter,
+                            'buy_price': trade.entry_price,
+                            'open_order_status': 'Complete',
+                            'open_date': date.strftime("%Y-%m-%d"),
+                            'quantity': trade.shares,
+                            'profit_target': sig.target_price,
+                            'trailing_stop': sig.stop_loss,
+                            'highest_close': trade.entry_price,
+                            'days_held': 0,
+                            'close_order_id': np.nan,
+                            'close_order_status': np.nan,
+                            'close_date': np.nan,
+                            'sell_price': np.nan,
+                        }])
+                        data = pd.concat(
+                            [data, new_row], ignore_index=True
+                        )
 
                 data.to_csv(self._csv_path, index=False)
 

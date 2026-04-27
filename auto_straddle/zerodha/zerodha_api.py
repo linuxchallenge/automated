@@ -306,6 +306,7 @@ class zerodha_api:
                 quantity=int(qty),
                 product=self.kite.PRODUCT_CNC,
                 order_type=self.kite.ORDER_TYPE_MARKET,
+                market_protection=5,
             )
             return orderid
         except Exception as e:
@@ -360,6 +361,7 @@ class zerodha_api:
                         quantity=qty,
                         product=product,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                     print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 except requests.exceptions.Timeout:
@@ -380,6 +382,7 @@ class zerodha_api:
                                 quantity=qty,
                                 product=product,
                                 order_type=self.kite.ORDER_TYPE_MARKET,
+                                market_protection=5,
                             )
                         except Exception as e2:
                             print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
@@ -402,6 +405,7 @@ class zerodha_api:
                         quantity=qty,
                         product=product,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                 except Exception as e1:
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
@@ -469,6 +473,7 @@ class zerodha_api:
                         quantity=total_qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                     print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 except requests.exceptions.Timeout:
@@ -489,6 +494,7 @@ class zerodha_api:
                                 quantity=total_qty,
                                 product=self.kite.PRODUCT_NRML,
                                 order_type=self.kite.ORDER_TYPE_MARKET,
+                                market_protection=5,
                             )
                         except Exception as e2:
                             print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
@@ -518,6 +524,7 @@ class zerodha_api:
                         quantity=total_qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                 except Exception as e1:
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
@@ -591,6 +598,7 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                     print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
                 except requests.exceptions.Timeout:
@@ -611,6 +619,7 @@ class zerodha_api:
                                 quantity=qty,
                                 product=self.kite.PRODUCT_NRML,
                                 order_type=self.kite.ORDER_TYPE_MARKET,
+                                market_protection=5,
                             )
                         except Exception as e2:
                             print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
@@ -632,6 +641,7 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
                 except Exception as e1:
                     logging.error(f"Error executing place_order: {e1}")
@@ -713,6 +723,7 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
+                        market_protection=5,
                     )
 
                     if orderid is None or orderid == '' or orderid == 0:
