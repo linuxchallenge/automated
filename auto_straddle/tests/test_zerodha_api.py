@@ -64,7 +64,7 @@ def test_token_lookup(api=None):
 
     # 2. NFO OPTIDX - NIFTY CE
     print("\n[2] NFO OPTIDX - NIFTY 24000 CE")
-    result = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', 240, 'CE')
+    result = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', 24000, 'CE')
     if result is not None and not result.empty:
         row = result.iloc[0]
         print(f"   Found: symbol={row['symbol']}, token={row['token']}, expiry={row['expiry']}, lot={row['lotsize']}")
@@ -73,7 +73,7 @@ def test_token_lookup(api=None):
 
     # 3. NFO OPTIDX - NIFTY PE
     print("\n[3] NFO OPTIDX - NIFTY 24000 PE")
-    result = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', 240, 'PE')
+    result = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', 24000, 'PE')
     if result is not None and not result.empty:
         row = result.iloc[0]
         print(f"   Found: symbol={row['symbol']}, token={row['token']}, expiry={row['expiry']}, lot={row['lotsize']}")
@@ -82,7 +82,7 @@ def test_token_lookup(api=None):
 
     # 4. BFO OPTIDX - SENSEX
     print("\n[4] BFO OPTIDX - SENSEX 80000 CE")
-    result = api.getTokenInfo('BFO', 'OPTIDX', 'SENSEX', 800, 'CE')
+    result = api.getTokenInfo('BFO', 'OPTIDX', 'SENSEX', 80000, 'CE')
     if result is not None and not result.empty:
         row = result.iloc[0]
         print(f"   Found: symbol={row['symbol']}, token={row['token']}, expiry={row['expiry']}, lot={row['lotsize']}")
@@ -129,9 +129,8 @@ def test_option_buy_nifty(api=None):
         print(f"Could not get LTP: {e}, using default strike")
         atm_strike = 24000
 
-    # Kite strike is actual value, but getTokenInfo expects strike/100
-    strike_param = atm_strike / 100
-    print(f"ATM Strike: {atm_strike} (param: {strike_param})")
+    strike_param = atm_strike
+    print(f"ATM Strike: {atm_strike}")
 
     # Look up token
     df = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', strike_param, 'PE')
@@ -173,7 +172,7 @@ def test_option_sell_nifty(api=None):
     except Exception:
         atm_strike = 24000
 
-    strike_param = atm_strike / 100
+    strike_param = atm_strike
     print(f"ATM Strike: {atm_strike}")
 
     df = api.getTokenInfo('NFO', 'OPTIDX', 'NIFTY', strike_param, 'CE')
@@ -255,7 +254,7 @@ def test_option_sell_sensex(api=None):
     except Exception:
         atm_strike = 80000
 
-    strike_param = atm_strike / 100
+    strike_param = atm_strike
     print(f"ATM Strike: {atm_strike}")
 
     df = api.getTokenInfo('BFO', 'OPTIDX', 'SENSEX', strike_param, 'CE')

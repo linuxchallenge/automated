@@ -156,22 +156,27 @@ class zerodha_api:
                 raise e1
 
     def getTokenInfo(self, exch_seg, instrumenttype, symbol, strike_price, pe_ce, expiry=None):
+        logger.info(f"getTokenInfo called: exch_seg={exch_seg}, instrumenttype={instrumenttype}, "
+                     f"symbol={symbol}, strike={strike_price}, pe_ce={pe_ce}, expiry={expiry}")
         df = self.token_df
 
-        # Kite uses strike as actual value (not *100 like AngelOne)
-        # But we receive strike_price in the same format as AngelOne, so multiply
-        strike_price_actual = strike_price * 100
+        # Kite stores strikes as actual values (e.g., 24050.0, not 2405000)
+        strike_price_actual = strike_price
 
         # Kite instrument types: EQ, FUT, CE, PE (not OPTIDX/OPTSTK/FUTCOM/FUTIDX)
 
         if symbol == "SENSEX":
-            return df[(df['exch_seg'] == 'BFO') & (df['instrumenttype'] == pe_ce) &
+            result = df[(df['exch_seg'] == 'BFO') & (df['instrumenttype'] == pe_ce) &
                        (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                        (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+            logger.info(f"getTokenInfo SENSEX: found {len(result)} contracts")
+            return result
 
         if exch_seg == 'NSE':
             eq_df = df[(df['exch_seg'] == 'NSE') & (df['instrumenttype'] == 'EQ')]
-            return eq_df[eq_df['symbol'] == symbol]
+            result = eq_df[eq_df['symbol'] == symbol]
+            logger.info(f"getTokenInfo NSE EQ: found {len(result)} contracts for {symbol}")
+            return result
 
         if exch_seg == 'NFO' and instrumenttype in ('FUTSTK', 'FUTIDX'):
             today = datetime.now().date()
@@ -180,23 +185,33 @@ class zerodha_api:
                 df_copy = df.copy()
                 df_copy['expiry_date'] = pd.to_datetime(df_copy['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
-                return df_copy[(df_copy['exch_seg'] == 'NFO') & (df_copy['instrumenttype'] == 'FUT') &
+                result = df_copy[(df_copy['exch_seg'] == 'NFO') & (df_copy['instrumenttype'] == 'FUT') &
                                (df_copy['name'] == symbol) & (df_copy['expiry_date'] == date_obj)].sort_values(by=['expiry'])
+                logger.info(f"getTokenInfo NFO FUT with expiry {date_obj}: found {len(result)} contracts for {symbol}")
+                return result
 
             filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == 'FUT') &
                           (df['name'] == symbol)].sort_values(by=['expiry'])
             if filtered.empty:
+                logger.warning(f"getTokenInfo NFO FUT: no contracts found for {symbol}")
                 return filtered
 
             expiry_date = pd.to_datetime(filtered.iloc[0]['expiry']).date()
             if (expiry_date - today).days <= 10 and len(filtered) > 1:
+                logger.info(f"getTokenInfo NFO FUT: nearest expiry {expiry_date} too close, using next month for {symbol}")
                 return filtered.iloc[1:2]
+            logger.info(f"getTokenInfo NFO FUT: using expiry {expiry_date} for {symbol}")
             return filtered
 
         if exch_seg in ['NFO', 'BFO'] and instrumenttype in ('OPTSTK', 'OPTIDX'):
-            return df[(df['exch_seg'] == exch_seg) & (df['instrumenttype'] == pe_ce) &
+            result = df[(df['exch_seg'] == exch_seg) & (df['instrumenttype'] == pe_ce) &
                        (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                        (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
+            if result.empty:
+                logger.error(f"getTokenInfo {exch_seg} OPT: no contracts for {symbol} {strike_price_actual} {pe_ce}")
+            else:
+                logger.info(f"getTokenInfo {exch_seg} OPT: found {len(result)} contracts for {symbol} {strike_price_actual} {pe_ce}, nearest={result.iloc[0]['symbol']}")
+            return result
 
         if exch_seg == 'MCX' and instrumenttype == 'FUTCOM':
             logger.info(f"Getting token info for MCX {symbol} {expiry}")
@@ -206,20 +221,26 @@ class zerodha_api:
                 df_copy = df.copy()
                 df_copy['expiry_date'] = pd.to_datetime(df_copy['expiry']).dt.date
                 date_obj = pd.to_datetime(expiry).date()
-                return df_copy[(df_copy['exch_seg'] == 'MCX') & (df_copy['name'] == symbol) &
+                result = df_copy[(df_copy['exch_seg'] == 'MCX') & (df_copy['name'] == symbol) &
                                (df_copy['instrumenttype'] == 'FUT') &
                                (df_copy['expiry_date'] == date_obj)].sort_values(by=['expiry'])
+                logger.info(f"getTokenInfo MCX with expiry {date_obj}: found {len(result)} contracts for {symbol}")
+                return result
 
             filtered = df[(df['exch_seg'] == 'MCX') & (df['instrumenttype'] == 'FUT') &
                           (df['name'] == symbol)].sort_values(by=['expiry'])
             if filtered.empty:
+                logger.warning(f"getTokenInfo MCX: no contracts found for {symbol}")
                 return filtered
 
             expiry_date = pd.to_datetime(filtered.iloc[0]['expiry']).date()
             if (expiry_date - today).days <= 10 and len(filtered) > 1:
+                logger.info(f"getTokenInfo MCX: nearest expiry {expiry_date} too close, using next month for {symbol}")
                 return filtered.iloc[1:2]
+            logger.info(f"getTokenInfo MCX: using expiry {expiry_date} for {symbol}, contract={filtered.iloc[0]['symbol']}")
             return filtered
 
+        logger.error(f"getTokenInfo: no matching branch for exch_seg={exch_seg}, instrumenttype={instrumenttype}, symbol={symbol}")
         return None
 
     def get_best_price(self, symbol, token, exchange, buy_sell):  # pylint: disable=W0613
@@ -291,12 +312,14 @@ class zerodha_api:
 
     def place_order_cash(self, symbol, qty, buy_sell):
         try:
-            print(f"Placing order for symbol: {symbol}, qty: {qty}, buy_sell: {buy_sell}")
+            logger.info(f"place_order_cash: symbol={symbol}, qty={qty}, buy_sell={buy_sell}")
             tokenInfo = self.getTokenInfo('NSE', 'EQ', symbol, 0, 'X')
             if tokenInfo is None or tokenInfo.empty:
+                logger.error(f"place_order_cash: no token found for {symbol}")
                 return -1
 
             tradingsymbol = tokenInfo.iloc[0]['symbol']
+            logger.info(f"place_order_cash: tradingsymbol={tradingsymbol}")
 
             orderid = self.kite.place_order(
                 variety=self.kite.VARIETY_REGULAR,
@@ -306,34 +329,38 @@ class zerodha_api:
                 quantity=int(qty),
                 product=self.kite.PRODUCT_CNC,
                 order_type=self.kite.ORDER_TYPE_MARKET,
-                market_protection=5,
+                market_protection=1,
             )
+            logger.info(f"place_order_cash: order placed, order_id={orderid}")
             return orderid
         except Exception as e:
-            print(f"Order placement failed: {str(e)}")
-            logger.error(f"Order placement failed: {str(e)}")
+            logger.error(f"place_order_cash failed for {symbol}: {e}")
             return -1
 
     def place_order(self, symbol, qty, buy_sell, strike_price, pe_ce, intraday=True):
 
         product = self.kite.PRODUCT_MIS if intraday else self.kite.PRODUCT_NRML
+        logger.info(f"place_order: symbol={symbol}, qty={qty}, buy_sell={buy_sell}, "
+                     f"strike={strike_price}, pe_ce={pe_ce}, intraday={intraday}, product={product}")
 
         try:
             df = self.getTokenInfo('NFO', 'OPTIDX', symbol, strike_price, pe_ce)
             if df is None or df.empty:
+                logger.error(f"place_order: no valid contracts found for {symbol} {strike_price} {pe_ce}")
                 return -1
 
             try:
                 if pd.to_datetime(df.iloc[0]['expiry']).date() < datetime.now().date():
                     if len(df) > 1:
                         tokenInfo = df.iloc[1]
+                        logger.info(f"place_order: nearest expiry expired, using next: {tokenInfo['symbol']}")
                     else:
                         tokenInfo = df.iloc[0]
+                        logger.warning(f"place_order: only expired contract available: {tokenInfo['symbol']}")
                 else:
                     tokenInfo = df.iloc[0]
             except Exception as e:
-                print(f"Error executing place_order: {e}")
-                logging.error(f"Error executing place_order: {e}")
+                logger.error(f"place_order: error selecting expiry: {e}")
                 tokenInfo = df.iloc[0]
 
             if symbol == "SENSEX":
@@ -346,11 +373,12 @@ class zerodha_api:
             lot = int(tokenInfo['lotsize'])
 
             if qty % lot != 0:
+                logger.error(f"place_order: qty {qty} not multiple of lot size {lot} for {tradingsymbol}")
                 return -1
 
             transaction_type = self.kite.TRANSACTION_TYPE_BUY if buy_sell == 'BUY' else self.kite.TRANSACTION_TYPE_SELL
 
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {tradingsymbol}, Token: {token}, Lot: {lot} exchange: {exchange}")
+            logger.info(f"place_order: placing {buy_sell} {tradingsymbol} qty={qty} lot={lot} exchange={exchange} token={token}")
             try:
                 try:
                     orderid = self.kite.place_order(
@@ -361,19 +389,19 @@ class zerodha_api:
                         quantity=qty,
                         product=product,
                         order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
+                        market_protection=1,
                     )
-                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                    logger.info(f"place_order: order placed, order_id={orderid} for {tradingsymbol}")
                 except requests.exceptions.Timeout:
-                    print("Order placement timed out, retrying once")
-                    logger.warning("Order placement timed out, retrying once")
+                    logger.warning(f"place_order: timeout for {tradingsymbol}, checking orderbook")
                     time.sleep(5)
                     existing_orderid = self._find_recent_order(tradingsymbol, buy_sell, qty, product)
                     if existing_orderid:
-                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        logger.info(f"place_order: found existing order {existing_orderid} after timeout")
                         orderid = existing_orderid
                     else:
                         try:
+                            logger.info(f"place_order: retrying after timeout for {tradingsymbol}")
                             orderid = self.kite.place_order(
                                 variety=self.kite.VARIETY_REGULAR,
                                 exchange=exchange,
@@ -382,18 +410,15 @@ class zerodha_api:
                                 quantity=qty,
                                 product=product,
                                 order_type=self.kite.ORDER_TYPE_MARKET,
-                                market_protection=5,
+                                market_protection=1,
                             )
+                            logger.info(f"place_order: retry succeeded, order_id={orderid} for {tradingsymbol}")
                         except Exception as e2:
-                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                            print(f"Error executing place_order after timeout: {e2}")
-                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"place_order: retry after timeout failed for {tradingsymbol}: {e2}")
                             return -1
             except Exception as e:
                 try:
-                    print("Error placing order, trying again")
-                    print(f"Error: {e}")
-                    logger.error(f"Error executing place_order again: {e}")
+                    logger.error(f"place_order: first attempt failed for {tradingsymbol}: {e}")
                     x = TelegramSend.telegram_send_api()
                     x.send_message("-4008545231", f"Warning kite {tradingsymbol} order Pls check")
                     time.sleep(2)
@@ -405,32 +430,31 @@ class zerodha_api:
                         quantity=qty,
                         product=product,
                         order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
+                        market_protection=1,
                     )
+                    logger.info(f"place_order: second attempt succeeded, order_id={orderid} for {tradingsymbol}")
                 except Exception as e1:
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(f"Error executing place_order: {e1}")
-                    logging.error(f"Error executing place_order: {e1}")
+                    logger.error(f"place_order: second attempt also failed for {tradingsymbol}: {e1}")
                     return -1
 
             if orderid is None or orderid == '' or orderid == 0:
-                logger.error(f"Kite API returned invalid order ID: {orderid} for {tradingsymbol}")
-                print(f"Kite API returned invalid order ID: {orderid}")
+                logger.error(f"place_order: Kite returned invalid order_id={orderid} for {tradingsymbol}")
                 return -1
 
             return orderid
         except Exception as e:
-            logger.error(f"Error executing place_order: {e}")
-            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-            print(f"Error executing place_order: {e}")
+            logger.error(f"place_order: fatal error for {symbol} {strike_price} {pe_ce}: {e}")
+            traceback.print_exc()
             return -1
 
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, iscommodity=True):
-        logger.info(f"Placing commodity order for {symbol}, qty: {qty}, type: {buy_sell}, expiry: {expiry}, iscommodity: {iscommodity}")
+        logger.info(f"place_order_commodity: symbol={symbol}, qty={qty}, buy_sell={buy_sell}, "
+                     f"expiry={expiry}, iscommodity={iscommodity}")
         original_symbol = symbol
         try:
             mapped = self.SYMBOL_PREFIX_MAP.get(symbol.upper(), symbol)
             symbol = mapped
+            logger.info(f"place_order_commodity: mapped symbol {original_symbol} -> {symbol}")
 
             if iscommodity:
                 tokenInfo = self.getTokenInfo('MCX', 'FUTCOM', symbol, 0, 'X', expiry)
@@ -445,10 +469,9 @@ class zerodha_api:
             tradingsymbol = t_info['symbol']
             token = t_info['token']
             lot = int(t_info['lotsize'])
-            logger.info(f"Token info: symbol={tradingsymbol}, token={token}, lot={lot}")
-            logger.info(f"Expiry date: {t_info['expiry']}")
-
             total_qty = qty * lot
+            logger.info(f"place_order_commodity: tradingsymbol={tradingsymbol}, token={token}, "
+                         f"lot={lot}, total_qty={total_qty}, expiry={t_info['expiry']}")
 
             if iscommodity:
                 exchange = self.kite.EXCHANGE_MCX
@@ -457,55 +480,57 @@ class zerodha_api:
 
             transaction_type = self.kite.TRANSACTION_TYPE_BUY if buy_sell == 'BUY' else self.kite.TRANSACTION_TYPE_SELL
 
-            # Use MARKET order (Kite free accounts don't have market depth/LTP access)
-            # Kite applies automatic market protection percentage for MCX MARKET orders
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {tradingsymbol}, Token: {token}, Lot: {lot}")
-            logger.info(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {tradingsymbol}, Token: {token}, Lot: {lot}")
+            # Use LIMIT order with best price for MCX (MARKET orders on MCX get
+            # converted to LIMIT with market_protection % which can cause rejections)
+            best_price = self.get_best_price(tradingsymbol, token, exchange, buy_sell)
+            if best_price > 0:
+                order_type = self.kite.ORDER_TYPE_LIMIT
+                logger.info(f"place_order_commodity: using LIMIT order for {tradingsymbol} at price {best_price}")
+            else:
+                order_type = self.kite.ORDER_TYPE_MARKET
+                best_price = None
+                logger.warning(f"place_order_commodity: no best price for {tradingsymbol}, falling back to MARKET order with market_protection=1")
+
+            logger.info(f"place_order_commodity: placing {buy_sell} {tradingsymbol} qty={total_qty} "
+                         f"order_type={order_type} exchange={exchange}")
+
+            order_params = dict(
+                variety=self.kite.VARIETY_REGULAR,
+                exchange=exchange,
+                tradingsymbol=tradingsymbol,
+                transaction_type=transaction_type,
+                quantity=total_qty,
+                product=self.kite.PRODUCT_NRML,
+                order_type=order_type,
+            )
+            if best_price is not None:
+                order_params['price'] = best_price
+            else:
+                order_params['market_protection'] = 1
 
             orderid = None
             try:
                 try:
-                    orderid = self.kite.place_order(
-                        variety=self.kite.VARIETY_REGULAR,
-                        exchange=exchange,
-                        tradingsymbol=tradingsymbol,
-                        transaction_type=transaction_type,
-                        quantity=total_qty,
-                        product=self.kite.PRODUCT_NRML,
-                        order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
-                    )
-                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                    orderid = self.kite.place_order(**order_params)
+                    logger.info(f"place_order_commodity: order placed, order_id={orderid} for {tradingsymbol}")
                 except requests.exceptions.Timeout:
-                    print("Order placement timed out, retrying once")
-                    logger.warning("Order placement timed out, retrying once")
+                    logger.warning(f"place_order_commodity: timeout for {tradingsymbol}, checking orderbook")
                     time.sleep(5)
                     existing_orderid = self._find_recent_order(tradingsymbol, buy_sell, total_qty, self.kite.PRODUCT_NRML)
                     if existing_orderid:
-                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        logger.info(f"place_order_commodity: found existing order {existing_orderid} after timeout")
                         orderid = existing_orderid
                     else:
                         try:
-                            orderid = self.kite.place_order(
-                                variety=self.kite.VARIETY_REGULAR,
-                                exchange=exchange,
-                                tradingsymbol=tradingsymbol,
-                                transaction_type=transaction_type,
-                                quantity=total_qty,
-                                product=self.kite.PRODUCT_NRML,
-                                order_type=self.kite.ORDER_TYPE_MARKET,
-                                market_protection=5,
-                            )
+                            logger.info(f"place_order_commodity: retrying after timeout for {tradingsymbol}")
+                            orderid = self.kite.place_order(**order_params)
+                            logger.info(f"place_order_commodity: retry succeeded, order_id={orderid} for {tradingsymbol}")
                         except Exception as e2:
-                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                            print(f"Error executing place_order after timeout: {e2}")
-                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"place_order_commodity: retry after timeout failed for {tradingsymbol}: {e2}")
                             return -1, -1
             except Exception as e:
                 try:
-                    print("Error placing order, trying again")
-                    logger.error(f"Error executing place_order again: {e}")
-                    print(f"Error: {e}")
+                    logger.error(f"place_order_commodity: first attempt failed for {tradingsymbol}: {e}")
                     x = TelegramSend.telegram_send_api()
                     x.send_message("-4008545231", f"Warning kite {tradingsymbol} order Pls check")
                     time.sleep(2)
@@ -513,48 +538,42 @@ class zerodha_api:
                     trade_type = 'long' if buy_sell == 'BUY' else 'short'
                     pos_type, _ = self.get_commodity_position(original_symbol, trade_type)
                     if pos_type is not None:
-                        logger.info(f"Position already exists for {original_symbol} ({trade_type}) after exception. Skipping retry to avoid duplicate.")
+                        logger.info(f"place_order_commodity: position already exists for {original_symbol} ({trade_type}), skipping retry")
                         return -1, t_info['expiry']
 
-                    orderid = self.kite.place_order(
-                        variety=self.kite.VARIETY_REGULAR,
-                        exchange=exchange,
-                        tradingsymbol=tradingsymbol,
-                        transaction_type=transaction_type,
-                        quantity=total_qty,
-                        product=self.kite.PRODUCT_NRML,
-                        order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
-                    )
+                    logger.info(f"place_order_commodity: retrying for {tradingsymbol}")
+                    orderid = self.kite.place_order(**order_params)
+                    logger.info(f"place_order_commodity: retry succeeded, order_id={orderid} for {tradingsymbol}")
                 except Exception as e1:
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-                    print(f"Error executing place_order: {e1}")
-                    logging.error(f"Error executing place_order: {e1}")
+                    logger.error(f"place_order_commodity: second attempt also failed for {tradingsymbol}: {e1}")
                     return -1, -1
 
             if orderid is None or orderid == '' or orderid == 0:
-                logger.error(f"Kite API returned invalid order ID: {orderid} for commodity {tradingsymbol}")
-                print(f"Kite API returned invalid order ID: {orderid}")
+                logger.error(f"place_order_commodity: Kite returned invalid order_id={orderid} for {tradingsymbol}")
                 return -1, -1
 
+            logger.info(f"place_order_commodity: success order_id={orderid} for {tradingsymbol}")
             return orderid, t_info['expiry']
         except Exception as e:
-            logging.error(f"Error executing place_order_commodity: {e}")
-            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-            print(f"Error executing place_order_commodity: {e}")
+            logger.error(f"place_order_commodity: fatal error for {original_symbol}: {e}")
+            traceback.print_exc()
             return -1, -1
 
     def place_order_option_buy(self, symbol, qty, buy_sell, strike_price, pe_ce):
+        logger.info(f"place_order_option_buy: symbol={symbol}, qty={qty}, buy_sell={buy_sell}, "
+                     f"strike={strike_price}, pe_ce={pe_ce}")
         try:
             df = self.token_df
-            strike_price_actual = strike_price * 100
+            strike_price_actual = strike_price
             filtered = df[(df['exch_seg'] == 'NFO') & (df['instrumenttype'] == pe_ce) &
                           (df['name'] == symbol) & (df['strike'] == strike_price_actual) &
                           (df['symbol'].str.endswith(pe_ce))].sort_values(by=['expiry'])
 
             if filtered.empty:
-                print("Token info not found")
+                logger.error(f"place_order_option_buy: no contracts found for {symbol} {strike_price_actual} {pe_ce}")
                 return -1
+
+            logger.info(f"place_order_option_buy: found {len(filtered)} contracts for {symbol} {strike_price_actual} {pe_ce}")
 
             try:
                 today = datetime.now().date()
@@ -567,15 +586,17 @@ class zerodha_api:
 
                 if not current_month_expiries.empty:
                     tokenInfo = current_month_expiries.iloc[-1]
+                    logger.info(f"place_order_option_buy: using current month expiry: {tokenInfo['symbol']}")
                 else:
                     next_month_expiries = filtered[filtered['expiry_date'] > last_day]
                     if not next_month_expiries.empty:
                         tokenInfo = next_month_expiries.iloc[-1]
+                        logger.info(f"place_order_option_buy: using next month expiry: {tokenInfo['symbol']}")
                     else:
                         tokenInfo = filtered.iloc[-1]
+                        logger.warning(f"place_order_option_buy: fallback to last available: {tokenInfo['symbol']}")
             except Exception as e:
-                logging.error(f"Error executing place_order: {e}")
-                print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                logger.error(f"place_order_option_buy: error selecting expiry: {e}")
                 tokenInfo = filtered.iloc[-1]
 
             tradingsymbol = tokenInfo['symbol']
@@ -583,11 +604,12 @@ class zerodha_api:
             lot = int(tokenInfo['lotsize'])
 
             if qty % lot != 0:
+                logger.error(f"place_order_option_buy: qty {qty} not multiple of lot size {lot} for {tradingsymbol}")
                 return -1
 
             transaction_type = self.kite.TRANSACTION_TYPE_BUY if buy_sell == 'BUY' else self.kite.TRANSACTION_TYPE_SELL
 
-            print(f" Time: {datetime.now().strftime('%H:%M:%S')} Symbol: {tradingsymbol}, Token: {token}, Lot: {lot}")
+            logger.info(f"place_order_option_buy: placing {buy_sell} {tradingsymbol} qty={qty} lot={lot} token={token}")
             try:
                 try:
                     orderid = self.kite.place_order(
@@ -598,19 +620,19 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
+                        market_protection=1,
                     )
-                    print(f" After order Time: {datetime.now().strftime('%H:%M:%S')})")
+                    logger.info(f"place_order_option_buy: order placed, order_id={orderid} for {tradingsymbol}")
                 except requests.exceptions.Timeout:
-                    print("Order placement timed out, retrying once")
-                    logger.warning("Order placement timed out, retrying once")
+                    logger.warning(f"place_order_option_buy: timeout for {tradingsymbol}, checking orderbook")
                     time.sleep(5)
                     existing_orderid = self._find_recent_order(tradingsymbol, buy_sell, qty, self.kite.PRODUCT_NRML)
                     if existing_orderid:
-                        logger.info(f"Order {existing_orderid} already exists after timeout, skipping retry")
+                        logger.info(f"place_order_option_buy: found existing order {existing_orderid} after timeout")
                         orderid = existing_orderid
                     else:
                         try:
+                            logger.info(f"place_order_option_buy: retrying after timeout for {tradingsymbol}")
                             orderid = self.kite.place_order(
                                 variety=self.kite.VARIETY_REGULAR,
                                 exchange=self.kite.EXCHANGE_NFO,
@@ -619,17 +641,15 @@ class zerodha_api:
                                 quantity=qty,
                                 product=self.kite.PRODUCT_NRML,
                                 order_type=self.kite.ORDER_TYPE_MARKET,
-                                market_protection=5,
+                                market_protection=1,
                             )
+                            logger.info(f"place_order_option_buy: retry succeeded, order_id={orderid} for {tradingsymbol}")
                         except Exception as e2:
-                            print(''.join(traceback.format_exception(type(e2), e2, e2.__traceback__)))
-                            logger.error(f"Error executing place_order after timeout: {e2}")
+                            logger.error(f"place_order_option_buy: retry after timeout failed for {tradingsymbol}: {e2}")
                             return -1
             except Exception as e:
                 try:
-                    print("Error placing order, trying again")
-                    print(f"Error: {e}")
-                    logger.error(f"Error executing place_order again: {e}")
+                    logger.error(f"place_order_option_buy: first attempt failed for {tradingsymbol}: {e}")
                     x = TelegramSend.telegram_send_api()
                     x.send_message("-4008545231", f"Warning kite {tradingsymbol} option buy order Pls check")
                     time.sleep(2)
@@ -641,23 +661,22 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
+                        market_protection=1,
                     )
+                    logger.info(f"place_order_option_buy: second attempt succeeded, order_id={orderid} for {tradingsymbol}")
                 except Exception as e1:
-                    logging.error(f"Error executing place_order: {e1}")
-                    print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+                    logger.error(f"place_order_option_buy: second attempt also failed for {tradingsymbol}: {e1}")
                     return -1
 
             if orderid is None or orderid == '' or orderid == 0:
-                logger.error(f"Kite API returned invalid order ID: {orderid} for option buy {tradingsymbol}")
-                print(f"Kite API returned invalid order ID: {orderid}")
+                logger.error(f"place_order_option_buy: Kite returned invalid order_id={orderid} for {tradingsymbol}")
                 return -1
 
+            logger.info(f"place_order_option_buy: success order_id={orderid} for {tradingsymbol}")
             return orderid
         except Exception as e:
-            print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-            print(f"Error executing place_order: {e}")
-            logger.error(f"Error executing place_order: {e}")
+            logger.error(f"place_order_option_buy: fatal error for {symbol} {strike_price} {pe_ce}: {e}")
+            traceback.print_exc()
             return -1
 
     def place_order_synthetic_future(self, symbol, qty, buy_sell, strike_price, pe_ce, expiry=None):
@@ -723,7 +742,7 @@ class zerodha_api:
                         quantity=qty,
                         product=self.kite.PRODUCT_NRML,
                         order_type=self.kite.ORDER_TYPE_MARKET,
-                        market_protection=5,
+                        market_protection=1,
                     )
 
                     if orderid is None or orderid == '' or orderid == 0:
@@ -755,44 +774,52 @@ class zerodha_api:
             return -1, None
 
     def get_order_status(self, order_id):
+        logger.info(f"get_order_status: checking order_id={order_id}")
         try:
             if pd.isna(order_id) or order_id is None or order_id == -1 or str(order_id).lower() == 'nan':
-                logger.error(f"Invalid order_id received for status check: {order_id}")
+                logger.error(f"get_order_status: invalid order_id={order_id}")
                 return "NotFound", -1
 
             try:
                 order_id = str(int(float(order_id)))
             except (ValueError, TypeError):
-                logger.error(f"Could not convert order_id {order_id} to integer")
+                logger.error(f"get_order_status: could not convert order_id {order_id} to integer")
                 return "NotFound", -1
 
             try:
                 order_history = self.kite.order_history(order_id)
             except Exception as e:
                 try:
-                    print("Error getting order history, trying again")
-                    print(f"Error: {e}")
+                    logger.warning(f"get_order_status: first attempt failed for {order_id}: {e}, retrying")
                     time.sleep(2)
                     order_history = self.kite.order_history(order_id)
                 except Exception as e1:
-                    print(f"Error: {e1}")
+                    logger.error(f"get_order_status: retry also failed for {order_id}: {e1}")
                     return -1, -1
 
             if not order_history:
+                logger.warning(f"get_order_status: empty order history for {order_id}")
                 return "NotFound", -1
 
             # Last entry in order_history has the latest status
             latest = order_history[-1]
             order_status = latest.get('status', '').upper()
             average_price = float(latest.get('average_price', 0) or 0)
+            tradingsymbol = latest.get('tradingsymbol', 'unknown')
+            order_type = latest.get('order_type', 'unknown')
+            status_message = latest.get('status_message', '')
 
-            logger.info(f"Kite raw order status for {order_id}: '{order_status}'")
+            logger.info(f"get_order_status: order_id={order_id}, symbol={tradingsymbol}, "
+                         f"status={order_status}, order_type={order_type}, avg_price={average_price}"
+                         f"{f', message={status_message}' if status_message else ''}")
 
             if order_status == 'COMPLETE':
                 order_ret = "Complete"
-            elif order_status in ('OPEN', 'TRIGGER PENDING', 'AMO REQ RECEIVED'):
+            elif order_status in ('OPEN', 'OPEN PENDING', 'TRIGGER PENDING', 'AMO REQ RECEIVED'):
                 order_ret = "Open"
             elif order_status == 'REJECTED':
+                reject_reason = latest.get('status_message', 'Unknown')
+                logger.error(f"Kite order {order_id} REJECTED: {reject_reason}")
                 order_ret = "Rejected"
             elif order_status == 'CANCELLED':
                 order_ret = "Cancelled"
