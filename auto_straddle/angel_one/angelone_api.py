@@ -704,9 +704,13 @@ class angelone_api(object):
                 logger.error(f"Invalid order_id received for status check: {order_id}")
                 return "NotFound", -1
 
-            # Convert to int safely - handles float strings and numpy types
+            # Convert to string first, strip decimal if present (e.g. "123.0" from pandas)
+            # Avoid float() as it loses precision on large 19-digit order IDs
             try:
-                order_id = str(int(float(order_id)))
+                s = str(order_id)
+                if '.' in s:
+                    s = s.split('.')[0]
+                order_id = str(int(s))
             except (ValueError, TypeError):
                 logger.error(f"Could not convert order_id {order_id} to integer")
                 return "NotFound", -1

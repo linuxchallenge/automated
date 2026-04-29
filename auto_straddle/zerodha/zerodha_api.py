@@ -781,7 +781,12 @@ class zerodha_api:
                 return "NotFound", -1
 
             try:
-                order_id = str(int(float(order_id)))
+                # Convert to string first, strip decimal if present (e.g. "123.0" from pandas)
+                # Avoid float() as it loses precision on large 19-digit order IDs
+                s = str(order_id)
+                if '.' in s:
+                    s = s.split('.')[0]
+                order_id = str(int(s))
             except (ValueError, TypeError):
                 logger.error(f"get_order_status: could not convert order_id {order_id} to integer")
                 return "NotFound", -1
