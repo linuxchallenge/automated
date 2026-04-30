@@ -13,10 +13,8 @@
 # pylint: disable=R0915
 # pylint: disable=R1702
 
-import json
 import logging
 import os
-import random
 import time
 import traceback
 from datetime import datetime
@@ -90,54 +88,31 @@ class ElliotWaveSignalGenerator:
         self.tv_timeout_retries = 0
         self.max_tv_timeout_retries = 3
 
-        # Load credentials from same file used by commodity_data
-        credentials_file = os.path.join(os.path.dirname(__file__), 'tv_credentials.json')
-        try:
-            with open(credentials_file, 'r', encoding='utf-8') as f:
-                self.credentials = json.load(f)
-            logger.info(f"Loaded {len(self.credentials)} TV credentials")
-        except FileNotFoundError:
-            logger.error(f"TV credentials file not found: {credentials_file}")
-            self.credentials = []
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing TV credentials file: {e}")
-            self.credentials = []
-
         self._init_tv_connection()
 
     # ------------------------------------------------------------------
-    # TradingView connection (mirrors commodity_data.py pattern)
+    # TradingView connection (no-login / anonymous)
     # ------------------------------------------------------------------
 
     def _init_tv_connection(self):
-        """Initialize TradingView connection with credential rotation."""
-        for attempt in range(5):
-            if not self.credentials:
-                logger.error("No TV credentials available")
-                self.tv_obj = None
-                return
-
-            cred = random.choice(self.credentials)
-            username = cred['username']
-            logger.info(f"TV connection attempt {attempt + 1}/5 with user: {username}")
-
+        """Initialize TradingView connection without credentials (anonymous)."""
+        for attempt in range(3):
+            logger.info(f"TV no-login connection attempt {attempt + 1}/3")
             try:
-                self.tv_obj = TvDatafeed(username, cred['password'], random_user_agent=True)  # pylint: disable=unexpected-keyword-arg
-                if self.tv_obj.token != 'unauthorized_user_token':
-                    logger.info(f"TV connection successful (token: {self.tv_obj.token})")
-                    self.tv_timeout_retries = 0
-                    return
+                self.tv_obj = TvDatafeed()
+                logger.info("TV no-login connection successful")
+                self.tv_timeout_retries = 0
+                return
             except Exception as e:
-                logger.error(f"TV connection error: {e}")
+                logger.error(f"TV no-login connection error: {e}")
+                time.sleep(3)
 
-            time.sleep(5)
-
-        logger.error("TV connection failed after 5 attempts")
+        logger.error("TV no-login connection failed after 3 attempts")
         self.tv_obj = None
 
     def _reconnect_tv(self):
         """Reconnect TradingView on persistent failures."""
-        logger.warning("Reconnecting TradingView...")
+        logger.warning("Reconnecting TradingView (no-login)...")
         try:
             if self.tv_obj and hasattr(self.tv_obj, 'ws') and self.tv_obj.ws:
                 try:
@@ -154,12 +129,15 @@ class ElliotWaveSignalGenerator:
 
     def _fetch_ohlcv(self, symbol: str) -> pd.DataFrame:
         """
-        Fetch fresh daily OHLCV from TradingView (NSE).
+        Fetch fresh daily OHLCV — tries TradingView first, falls back to Yahoo Finance.
 
         Returns DataFrame with capitalized columns (Open, High, Low, Close, Volume)
         and a DatetimeIndex — format required by detect_swing_points().
         """
-        return self._fetch_ohlcv_tv(symbol)
+        df = self._fetch_ohlcv_tv(symbol)
+        if df.empty:
+            df = self._fetch_ohlcv_yahoo(symbol)
+        return df
 
     def _fetch_ohlcv_tv(self, symbol: str, max_retries: int = 3) -> pd.DataFrame:
         """Fetch daily OHLCV from TradingView for an NSE equity symbol."""
@@ -226,6 +204,33 @@ class ElliotWaveSignalGenerator:
 
         logger.warning(f"TV retries exhausted for {symbol}")
         return pd.DataFrame()
+
+    def _fetch_ohlcv_yahoo(self, symbol: str) -> pd.DataFrame:
+        """Fetch daily OHLCV from Yahoo Finance as fallback (uses NSE suffix)."""
+        try:
+            import yfinance as yf
+        except ImportError:
+            logger.error("yfinance not installed, cannot use Yahoo fallback")
+            return pd.DataFrame()
+
+        yf_symbol = f"{symbol}.NS"
+        try:
+            df = yf.download(yf_symbol, period="2y", progress=False)
+            if df is None or df.empty:
+                logger.warning(f"Yahoo returned no data for {yf_symbol}")
+                return pd.DataFrame()
+
+            # Handle multi-level columns from yfinance
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+            df.index.name = 'Date'
+            logger.info(f"Yahoo fallback: fetched {len(df)} bars for {symbol}")
+            return df
+
+        except Exception as e:
+            logger.error(f"Yahoo error for {symbol}: {e}")
+            return pd.DataFrame()
 
     # ------------------------------------------------------------------
     # Main signal generation
@@ -500,8 +505,9 @@ class ElliotWaveSignalGenerator:
                 structures = identify_wave_structures(swings, self.config)
                 signals = generate_signals(df, structures, self.config)
 
-                # Keep only today's signals
-                today_signals = [s for s in signals if s.date.date() == today]
+                # Keep only signals for the last trading day in the data
+                last_trading_day = df.index[-1].date()
+                today_signals = [s for s in signals if s.date.date() == last_trading_day]
 
                 for signal in today_signals:
                     percent_increase = (signal.target_price / signal.entry_price - 1) * 100

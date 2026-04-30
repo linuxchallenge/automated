@@ -285,7 +285,7 @@ def main():
 
     # Flag to track if Cash SL update has run today (runs at 11:10 PM)
     cash_sl_updated_today = False
-    # Flag to track if EW signals have been generated today (runs at 3:30–4:00 PM)
+    # Flag to track if EW signals have been generated today (runs at 3:45–4:15 PM)
     ew_signals_generated_today = False
     # Flag to track if EW manual corrections have been synced today (runs at 9:00–9:15 AM)
     ew_corrections_synced_today = False
@@ -371,10 +371,10 @@ def main():
                         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                         print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
-                # Generate EW signals at 3:30–4:00 PM daily
-                if EW_STRATEGY_ENABLED and time_dt(15, 30) <= current_time_dt <= time_dt(16, 0):
+                # Generate EW signals at 3:45–4:15 PM daily (after market close)
+                if EW_STRATEGY_ENABLED and time_dt(15, 45) <= current_time_dt <= time_dt(16, 15):
                     if not ew_signals_generated_today:
-                        logging.info("Generating EW signals at 3:30 PM")
+                        logging.info("Generating EW signals at 3:45 PM")
                         signal.alarm(600)  # pylint: disable=no-member  # 10 minutes for signal generation
                         try:
                             elliot_dir = Path(elliot_cash_obj.csv_path).parent
