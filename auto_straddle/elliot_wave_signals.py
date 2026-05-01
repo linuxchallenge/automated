@@ -256,6 +256,7 @@ class ElliotWaveSignalGenerator:
             nifty_df = pd.read_csv(StringIO(content))
             nifty_df.columns = [c.strip() for c in nifty_df.columns]
             symbols = nifty_df['Symbol'].dropna().unique().tolist()
+            symbols = [s for s in symbols if 'DUMMY' not in s.upper() and 'NSETEST' not in s.upper()]
             logger.info(f"Downloaded {len(symbols)} Nifty 200 symbols from NSE")
             return symbols
         except Exception as e:
@@ -265,6 +266,7 @@ class ElliotWaveSignalGenerator:
         nifty_df = pd.read_csv(self.nifty200_csv)
         nifty_df.columns = [c.strip() for c in nifty_df.columns]
         symbols = nifty_df['Symbol'].dropna().unique().tolist()
+        symbols = [s for s in symbols if 'DUMMY' not in s.upper() and 'NSETEST' not in s.upper()]
         logger.info(f"Loaded {len(symbols)} Nifty 200 symbols from local cache")
         return symbols
 
