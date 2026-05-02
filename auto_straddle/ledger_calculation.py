@@ -1274,6 +1274,78 @@ Strategy Breakdown:"""
             logger.error("Error computing synthetic future P&L: %s", e)
             return 0
 
+    def calculate_elliot_wave_ledger(self, target_date: str) -> Dict[str, float]:
+        """
+        Calculate ledger for Elliott Wave cash strategy (elliot_cash_stratergy.csv)
+        Looks for trades closed on the PREVIOUS DAY.
+
+        Args:
+            target_date (str): Target date in YYYY-MM-DD format
+
+        Returns:
+            Dict[str, float]: Account-wise ledger amounts
+        """
+        logger.info("Calculating Elliott Wave ledger...")
+        ledger = {}
+
+        previous_date = self.get_previous_day(target_date)
+        logger.info("Looking for EW trades closed on previous day: %s", previous_date)
+
+        ew_csv_path = os.path.expanduser("~/temp/data_collection/elliot/elliot_cash_stratergy.csv")
+
+        if not os.path.exists(ew_csv_path):
+            logger.info("Elliott Wave CSV not found at %s", ew_csv_path)
+            return ledger
+
+        try:
+            df = pd.read_csv(ew_csv_path)
+            if df.empty:
+                return ledger
+
+            # Filter for closed trades on previous date
+            df['close_date'] = pd.to_datetime(df['close_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+            closed_trades = df[(df['status'] == 'close') & (df['close_date'] == previous_date)]
+
+            if closed_trades.empty:
+                logger.info("No EW trades closed on %s", previous_date)
+                return ledger
+
+            for _, row in closed_trades.iterrows():
+                account = str(row.get('account', '')).lower()
+                if account not in self.valid_accounts:
+                    continue
+
+                self.accounts.add(account)
+
+                buy_price = float(row.get('buy_price', 0))
+                sell_price = float(row.get('sell_price', 0))
+                quantity = int(float(row.get('quantity', 0)))
+
+                if buy_price <= 0 or sell_price <= 0 or quantity <= 0:
+                    logger.warning("Skipping EW trade %s - invalid data: buy=%.2f sell=%.2f qty=%d",
+                                   row.get('sl_no', ''), buy_price, sell_price, quantity)
+                    continue
+
+                # Calculate P&L using equity delivery brokerage (cash trades, not F&O)
+                brokerage_result = brokrage_calculator.calculate_equity_delivery(buy_price, sell_price, quantity)
+                net_pnl = brokerage_result['net_profit']
+
+                if account not in ledger:
+                    ledger[account] = 0
+                ledger[account] += net_pnl
+
+                logger.debug("EW trade %s - %s: buy=%.2f sell=%.2f qty=%d net=%.2f",
+                             row.get('sl_no', ''), account, buy_price, sell_price, quantity, net_pnl)
+
+            for account, amount in ledger.items():
+                logger.info("Elliott Wave ledger - %s: ₹%.2f", account, amount)
+
+        except Exception as e:
+            logger.error("Error calculating Elliott Wave ledger: %s", e)
+            logger.error(traceback.format_exc())
+
+        return ledger
+
     def calculate_comprehensive_ledger(self, target_date: str) -> Dict[str, Dict[str, float]]:
         """
         Calculate comprehensive ledger for all strategies and accounts
@@ -1294,6 +1366,7 @@ Strategy Breakdown:"""
         positional_ledger = self.calculate_nifty_positional_ledger(target_date)
         commodity_ledger = self.calculate_commodity_ledger(target_date)
         index_future_ledger = self.calculate_index_future_ledger(target_date)
+        elliot_wave_ledger = self.calculate_elliot_wave_ledger(target_date)
 
         # Combine all ledgers by account
         comprehensive_ledger = {}
@@ -1305,12 +1378,14 @@ Strategy Breakdown:"""
                 'Positional': positional_ledger.get(account, 0),
                 'Commodity': commodity_ledger.get(account, 0),
                 'IndexFuture': index_future_ledger.get(account, 0),
+                'ElliotWave': elliot_wave_ledger.get(account, 0),
                 'Total': (
                     autostraddle_ledger.get(account, 0) +
                     farsell_ledger.get(account, 0) +
                     positional_ledger.get(account, 0) +
                     commodity_ledger.get(account, 0) +
-                    index_future_ledger.get(account, 0)
+                    index_future_ledger.get(account, 0) +
+                    elliot_wave_ledger.get(account, 0)
                 )
             }
 

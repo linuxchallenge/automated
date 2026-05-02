@@ -684,14 +684,19 @@ class angelone_api(object):
             return None, 0
 
     def get_ledger_balance(self):
-        """Fetch the ledger balance for the account"""
+        """Fetch the ledger balance for the account.
+        Uses 'utilisedpayout' which represents the actual cash ledger balance,
+        excluding collateral (pledged holdings value).
+        'net' and 'availablecash' include collateral, inflating the balance.
+        """
         try:
             res = self.obj.rmsLimit()
             if res['status'] and 'data' in res:
-                # availablecash is the available margin/ledger balance
-                balance = res['data'].get('availablecash', 0)
-                logger.info(f"AngelOne Ledger balance: {balance}")
-                return float(balance)
+                data = res['data']
+                balance = float(data.get('utilisedpayout', 0) or 0)
+                logger.info(f"AngelOne Ledger balance (utilisedpayout): {balance}, "
+                            f"net: {data.get('net')}, collateral: {data.get('collateral')}")
+                return balance
             return 0.0
         except Exception as e:
             logger.error(f"Error fetching AngelOne ledger balance: {e}")
