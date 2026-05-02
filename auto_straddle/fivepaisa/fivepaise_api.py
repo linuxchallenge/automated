@@ -1103,6 +1103,51 @@ class fivepaise_api(object):
             logger.error(f"[{self.account}] Error fetching ledger balance: {e}")
             return 0.0
 
+    def get_fund_details(self):
+        """Fetch fund details: cash, collateral, margin, and holdings for SEBI 50-50 tracking."""
+        try:
+            self._fix_shared_payload_bug()
+            margin_data = self.obj.margin()
+            if not margin_data or len(margin_data) == 0:
+                logger.error(f"[{self.account}] Empty margin data")
+                return None
+
+            m = margin_data[0]
+            # Log raw keys on first call to verify field names
+            logger.info(f"[{self.account}] Raw margin keys: {list(m.keys())}")
+
+            cash_balance = float(m.get('Ledgerbalance', 0) or 0)
+            collateral = float(m.get('CollateralValue', m.get('Collateral', 0)) or 0)
+            margin_used = float(m.get('MarginUsed', m.get('Marginused', 0)) or 0)
+            margin_available = float(m.get('NetAvailableMargin', m.get('AvailableMargin', 0)) or 0)
+
+            # Fetch holdings value
+            holdings_value = 0.0
+            try:
+                self._fix_shared_payload_bug()
+                holdings = self.obj.holdings()
+                if holdings and isinstance(holdings, list):
+                    for h in holdings:
+                        ltp = float(h.get('LastRate', h.get('LTP', h.get('CurrentPrice', 0))) or 0)
+                        qty = int(h.get('Quantity', h.get('BuyQty', 0)) or 0)
+                        holdings_value += ltp * qty
+            except Exception as e:
+                logger.warning(f"[{self.account}] Holdings fetch failed (non-critical): {e}")
+
+            result = {
+                'cash_balance': cash_balance,
+                'collateral': collateral,
+                'margin_used': margin_used,
+                'margin_available': margin_available,
+                'holdings_value': holdings_value,
+                'net_balance': cash_balance + collateral,
+            }
+            logger.info(f"[{self.account}] Fund details: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"[{self.account}] Error fetching fund details: {e}")
+            return None
+
     def get_order_status(self, order_id):
         try:
             logger.info(f"[{self.account}] 🔍 Checking order status for order_id={order_id}")

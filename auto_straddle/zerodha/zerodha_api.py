@@ -896,3 +896,39 @@ class zerodha_api:
         except Exception as e:
             logger.error(f"Error fetching Kite ledger balance: {e}")
             return 0.0
+
+    def get_fund_details(self):
+        """Fetch fund details: cash, collateral, margin, and holdings for SEBI 50-50 tracking."""
+        try:
+            margins = self.kite.margins()
+            eq = margins.get('equity', {})
+            avail = eq.get('available', {})
+            utilised = eq.get('utilised', {})
+
+            cash_balance = float(avail.get('live_balance', 0) or 0)
+            collateral = float(avail.get('collateral', 0) or 0)
+            margin_used = float(utilised.get('span', 0) or 0) + float(utilised.get('exposure', 0) or 0)
+            margin_available = float(avail.get('cash', 0) or 0) + collateral - margin_used
+
+            # Fetch holdings value
+            holdings_value = 0.0
+            try:
+                holdings = self.kite.holdings()
+                for h in holdings:
+                    holdings_value += float(h.get('last_price', 0) or 0) * int(h.get('quantity', 0) or 0)
+            except Exception as e:
+                logger.warning("Kite holdings fetch failed (non-critical): %s", e)
+
+            result = {
+                'cash_balance': cash_balance,
+                'collateral': collateral,
+                'margin_used': margin_used,
+                'margin_available': margin_available,
+                'holdings_value': holdings_value,
+                'net_balance': cash_balance + collateral,
+            }
+            logger.info("Kite fund details: %s", result)
+            return result
+        except Exception as e:
+            logger.error("Error fetching Kite fund details: %s", e)
+            return None

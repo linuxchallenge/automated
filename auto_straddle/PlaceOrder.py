@@ -589,6 +589,25 @@ class PlaceOrder:
         print(f"Ledger balance for {account}: {balance}")
         return balance
 
+    def get_fund_details(self, account):
+        """Get fund details for a specific account (cash, collateral, margin, holdings)"""
+        if account == 'deepti' and hasattr(self, 'obj_1') and self.obj_1 is not None:
+            return self.obj_1.get_fund_details()
+        elif account == 'leelu' and hasattr(self, 'obj_2') and self.obj_2 is not None:
+            return self.obj_2.get_fund_details()
+        elif account == 'avanthi' and hasattr(self, 'obj_3') and self.obj_3 is not None:
+            return self.obj_3.get_fund_details()
+        elif account == 'kite' and hasattr(self, 'obj_4') and self.obj_4 is not None:
+            return self.obj_4.get_fund_details()
+        elif account == 'dummy':
+            return {
+                'cash_balance': 100000.0, 'collateral': 0.0, 'margin_used': 0.0,
+                'margin_available': 100000.0, 'holdings_value': 0.0, 'net_balance': 100000.0,
+            }
+        else:
+            logging.error(f"Invalid account or API object not initialized: {account}")
+            return None
+
     def order_status(self, account, order_id, old_price):
         print(f"Order status for order id {order_id}")
         logging.info(f"Order status for order id {order_id}")

@@ -702,6 +702,48 @@ class angelone_api(object):
             logger.error(f"Error fetching AngelOne ledger balance: {e}")
             return 0.0
 
+    def get_fund_details(self):
+        """Fetch fund details: cash, collateral, margin, and holdings for SEBI 50-50 tracking."""
+        try:
+            res = self.obj.rmsLimit()
+            if not (res.get('status') and 'data' in res):
+                logger.error("AngelOne rmsLimit failed: %s", res)
+                return None
+            data = res['data']
+            cash_balance = float(data.get('utilisedpayout', 0) or 0)
+            collateral = float(data.get('collateral', 0) or 0)
+            net_val = float(data.get('net', 0) or 0)
+            margin_used = float(data.get('utilisedexposure', 0) or 0) + float(data.get('utilisedspan', 0) or 0)
+            margin_available = net_val - margin_used
+
+            # Fetch holdings value
+            holdings_value = 0.0
+            try:
+                holdings_res = self.obj.allholding()
+                if holdings_res and holdings_res.get('status') and 'data' in holdings_res:
+                    h_data = holdings_res['data']
+                    if 'totalholding' in h_data:
+                        holdings_value = float(h_data['totalholding'].get('totalholdingvalue', 0) or 0)
+                    elif isinstance(h_data, list):
+                        for h in h_data:
+                            holdings_value += float(h.get('ltp', 0) or 0) * float(h.get('quantity', 0) or 0)
+            except Exception as e:
+                logger.warning("AngelOne holdings fetch failed (non-critical): %s", e)
+
+            result = {
+                'cash_balance': cash_balance,
+                'collateral': collateral,
+                'margin_used': margin_used,
+                'margin_available': margin_available,
+                'holdings_value': holdings_value,
+                'net_balance': cash_balance + collateral,
+            }
+            logger.info("AngelOne fund details: %s", result)
+            return result
+        except Exception as e:
+            logger.error("Error fetching AngelOne fund details: %s", e)
+            return None
+
     def get_order_status(self, order_id):
         try:
             # Defensive check for NaN, None or non-numeric values

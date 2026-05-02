@@ -44,6 +44,7 @@ from ledger_calculation import LedgerCalculator
 from update_cash_sl import run_cash_sl_update
 from elliot_wave_signals import ElliotWaveSignalGenerator, ACCOUNTS_URL as EW_ACCOUNTS_URL
 from elliot_cash_stratergy import ElliotCashStratergy
+from fund_optimizer import FundOptimizer
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -271,6 +272,9 @@ def main():
         logger.error("Error in ledger calculation: %s", e)
         logger.error(traceback.format_exc())
 
+    # Initialize fund optimizer for SEBI 50-50 tracking
+    fund_optimizer = FundOptimizer()
+
     index_future_stratergy = IndexFutureStratergy(accounts_index)
 
     nifty_position_stratergy = NiftyPositionalStrategy(accounts_niftyposition)
@@ -352,6 +356,12 @@ def main():
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # SEBI 50-50 fund snapshot (every 15 minutes during market hours)
+                try:
+                    fund_optimizer.collect_snapshot(place_order)
+                except Exception as e:
+                    logging.error("Fund snapshot failed: %s", e)
+
                 # Sync EW manual corrections once per day at 9:00–9:15 AM
                 if EW_STRATEGY_ENABLED and time_dt(9, 0) <= current_time_dt <= time_dt(9, 15):
                     if not ew_corrections_synced_today:
@@ -388,6 +398,13 @@ def main():
                             logging.error(f"EW signal generation failed: {e}")
                             logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Generate SEBI 50-50 fund report on Friday after 3:45 PM
+                if time_dt(15, 45) <= current_time_dt <= time_dt(16, 15):
+                    try:
+                        fund_optimizer.generate_weekly_report()
+                    except Exception as e:
+                        logging.error("Fund weekly report failed: %s", e)
+
                 # Run Cash SL Update at 11:10 PM daily
                 if time_dt(23, 10) <= current_time_dt <= time_dt(23, 15):
                     if not cash_sl_updated_today:
@@ -406,6 +423,7 @@ def main():
                     cash_sl_updated_today = False
                     ew_signals_generated_today = False
                     ew_corrections_synced_today = False
+                    fund_optimizer.reset_weekly_flag()
 
                 # Sleep for a specified interval (e.g., 1 minute)
                 # Use full timestamp to handle minute boundary correctly
