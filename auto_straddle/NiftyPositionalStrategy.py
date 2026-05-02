@@ -18,6 +18,7 @@ import time as t
 import pandas as pd
 import TelegramSend
 import configuration
+import brokrage_calculator
 from exchange_state import ExchangeData
 from OptionChainData import OptionChainData
 logger = logging.getLogger(__name__)
@@ -598,6 +599,44 @@ class NiftyPositionalStrategy:
                     telegram_api.send_message(chat_id, pl_message)
 
                     telegram_api.send_file(chat_id, sold_options_file_path)
+
+                    # Compute brokerage
+                    lot_size = 65 if self.symbol == "NIFTY" else 20
+                    total_brokerage = 0
+                    for _, trade in expiry_trades.iterrows():
+                        if trade['trade_state'] not in ['closed', 'open']:
+                            continue
+                        trade_qty = trade['quantity']
+                        if trade['strangle_ce_price'] != -1:
+                            ce_close = trade['strangle_ce_close_price'] if not pd.isna(trade['strangle_ce_close_price']) else 0
+                            total_brokerage += brokrage_calculator.calculate_equity_options(
+                                ce_close, trade['strangle_ce_price'], trade_qty * lot_size)['total_charges']
+                        if trade['strangle_pe_price'] != -1:
+                            pe_close = trade['strangle_pe_close_price'] if not pd.isna(trade['strangle_pe_close_price']) else 0
+                            total_brokerage += brokrage_calculator.calculate_equity_options(
+                                pe_close, trade['strangle_pe_price'], trade_qty * lot_size)['total_charges']
+
+                    # Save to consolidated PNL
+                    pl_dict = {
+                        'Date': datetime.now().strftime("%Y-%m-%d"),
+                        'Account': account,
+                        'Symbol': self.symbol,
+                        'Quantity': quantity,
+                        'NumberofTrade': len(expiry_trades),
+                        'TotalPNL': total_pl,
+                        'Brokarge': total_brokerage,
+                        'CloseTime': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'Stratergy': 'NiftyPositional',
+                        'NetPNL': total_pl - total_brokerage,
+                    }
+                    current_month = datetime.now().strftime("%m")
+                    file_name = f"pnl/consolidated_pnl_{current_month}.csv"
+                    if os.path.exists(file_name):
+                        df_pnl = pd.read_csv(file_name)
+                        df_pnl = pd.concat([df_pnl, pd.DataFrame([pl_dict])], ignore_index=True)
+                        df_pnl.to_csv(file_name, index=False)
+                    else:
+                        pd.DataFrame([pl_dict]).to_csv(file_name, index=False)
 
                     # Create flag file to prevent duplicate P/L messages
                     with open(pl_flag_file, 'w', encoding='utf-8') as f:
