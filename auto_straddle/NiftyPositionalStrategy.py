@@ -626,7 +626,7 @@ class NiftyPositionalStrategy:
                         'TotalPNL': total_pl,
                         'Brokarge': total_brokerage,
                         'CloseTime': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        'Stratergy': 'NiftyPositional',
+                        'Stratergy': f"{self.symbol.lower()}_{self.stratergy}",
                         'NetPNL': total_pl - total_brokerage,
                     }
                     current_month = datetime.now().strftime("%m")
