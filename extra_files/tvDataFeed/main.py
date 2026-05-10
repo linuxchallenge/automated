@@ -482,7 +482,7 @@ class TvDatafeed:
             data.insert(0, "symbol", value=symbol)
             return data
         except AttributeError:
-            logger.error("no data, please check the exchange and symbol")
+            logger.debug("no data, please check the exchange and symbol")
 
     @staticmethod
     def __format_symbol(symbol, exchange, contract: int = None):
@@ -596,7 +596,7 @@ class TvDatafeed:
                 result = self.ws.recv()
                 raw_data = raw_data + result + "\n"
             except Exception as e:
-                logger.error(e)
+                logger.debug(e)
                 break
 
             if "series_completed" in result:
