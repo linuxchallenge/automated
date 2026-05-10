@@ -265,7 +265,7 @@ class IndexFutureStratergy:
 
             return data[['Date', 'open', 'high', 'low', 'close', 'volume']]
         except Exception as e:
-            self.logger.error(f"Error in OHLCHistoricData_tv: {e}")
+            self.logger.debug(f"Error in OHLCHistoricData_tv: {e}")
             return None
 
     # Write function which accepts data frame and retuen alligator and fractal
@@ -502,10 +502,12 @@ class IndexFutureStratergy:
                 #historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
 
                 if historic_data is None:
+                    self.logger.error(f"Error getting historic data for symbol: {s}")
                     print(f"Error getting historic data for symbol: {s}")
                     return
 
                 if historic_data_daily is None:
+                    self.logger.error(f"Error getting historic daily data for symbol: {s}")
                     print(f"Error getting historic daily data for symbol: {s}")
                     return
 
