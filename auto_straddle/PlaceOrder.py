@@ -694,6 +694,9 @@ class PlaceOrder:
                 time.sleep(1)
                 order_id = self.obj_4.place_order_cash(symbol, quantity, side)
 
+        elif account == 'dummy':
+            order_id = 1122334455
+
         logging.info(f"Order id for account: {order_id}")
         return order_id
 

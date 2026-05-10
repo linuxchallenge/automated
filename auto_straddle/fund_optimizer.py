@@ -118,8 +118,13 @@ class FundOptimizer:
                 logger.info("No fund data for this week, skipping report")
                 return
 
-            report = self._build_report(df_week, today)
-            self._send_report(report)
+            for account in ACCOUNTS:
+                df_acc = df_week[df_week['account'] == account]
+                if df_acc.empty:
+                    continue
+                report = self._build_report(df_acc, account, today)
+                self._send_report(account, report)
+
             self.weekly_report_sent = True
             logger.info("Weekly fund report sent successfully")
         except Exception as e:
@@ -130,49 +135,43 @@ class FundOptimizer:
         if datetime.now().weekday() == 0:  # Monday
             self.weekly_report_sent = False
 
-    def _build_report(self, df_week, today):
+    def _build_report(self, df_acc, account, today):
         """Build the weekly report string."""
         lines = [
-            "SEBI 50-50 Fund Report",
+            f"SEBI 50-50 Fund Report - {account.upper()}",
             f"Week of {today}",
             "",
         ]
 
-        for account in ACCOUNTS:
-            df_acc = df_week[df_week['account'] == account]
-            if df_acc.empty:
-                continue
+        # Use latest snapshot for the account
+        latest = df_acc.iloc[-1]
+        cash = latest['cash_balance']
+        collateral = latest['collateral']
+        cash_pct = latest['cash_pct']
+        margin_used = latest['margin_used']
+        holdings = latest['holdings_value']
+        net = latest['net_balance']
 
-            # Use latest snapshot for the account
-            latest = df_acc.iloc[-1]
-            cash = latest['cash_balance']
-            collateral = latest['collateral']
-            cash_pct = latest['cash_pct']
-            margin_used = latest['margin_used']
-            holdings = latest['holdings_value']
-            net = latest['net_balance']
+        lines.append(f"Cash: {self._fmt(cash)} | Collateral: {self._fmt(collateral)}")
+        lines.append(f"Cash%: {cash_pct:.0f}% | Margin Used: {self._fmt(margin_used)}")
+        lines.append(f"Holdings: {self._fmt(holdings)}")
 
-            lines.append(account.upper())
-            lines.append(f"Cash: {self._fmt(cash)} | Collateral: {self._fmt(collateral)}")
-            lines.append(f"Cash%: {cash_pct:.0f}% | Margin Used: {self._fmt(margin_used)}")
-            lines.append(f"Holdings: {self._fmt(holdings)}")
+        # Recommendations
+        if cash_pct > 70:
+            ideal_cash = net * 0.5
+            excess = cash - ideal_cash
+            lines.append(f">> IDLE CASH: ~{self._fmt(excess)} can be pledged")
+            unpledged = holdings - collateral
+            if unpledged > 0:
+                lines.append(f"   Unpledged holdings: {self._fmt(unpledged)} (can pledge)")
+        elif cash_pct < 40:
+            ideal_cash = net * 0.5
+            deficit = ideal_cash - cash
+            lines.append(f">> LOW CASH: Need ~{self._fmt(deficit)} more cash")
+        else:
+            lines.append(">> OK: Cash/Collateral ratio within range")
 
-            # Recommendations
-            if cash_pct > 70:
-                ideal_cash = net * 0.5
-                excess = cash - ideal_cash
-                lines.append(f">> IDLE CASH: ~{self._fmt(excess)} can be pledged")
-                unpledged = holdings - collateral
-                if unpledged > 0:
-                    lines.append(f"   Unpledged holdings: {self._fmt(unpledged)} (can pledge)")
-            elif cash_pct < 40:
-                ideal_cash = net * 0.5
-                deficit = ideal_cash - cash
-                lines.append(f">> LOW CASH: Need ~{self._fmt(deficit)} more cash")
-            else:
-                lines.append(">> OK: Cash/Collateral ratio within range")
-
-            lines.append("")
+        lines.append("")
 
         return "\n".join(lines)
 
@@ -195,17 +194,14 @@ class FundOptimizer:
         parts.reverse()
         return ",".join(parts) + "," + last3
 
-    def _send_report(self, report):
-        """Send the report to all account Telegram groups."""
+    def _send_report(self, account, report):
+        """Send the report to the specific account Telegram group."""
         config = configuration.ConfigurationLoader.get_configuration()
-        sent_to = set()
-        for account in ACCOUNTS:
-            telegram_key = account + "_telegram"
-            group_id = config.get(telegram_key)
-            if group_id and group_id not in sent_to:
-                try:
-                    self.telegram.send_message(group_id, report)
-                    sent_to.add(group_id)
-                    logger.info("Fund report sent to %s (%s)", account, group_id)
-                except Exception as e:
-                    logger.error("Failed to send fund report to %s: %s", account, e)
+        telegram_key = account + "_telegram"
+        group_id = config.get(telegram_key)
+        if group_id:
+            try:
+                self.telegram.send_message(group_id, report)
+                logger.info("Fund report sent to %s (%s)", account, group_id)
+            except Exception as e:
+                logger.error("Failed to send fund report to %s: %s", account, e)
