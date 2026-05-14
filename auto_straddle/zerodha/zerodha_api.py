@@ -275,9 +275,9 @@ class zerodha_api:
                 ltp = float(q.get('last_price', 0))
                 if ltp > 0:
                     if buy_sell == 'BUY':
-                        price = round(ltp * 1.005, 2)
+                        price = round(ltp * 1.001, 2)
                     else:
-                        price = round(ltp * 0.995, 2)
+                        price = round(ltp * 0.999, 2)
                     logger.info(f"Kite LTP fallback price for {instrument_key}: {price} (ltp={ltp})")
                     return price
 
@@ -480,19 +480,8 @@ class zerodha_api:
 
             transaction_type = self.kite.TRANSACTION_TYPE_BUY if buy_sell == 'BUY' else self.kite.TRANSACTION_TYPE_SELL
 
-            # Use LIMIT order with best price for MCX (MARKET orders on MCX get
-            # converted to LIMIT with market_protection % which can cause rejections)
-            best_price = self.get_best_price(tradingsymbol, token, exchange, buy_sell)
-            if best_price > 0:
-                order_type = self.kite.ORDER_TYPE_LIMIT
-                logger.info(f"place_order_commodity: using LIMIT order for {tradingsymbol} at price {best_price}")
-            else:
-                order_type = self.kite.ORDER_TYPE_MARKET
-                best_price = None
-                logger.warning(f"place_order_commodity: no best price for {tradingsymbol}, falling back to MARKET order with market_protection=1")
-
             logger.info(f"place_order_commodity: placing {buy_sell} {tradingsymbol} qty={total_qty} "
-                         f"order_type={order_type} exchange={exchange}")
+                         f"exchange={exchange}")
 
             order_params = dict(
                 variety=self.kite.VARIETY_REGULAR,
@@ -501,12 +490,9 @@ class zerodha_api:
                 transaction_type=transaction_type,
                 quantity=total_qty,
                 product=self.kite.PRODUCT_NRML,
-                order_type=order_type,
+                order_type=self.kite.ORDER_TYPE_MARKET,
+                market_protection=1,
             )
-            if best_price is not None:
-                order_params['price'] = best_price
-            else:
-                order_params['market_protection'] = 1
 
             orderid = None
             try:
