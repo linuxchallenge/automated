@@ -198,7 +198,11 @@ class ElliotCashStratergy:
         ELLIOT_DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.csv_path = str(ELLIOT_DATA_DIR / 'elliot_cash_stratergy.csv')
         # Remote Google Sheet URL for date-based full-row corrections (same column structure as local CSV)
-        self.remote_csv_url = "https://docs.google.com/spreadsheets/d/PLACEHOLDER_EW_SHEET_ID/export?format=csv"
+        self.remote_csv_url = (
+            "https://docs.google.com/spreadsheets/d/e/"
+            "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
+            "/pub?output=csv"
+        )
         # Manual entry/exit corrections sheet — columns: sl_no | account | symbol | entry_exit | price | date
         self.manual_corrections_url = (
             "https://docs.google.com/spreadsheets/d/e/"
@@ -522,8 +526,22 @@ class ElliotCashStratergy:
 
             mask = local_data['sl_no'] == sl_no
             if not mask.any():
-                logger.warning(f"Manual correction: sl_no '{sl_no}' not found in local CSV, skipping.")
-                continue
+                # Fallback: match by symbol + account on relevant rows
+                corr_symbol = str(corr.get('symbol', '')).strip()
+                corr_account = str(corr.get('account', '')).strip()
+                if corr_symbol and corr_account:
+                    if entry_exit == 'exit':
+                        mask = ((local_data['symbol'] == corr_symbol)
+                                & (local_data['account'] == corr_account)
+                                & (local_data['status'] == 'open'))
+                    else:
+                        mask = ((local_data['symbol'] == corr_symbol)
+                                & (local_data['account'] == corr_account)
+                                & (local_data['status'] == 'new'))
+                if not mask.any():
+                    logger.warning(f"Manual correction: sl_no '{sl_no}' / symbol+account '{corr.get('symbol')}+{corr.get('account')}' not found in local CSV, skipping.")
+                    continue
+                logger.info(f"Manual correction: sl_no '{sl_no}' not found, matched by symbol+account: {corr_symbol}+{corr_account}")
 
             idx = local_data[mask].index[0]
             row = local_data.loc[idx]

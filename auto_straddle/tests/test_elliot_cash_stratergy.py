@@ -472,6 +472,33 @@ class TestElliotCashStratergy(unittest.TestCase):
         result = _read_csv(self.csv_path)
         self.assertEqual(result.iloc[0]["status"], "new")
 
+    def test_manual_exit_fallback_by_symbol_account(self):
+        """Exit correction with non-matching sl_no should fallback to symbol+account match."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl_no="EW_20260506_M&M_deepti", symbol="M&M",
+            buy_price=3000.0, quantity=3,
+            open_order_status="Complete",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": "1",  # doesn't match EW_20260506_M&M_deepti
+            "account": "deepti", "symbol": "M&M",
+            "entry_exit": "exit", "price": 3120.0, "date": "2026-05-18",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT789"}):
+            self.strategy.sync_manual_corrections()
+
+        result = _read_csv(self.csv_path)
+        row_out = result.iloc[0]
+        self.assertEqual(row_out["status"], "close")
+        self.assertAlmostEqual(row_out["sell_price"], 3120.0, places=0)
+        self.assertEqual(row_out["close_order_status"], "Complete")
+
     def test_manual_correction_empty_sheet_no_op(self):
         """Empty corrections sheet should not modify local CSV."""
         row = _base_row(status="new")

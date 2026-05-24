@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:smartapi.angelbroking.com)",
+      "WebSearch",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(pip index:*)",
+      "Bash(ssh:*)",
+      "Bash(ssh-keyscan:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:xstream.5paisa.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:upstox.com)",
+      "Bash(ls /d/Code/automated/upstox_access_token.txt /d/Code/automated/auto_straddle/upstox_access_token.txt 2>&1\ncat /d/Code/automated/upstox_access_token.txt 2>/dev/null | head -c 50\ncat /d/Code/automated/auto_straddle/upstox_access_token.txt 2>/dev/null | head -c 50)",
+      "Bash(python3:*)",
+      "WebFetch(domain:www.youtube.com)",
+      "WebFetch(domain:upstox-totp.readthedocs.io)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(do:*)",
+      "WebFetch(domain:community.upstox.com)",
+      "WebFetch(domain:docs.google.com)",
+      "WebFetch(domain:doc-0k-1k-sheets.googleusercontent.com)",
+      "WebFetch(domain:doc-00-1k-sheets.googleusercontent.com)",
+      "Bash(xargs grep:*)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:fabtrader.in)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:kite.trade)",
+      "WebFetch(domain:dev.to)",
+      "Bash(findstr:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "WebFetch(domain:www.businesstoday.in)",
+      "WebFetch(domain:support.zerodha.com)",
+      "Bash(pylint:*)",
+      "WebFetch(domain:zerodha.com)",
+      "Bash(xxd:*)",
+      "Bash(sed:*)",
+      "Bash(curl:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; p=json.load(sys.stdin).get('file_path',''); exit(0) if p.endswith('.py') and 'test_' not in p else exit(1)\" && pylint \"$(echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('file_path',''))\" )\" --disable=C0114,C0115,C0116 -f text 2>&1 | tail -20",
+            "blocking": false
+          }
+        ]
+      }
+    ]
+  }
+}
