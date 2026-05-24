@@ -414,21 +414,10 @@ def identify_wave_structures(swings: list, config: StrategyConfig) -> list:
         if not (config.wave2_retrace_min <= wave2_retrace <= config.wave2_retrace_max):
             continue
 
-        # ── WAVE 3 ENTRY STRUCTURE (W1 + W2 only) ──
-        # At this point W2 is confirmed. We can look for Wave 3 entry.
-        # We do NOT look ahead to see if W3 forms — that's the bet.
-        ws_w3 = WaveStructure(
-            wave1_start=w1_start,
-            wave1_end=w1_end,
-            wave2_end=w2_end,
-            current_wave=WaveType.WAVE_3,
-            is_valid=True
-        )
-        structures.append(ws_w3)
-
         # ── WAVE 5 ENTRY STRUCTURE (W1 + W2 + W3 + W4) ──
         # Only build this if W3 and W4 are ALREADY confirmed swing points
         # (their confirmation dates are in the past relative to W4_end)
+        wave5_found = False
         if k + 1 < len(swings) and swings[k + 1].is_high:
             w3_end = swings[k + 1]
             wave3_range = w3_end.price - w2_end.price
@@ -455,6 +444,20 @@ def identify_wave_structures(swings: list, config: StrategyConfig) -> list:
                                 is_valid=True
                             )
                             structures.append(ws_w5)
+                            wave5_found = True
+
+        # ── WAVE 3 ENTRY STRUCTURE (W1 + W2 only) ──
+        # Only emit Wave 3 signal if Wave 5 structure was NOT found.
+        # If W5 exists, W3 already played out — a W3 entry signal is stale.
+        if not wave5_found:
+            ws_w3 = WaveStructure(
+                wave1_start=w1_start,
+                wave1_end=w1_end,
+                wave2_end=w2_end,
+                current_wave=WaveType.WAVE_3,
+                is_valid=True
+            )
+            structures.append(ws_w3)
 
     return structures
 
