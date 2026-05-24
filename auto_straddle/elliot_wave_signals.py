@@ -511,6 +511,10 @@ class ElliotWaveSignalGenerator:
                 last_trading_day = df.index[-1].date()
                 today_signals = [s for s in signals if s.date.date() == last_trading_day]
 
+                # Keep only the highest confidence signal per symbol
+                if len(today_signals) > 1:
+                    today_signals = [max(today_signals, key=lambda s: s.confidence)]
+
                 for signal in today_signals:
                     percent_increase = (signal.target_price / signal.entry_price - 1) * 100
 
