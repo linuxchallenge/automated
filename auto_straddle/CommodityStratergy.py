@@ -466,10 +466,12 @@ class CommodityStratergy:
                 historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
 
                 if historic_data is None:
+                    logging.error(f"Error getting historic data for symbol: {s}")
                     print(f"Error getting historic data for symbol: {s}")
                     return
 
                 if historic_data_daily is None:
+                    logging.error(f"Error getting historic daily data for symbol: {s}")
                     print(f"Error getting historic daily data for symbol: {s}")
                     return
 
