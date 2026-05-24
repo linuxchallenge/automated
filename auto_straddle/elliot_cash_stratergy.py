@@ -704,7 +704,7 @@ class ElliotCashStratergy:
 
         return trailing_stop, days_held
 
-    def _trigger_sell(self, data, idx, row, place_order, reason, last_price):
+    def _trigger_sell(self, data, idx, row, place_order, *, last_price):  # pylint: disable=too-many-arguments
         """Place SELL order (API or manual) and update CSV. Returns True if handled."""
         symbol = row['symbol']
 
@@ -826,7 +826,7 @@ class ElliotCashStratergy:
 
                 if reason:
                     logger.info(f"EW: Exit triggered for {symbol} ({row['sl_no']}). Reason: {reason}")
-                    self._trigger_sell(data, idx, row, place_order, reason, last_price)
+                    self._trigger_sell(data, idx, row, place_order, last_price=last_price)
 
                 last_sl_no = row['sl_no']
 
