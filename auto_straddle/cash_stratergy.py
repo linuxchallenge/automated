@@ -122,6 +122,10 @@ class NSEPriceCache:
             logger.info("Price cache cleared")
 
 
+# Module-level singleton — shared between cash_stratergy and elliot_cash_stratergy
+shared_price_cache = NSEPriceCache(ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60)
+
+
 class TelegramNotifier:
     """Centralized handler for Telegram notifications"""
 
@@ -225,7 +229,7 @@ class cash_stratergy:
         self.telegram_api = TelegramSend.telegram_send_api()  # Create once and reuse
 
         # Initialize caching and rate limiting
-        self.price_cache = NSEPriceCache(ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60)
+        self.price_cache = shared_price_cache
         self.notifier = TelegramNotifier(self.telegram_api)
 
         # Session pool for reuse

@@ -30,6 +30,7 @@ import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
 from elliot_wave_strategy import StrategyConfig, compute_atr
+from cash_stratergy import shared_price_cache
 
 ELLIOT_DATA_DIR = Path.home() / 'temp' / 'data_collection' / 'elliot'
 
@@ -51,52 +52,6 @@ headers = {
 }
 
 logger = logging.getLogger(__name__)
-
-
-class NSEPriceCache:
-    """Thread-safe cache for NSE price data with TTL and rate limiting."""
-
-    def __init__(self, ttl_seconds=120, rate_limit_calls=20, rate_limit_period=60):
-        self._cache = {}
-        self._lock = threading.Lock()
-        self.ttl = timedelta(seconds=ttl_seconds)
-        self._call_timestamps = []
-        self.rate_limit_calls = rate_limit_calls
-        self.rate_limit_period = timedelta(seconds=rate_limit_period)
-
-    def get(self, symbol):
-        with self._lock:
-            if symbol in self._cache:
-                entry = self._cache[symbol]
-                if datetime.now() - entry['timestamp'] < self.ttl:
-                    return entry['price']
-                del self._cache[symbol]
-            return None
-
-    def set(self, symbol, price):
-        with self._lock:
-            self._cache[symbol] = {'price': price, 'timestamp': datetime.now()}
-
-    def can_make_call(self):
-        with self._lock:
-            now = datetime.now()
-            self._call_timestamps = [
-                ts for ts in self._call_timestamps
-                if now - ts < self.rate_limit_period
-            ]
-            if len(self._call_timestamps) >= self.rate_limit_calls:
-                oldest_call = self._call_timestamps[0]
-                wait_time = (oldest_call + self.rate_limit_period - now).total_seconds()
-                return False, wait_time
-            return True, 0
-
-    def record_call(self):
-        with self._lock:
-            self._call_timestamps.append(datetime.now())
-
-    def clear(self):
-        with self._lock:
-            self._cache.clear()
 
 
 class TelegramNotifier:
@@ -215,7 +170,7 @@ class ElliotCashStratergy:
         self._last_fetch_time = None
         self.telegram_api = TelegramSend.telegram_send_api()
 
-        self.price_cache = NSEPriceCache(ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60)
+        self.price_cache = shared_price_cache
         self.notifier = TelegramNotifier(self.telegram_api)
 
         self._session = None
