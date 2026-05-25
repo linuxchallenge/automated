@@ -126,6 +126,20 @@ class NSEPriceCache:
 shared_price_cache = NSEPriceCache(ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60)
 
 
+def get_yahoo_ltp(symbol, price_cache=None):
+    """Fetch last traded price from Yahoo Finance as fallback when NSE is blocked."""
+    import yfinance as yf
+    try:
+        ticker = yf.Ticker(f"{symbol}.NS")
+        price = ticker.fast_info['lastPrice']
+        if price and price_cache:
+            price_cache.set(symbol, price)
+        return price
+    except Exception as e:
+        logger.error(f"Yahoo Finance fallback failed for {symbol}: {e}")
+        return None
+
+
 class TelegramNotifier:
     """Centralized handler for Telegram notifications"""
 
@@ -379,23 +393,18 @@ class cash_stratergy:
             logger.warning(f"Primary NSE API failed for {symbol}: {e}")
 
             try:
-                # Fallback: Use the F&O securities endpoint
-                logger.info(f"Trying fallback method for {symbol}")
-                price = self.nse_custom_function_secfno(symbol, "lastPrice")
+                # Fallback: Yahoo Finance (NSE secfno hits same blocked domain)
+                logger.info(f"Trying Yahoo Finance fallback for {symbol}")
+                price = get_yahoo_ltp(symbol, self.price_cache)
                 if price:
-                    # Cache the fallback result
-                    self.price_cache.set(symbol, price)
                     return price
                 else:
-                    # If fallback returns None, raise error with context from primary failure
-                    logger.error(f"Fallback method returned None for {symbol}")
-                    raise ValueError(f"Fallback method returned None for {symbol}") from e
+                    logger.error(f"Yahoo Finance fallback returned None for {symbol}")
+                    raise ValueError(f"Yahoo Finance fallback returned None for {symbol}") from e
             except ValueError:
-                # Re-raise ValueError as-is (already has proper context)
                 raise
             except Exception as e2:
-                logger.error(f"Fallback method also failed for {symbol}: {e2}")
-                # Re-raise with context from both failures
+                logger.error(f"Yahoo Finance fallback also failed for {symbol}: {e2}")
                 raise ValueError(f"All methods failed to fetch price for {symbol}") from e
 
 

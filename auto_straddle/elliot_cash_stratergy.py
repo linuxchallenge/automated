@@ -30,7 +30,7 @@ import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
 from elliot_wave_strategy import StrategyConfig, compute_atr
-from cash_stratergy import shared_price_cache
+from cash_stratergy import shared_price_cache, get_yahoo_ltp
 
 ELLIOT_DATA_DIR = Path.home() / 'temp' / 'data_collection' / 'elliot'
 
@@ -341,15 +341,15 @@ class ElliotCashStratergy:
         except Exception as e:
             logger.warning(f"Primary NSE API failed for {symbol}: {e}")
             try:
-                price = self.nse_custom_function_secfno(symbol, "lastPrice")
+                logger.info(f"Trying Yahoo Finance fallback for {symbol}")
+                price = get_yahoo_ltp(symbol, self.price_cache)
                 if price:
-                    self.price_cache.set(symbol, price)
                     return price
-                raise ValueError(f"Fallback method returned None for {symbol}") from e
+                raise ValueError(f"Yahoo Finance fallback returned None for {symbol}") from e
             except ValueError:
                 raise
             except Exception as e2:
-                logger.error(f"Fallback method also failed for {symbol}: {e2}")
+                logger.error(f"Yahoo Finance fallback also failed for {symbol}: {e2}")
                 raise ValueError(f"All methods failed to fetch price for {symbol}") from e
 
     def _reset_retry_count(self, account, symbol, order_type):
