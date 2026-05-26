@@ -30,7 +30,7 @@ import configuration
 from exchange_state import ExchangeData
 import brokrage_calculator
 from elliot_wave_strategy import StrategyConfig, compute_atr
-from cash_stratergy import shared_price_cache, get_yahoo_ltp
+from cash_stratergy import shared_price_cache, get_angel_ltp
 
 ELLIOT_DATA_DIR = Path.home() / 'temp' / 'data_collection' / 'elliot'
 
@@ -341,15 +341,20 @@ class ElliotCashStratergy:
         except Exception as e:
             logger.warning(f"Primary NSE API failed for {symbol}: {e}")
             try:
-                logger.info(f"Trying Yahoo Finance fallback for {symbol}")
-                price = get_yahoo_ltp(symbol, self.price_cache)
-                if price:
-                    return price
-                raise ValueError(f"Yahoo Finance fallback returned None for {symbol}") from e
+                angel_api = getattr(getattr(self, '_place_order', None), 'obj_1', None)
+                if angel_api:
+                    logger.info(f"Trying Angel One LTP fallback for {symbol}")
+                    price = get_angel_ltp(symbol, angel_api, self.price_cache)
+                    if price:
+                        return price
+                    raise ValueError(f"Angel One LTP fallback returned None for {symbol}") from e
+                else:
+                    logger.error(f"No Angel One API available for fallback for {symbol}")
+                    raise ValueError(f"No Angel One API available for fallback for {symbol}") from e
             except ValueError:
                 raise
             except Exception as e2:
-                logger.error(f"Yahoo Finance fallback also failed for {symbol}: {e2}")
+                logger.error(f"Angel One LTP fallback also failed for {symbol}: {e2}")
                 raise ValueError(f"All methods failed to fetch price for {symbol}") from e
 
     def _reset_retry_count(self, account, symbol, order_type):
@@ -909,6 +914,9 @@ class ElliotCashStratergy:
           - Morning:   09:27 – 09:33
           - Afternoon: 15:16 – 15:26
         """
+        # Store place_order ref for Angel One LTP fallback
+        self._place_order = place_order
+
         now = datetime.now()
         if datetime.strptime("09:15:00", "%H:%M:%S").time() > now.time():
             return

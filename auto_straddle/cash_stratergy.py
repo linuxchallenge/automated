@@ -126,17 +126,26 @@ class NSEPriceCache:
 shared_price_cache = NSEPriceCache(ttl_seconds=60, rate_limit_calls=10, rate_limit_period=60)
 
 
-def get_yahoo_ltp(symbol, price_cache=None):
-    """Fetch last traded price from Yahoo Finance as fallback when NSE is blocked."""
-    import yfinance as yf
+def get_angel_ltp(symbol, angel_api, price_cache=None):
+    """Fetch last traded price from Angel One API as fallback when NSE is blocked."""
     try:
-        ticker = yf.Ticker(f"{symbol}.NS")
-        price = ticker.fast_info['lastPrice']
-        if price and price_cache:
-            price_cache.set(symbol, price)
-        return price
+        token_info = angel_api.getTokenInfo('NSE', 'EQ', symbol, 0, 'X')
+        if token_info is None or token_info.empty:
+            logger.warning(f"Angel One token not found for {symbol}")
+            return None
+        token = str(token_info.iloc[0]['token'])
+        tradingsymbol = str(token_info.iloc[0]['symbol'])
+        resp = angel_api.obj.ltpData('NSE', tradingsymbol, token)
+        if resp and resp.get('status') and resp.get('data'):
+            price = float(resp['data'].get('ltp', 0))
+            if price > 0:
+                if price_cache:
+                    price_cache.set(symbol, price)
+                return price
+        logger.warning(f"Angel One LTP returned no price for {symbol}: {resp}")
+        return None
     except Exception as e:
-        logger.error(f"Yahoo Finance fallback failed for {symbol}: {e}")
+        logger.error(f"Angel One LTP fallback failed for {symbol}: {e}")
         return None
 
 
@@ -393,18 +402,23 @@ class cash_stratergy:
             logger.warning(f"Primary NSE API failed for {symbol}: {e}")
 
             try:
-                # Fallback: Yahoo Finance (NSE secfno hits same blocked domain)
-                logger.info(f"Trying Yahoo Finance fallback for {symbol}")
-                price = get_yahoo_ltp(symbol, self.price_cache)
-                if price:
-                    return price
+                # Fallback: Angel One ltpData API
+                angel_api = getattr(getattr(self, '_place_order', None), 'obj_1', None)
+                if angel_api:
+                    logger.info(f"Trying Angel One LTP fallback for {symbol}")
+                    price = get_angel_ltp(symbol, angel_api, self.price_cache)
+                    if price:
+                        return price
+                    else:
+                        logger.error(f"Angel One LTP fallback returned None for {symbol}")
+                        raise ValueError(f"Angel One LTP fallback returned None for {symbol}") from e
                 else:
-                    logger.error(f"Yahoo Finance fallback returned None for {symbol}")
-                    raise ValueError(f"Yahoo Finance fallback returned None for {symbol}") from e
+                    logger.error(f"No Angel One API available for fallback for {symbol}")
+                    raise ValueError(f"No Angel One API available for fallback for {symbol}") from e
             except ValueError:
                 raise
             except Exception as e2:
-                logger.error(f"Yahoo Finance fallback also failed for {symbol}: {e2}")
+                logger.error(f"Angel One LTP fallback also failed for {symbol}: {e2}")
                 raise ValueError(f"All methods failed to fetch price for {symbol}") from e
 
 
@@ -1081,6 +1095,9 @@ class cash_stratergy:
             place_order (PlaceOrder): Instance of PlaceOrder to handle orders.
             max_executions (int): Maximum number of executions allowed in the morning and afternoon.
         """
+
+        # Store place_order ref for Angel One LTP fallback
+        self._place_order = place_order
 
         # return if time is less than 9:15
         now = datetime.now()
