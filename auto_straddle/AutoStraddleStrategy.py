@@ -110,14 +110,14 @@ class AutoStraddleStrategy:
         """Check if new trades can be entered based on time restrictions"""
         current_time = datetime.now().time()
         if self.is_expiry_day(symbol):
-            # On expiry day, don't enter after 2:15 PM
-            if current_time > time(14, 15):
-                logging.info(f"Not entering new trade for {symbol} - expiry day after 2:15 PM")
+            # On expiry day, don't enter after 1:30 PM
+            if current_time > time(13, 30):
+                logging.info(f"Not entering new trade for {symbol} - expiry day after 1:30 PM")
                 return False
         else:
-            # On other days, don't enter after 2:30 PM
-            if current_time > time(14, 30):
-                logging.info(f"Not entering new trade for {symbol} - after 2:30 PM")
+            # On other days, don't enter after 1:00 PM
+            if current_time > time(13, 0):
+                logging.info(f"Not entering new trade for {symbol} - after 1:00 PM")
                 return False
         return True
 
@@ -894,7 +894,7 @@ class AutoStraddleStrategy:
             return False
 
         # Check maximum number of trades limit
-        MAX_TRADES = 5
+        MAX_TRADES = 2
         if sold_options_info.shape[0] >= MAX_TRADES:
             return False
 

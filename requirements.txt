@@ -4,6 +4,7 @@ tradingview-datafeed
 pyotp
 smartapi-python
 py5paisa
+kiteconnect
 yfinance
 beautifulsoup4
 urllib3
@@ -16,3 +17,5 @@ nsepython
 jugaad-data
 netifaces2
 websocket-client
+curl-cffi
+httpx
