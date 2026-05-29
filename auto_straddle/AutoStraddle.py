@@ -293,6 +293,8 @@ def main():
     ew_signals_generated_today = False
     # Flag to track if EW manual corrections have been synced today (runs at 9:00–9:15 AM)
     ew_corrections_synced_today = False
+    # Flag to track if EW manual corrections have been synced in the afternoon window (runs at 15:10–15:16 AM)
+    ew_corrections_synced_afternoon = False
 
     try:
         while True:
@@ -372,6 +374,17 @@ def main():
                         except Exception as e:
                             logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
+                # Sync EW manual corrections again before afternoon execution at 15:10–15:16
+                # Catches manual Sheet updates made after the morning sync window
+                if EW_STRATEGY_ENABLED and time_dt(15, 10) <= current_time_dt <= time_dt(15, 16):
+                    if not ew_corrections_synced_afternoon:
+                        logging.info("EW: Syncing manual corrections (afternoon)")
+                        try:
+                            elliot_cash_obj.sync_manual_corrections()
+                            ew_corrections_synced_afternoon = True
+                        except Exception as e:
+                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
                 # Elliott Wave strategy execution (same timing as cash strategy)
                 if EW_STRATEGY_ENABLED:
                     signal.alarm(300)  # pylint: disable=no-member
@@ -423,6 +436,7 @@ def main():
                     cash_sl_updated_today = False
                     ew_signals_generated_today = False
                     ew_corrections_synced_today = False
+                    ew_corrections_synced_afternoon = False
                     fund_optimizer.reset_weekly_flag()
 
                 # Sleep for a specified interval (e.g., 1 minute)

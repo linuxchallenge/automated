@@ -41,10 +41,12 @@ def _make_token_df():
          "strike": "", "option_type": "", "expiry": near_expiry},
         # MCX_FO FUTCOM
         {"exchange": "MCX_FO", "instrument_type": "FUTCOM", "name": "GOLDM",
+         "tradingsymbol": "GOLDM25APR26FUT",
          "instrument_key": "MCX_FO|222222", "lot_size": 100,
          "strike": "", "option_type": "", "expiry": far_expiry},
         # MCX_FO FUTCOM near expiry
         {"exchange": "MCX_FO", "instrument_type": "FUTCOM", "name": "GOLDM",
+         "tradingsymbol": "GOLDM25APR26FUT2",
          "instrument_key": "MCX_FO|222223", "lot_size": 100,
          "strike": "", "option_type": "", "expiry": near_expiry},
     ]
@@ -235,7 +237,8 @@ class TestPlaceOrderCommodity(unittest.TestCase):
         mock_resp.json.return_value = {"status": "success", "data": {"order_id": "COM1"}}
         mock_post.return_value = mock_resp
 
-        order_id, _expiry = self.api.place_order_commodity("GOLD", 1, "BUY")
+        with patch.object(self.api, "get_best_price", return_value=72500.0):
+            order_id, _expiry = self.api.place_order_commodity("GOLD", 1, "BUY")
         self.assertEqual(order_id, "COM1")
         self.assertIsNotNone(_expiry)
 

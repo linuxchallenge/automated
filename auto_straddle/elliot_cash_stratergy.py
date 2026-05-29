@@ -23,6 +23,7 @@ import logging
 from time import sleep
 import threading
 import time
+import signal
 import requests
 import pandas as pd
 import TelegramSend
@@ -368,12 +369,13 @@ class ElliotCashStratergy:
 
     def sync_elliot_strategy(self):
         """
-        Date-based sync: download remote Google Sheet and merge into local CSV.
+        Sync remote Google Sheet into local CSV. Remote sheet is the source of truth.
 
         Logic:
-          - If sl_no NOT in local → insert row with status='new'
-          - If sl_no IN local AND gsheet_row['date'] > local_row['date'] → update local row
-            (handles manual corrections: buy_price, status, etc.)
+          - sl_no NOT in local → insert with status='new'
+          - sl_no in local, remote status='close' → close local immediately (no date check)
+          - sl_no in local, other changes → apply only if remote date > local date
+          - sl_no in local but DELETED from remote → close local (deletion = manual close)
         """
         if not self.remote_csv_url or 'PLACEHOLDER' in self.remote_csv_url:
             logger.info("EW sync_elliot_strategy: remote URL not configured, skipping.")
@@ -410,18 +412,41 @@ class ElliotCashStratergy:
                 local_data = pd.concat([local_data, pd.DataFrame([new_row])], ignore_index=True)
                 logger.info(f"Inserted new EW row: {sl_no}")
             else:
-                # Update if remote date is newer than local date
                 local_row = local_data[local_data['sl_no'] == sl_no].iloc[0]
-                remote_date = row.get('date')
-                local_date = local_row.get('date')
+                remote_status = str(row.get('status', '')).strip().lower()
+                local_status = str(local_row.get('status', '')).strip().lower()
 
-                if pd.notna(remote_date) and pd.notna(local_date) and remote_date > local_date:
-                    # Update all fields from remote
+                # Always apply a close from the sheet — the date column is the signal date
+                # and never changes, so date comparison would always block this update.
+                if remote_status == 'close' and local_status in ('open', 'new', 'pending'):
                     mask = local_data['sl_no'] == sl_no
                     for col in remote_data.columns:
                         if col in local_data.columns:
                             local_data.loc[mask, col] = row[col]
-                    logger.info(f"Updated EW row from remote: {sl_no} (remote_date={remote_date}, local_date={local_date})")
+                    logger.info(f"Closed EW row from remote sheet: {sl_no} (was {local_status})")
+                else:
+                    # For non-close updates, guard with date so we don't overwrite
+                    # live trading fields (trailing stop, fill price, etc.)
+                    remote_date = row.get('date')
+                    local_date = local_row.get('date')
+                    if pd.notna(remote_date) and pd.notna(local_date) and remote_date > local_date:
+                        mask = local_data['sl_no'] == sl_no
+                        for col in remote_data.columns:
+                            if col in local_data.columns:
+                                local_data.loc[mask, col] = row[col]
+                        logger.info(f"Updated EW row from remote: {sl_no} (remote_date={remote_date}, local_date={local_date})")
+
+        # Close local rows whose sl_no was deleted from the remote sheet.
+        # The remote sheet is the source of truth — a deleted row means the user
+        # wants that position closed.
+        remote_sl_nos = set(remote_data['sl_no'].dropna().unique())
+        active_statuses = {'open', 'new', 'pending'}
+        for idx, local_row in local_data.iterrows():
+            local_sl_no = local_row.get('sl_no')
+            local_status = str(local_row.get('status', '')).strip().lower()
+            if local_sl_no not in remote_sl_nos and local_status in active_statuses:
+                local_data.loc[idx, 'status'] = 'close'
+                logger.info(f"Closed EW row {local_sl_no} ({local_row.get('symbol')}) — deleted from remote sheet")
 
         local_data.to_csv(self.csv_path, index=False)
         logger.info("EW sync completed.")
@@ -560,9 +585,18 @@ class ElliotCashStratergy:
     # Order processing
     # ------------------------------------------------------------------
 
+    def _pet_watchdog(self):
+        """Reset the SIGALRM watchdog to 300s. Called between rows so a slow
+        row doesn't time out the entire strategy run."""
+        try:
+            signal.alarm(300)  # pylint: disable=no-member
+        except Exception:
+            pass  # Non-Linux environments don't support SIGALRM
+
     def _process_new_orders(self, data, place_order):
         """Process rows with status 'new' — place BUY orders."""
         for idx, row in data[data['status'] == 'new'].iterrows():
+            self._pet_watchdog()
             logger.info(f"EW: Processing new row {row['sl_no']} symbol={row['symbol']} sl={row['sl']}")
             try:
                 symbol = row['symbol']
@@ -719,6 +753,7 @@ class ElliotCashStratergy:
                     should_skip = False
                 continue
 
+            self._pet_watchdog()
             if self._is_time_budget_exceeded():
                 logger.info(f"EW: Time budget exceeded at row {row['sl_no']}")
                 return last_sl_no, False

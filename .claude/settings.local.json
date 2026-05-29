@@ -41,7 +41,16 @@
       "Bash(sed:*)",
       "Bash(curl:*)",
       "Read(//home/adithya/temp/datacollection/**)",
-      "Read(//home/adithya/temp/**)"
+      "Read(//home/adithya/temp/**)",
+      "Read(//usr/bin/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(python3.14 -m pytest --version)",
+      "Bash(pip3 list *)",
+      "Bash(/home/adithya/venv/bin/python -m pytest auto_straddle/tests/ -v)",
+      "Bash(/home/adithya/venv/bin/pip install *)",
+      "Bash(wait)",
+      "Bash(/home/adithya/venv/bin/python *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   },
   "hooks": {
