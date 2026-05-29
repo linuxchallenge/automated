@@ -369,13 +369,17 @@ class ElliotCashStratergy:
 
     def sync_elliot_strategy(self):
         """
-        Sync remote Google Sheet into local CSV. Remote sheet is the source of truth.
+        Sync remote Google Sheet (full signals sheet) into local CSV.
 
         Logic:
           - sl_no NOT in local → insert with status='new'
-          - sl_no in local, remote status='close' → close local immediately (no date check)
+          - sl_no in local, remote status='close' → close all local copies immediately
           - sl_no in local, other changes → apply only if remote date > local date
-          - sl_no in local but DELETED from remote → close local (deletion = manual close)
+
+        NOTE: This function expects the remote sheet to have the same column structure
+        as the local CSV (with a 'status' column). If the remote URL points to the
+        manual corrections sheet instead (detected by 'entry_exit' column), it bails
+        out to avoid corrupting local data.
         """
         if not self.remote_csv_url or 'PLACEHOLDER' in self.remote_csv_url:
             logger.info("EW sync_elliot_strategy: remote URL not configured, skipping.")
@@ -384,6 +388,13 @@ class ElliotCashStratergy:
             remote_data = pd.read_csv(self.remote_csv_url)
         except Exception as e:
             logger.error(f"Failed to download remote EW sheet: {e}")
+            return
+
+        # Guard: corrections sheet has 'entry_exit' column; full signals sheet has 'status'.
+        # If both URLs are the same (misconfiguration), skip to avoid inserting junk rows.
+        if 'entry_exit' in remote_data.columns or 'status' not in remote_data.columns:
+            logger.warning("EW sync_elliot_strategy: remote sheet looks like corrections sheet "
+                           "(missing 'status' column). Skipping to avoid duplicate rows.")
             return
 
         remote_data['date'] = pd.to_datetime(remote_data['date'], errors='coerce')
@@ -399,54 +410,36 @@ class ElliotCashStratergy:
 
         local_data['date'] = pd.to_datetime(local_data['date'], errors='coerce')
 
-        existing_sl_nos = set(local_data['sl_no'].dropna().unique()) if 'sl_no' in local_data.columns else set()
+        existing_sl_nos = set(str(x) for x in local_data['sl_no'].dropna()) if 'sl_no' in local_data.columns else set()
 
         for _, row in remote_data.iterrows():
-            sl_no = row['sl_no']
+            sl_no = str(row['sl_no'])
 
             if sl_no not in existing_sl_nos:
-                # Insert as new
                 new_row = row.copy()
                 if pd.isna(new_row.get('status')) or new_row.get('status') == '':
                     new_row['status'] = 'new'
                 local_data = pd.concat([local_data, pd.DataFrame([new_row])], ignore_index=True)
+                existing_sl_nos.add(sl_no)  # prevent re-insert if remote has duplicate sl_nos
                 logger.info(f"Inserted new EW row: {sl_no}")
             else:
-                local_row = local_data[local_data['sl_no'] == sl_no].iloc[0]
                 remote_status = str(row.get('status', '')).strip().lower()
-                local_status = str(local_row.get('status', '')).strip().lower()
-
-                # Always apply a close from the sheet — the date column is the signal date
-                # and never changes, so date comparison would always block this update.
-                if remote_status == 'close' and local_status in ('open', 'new', 'pending'):
-                    mask = local_data['sl_no'] == sl_no
-                    for col in remote_data.columns:
-                        if col in local_data.columns:
-                            local_data.loc[mask, col] = row[col]
-                    logger.info(f"Closed EW row from remote sheet: {sl_no} (was {local_status})")
+                sl_no_mask = local_data['sl_no'].astype(str) == sl_no
+                # Apply close to ALL local rows with this sl_no (handles duplicates)
+                if remote_status == 'close':
+                    active = local_data.loc[sl_no_mask, 'status'].isin(['open', 'new', 'pending'])
+                    if active.any():
+                        local_data.loc[sl_no_mask & active, 'status'] = 'close'
+                        logger.info(f"Closed EW row(s) from remote sheet: {sl_no}")
                 else:
-                    # For non-close updates, guard with date so we don't overwrite
-                    # live trading fields (trailing stop, fill price, etc.)
+                    local_row = local_data[sl_no_mask].iloc[0]
                     remote_date = row.get('date')
                     local_date = local_row.get('date')
                     if pd.notna(remote_date) and pd.notna(local_date) and remote_date > local_date:
-                        mask = local_data['sl_no'] == sl_no
                         for col in remote_data.columns:
                             if col in local_data.columns:
-                                local_data.loc[mask, col] = row[col]
+                                local_data.loc[sl_no_mask, col] = row[col]
                         logger.info(f"Updated EW row from remote: {sl_no} (remote_date={remote_date}, local_date={local_date})")
-
-        # Close local rows whose sl_no was deleted from the remote sheet.
-        # The remote sheet is the source of truth — a deleted row means the user
-        # wants that position closed.
-        remote_sl_nos = set(remote_data['sl_no'].dropna().unique())
-        active_statuses = {'open', 'new', 'pending'}
-        for idx, local_row in local_data.iterrows():
-            local_sl_no = local_row.get('sl_no')
-            local_status = str(local_row.get('status', '')).strip().lower()
-            if local_sl_no not in remote_sl_nos and local_status in active_statuses:
-                local_data.loc[idx, 'status'] = 'close'
-                logger.info(f"Closed EW row {local_sl_no} ({local_row.get('symbol')}) — deleted from remote sheet")
 
         local_data.to_csv(self.csv_path, index=False)
         logger.info("EW sync completed.")
@@ -509,29 +502,33 @@ class ElliotCashStratergy:
                 logger.warning(f"Skipping correction row with missing date/price: {sl_no}")
                 continue
 
-            mask = local_data['sl_no'] == sl_no
-            if not mask.any():
-                # Fallback: match by symbol + account on relevant rows
-                corr_symbol = str(corr.get('symbol', '')).strip()
-                corr_account = str(corr.get('account', '')).strip()
-                if corr_symbol and corr_account:
-                    if entry_exit == 'exit':
-                        mask = ((local_data['symbol'] == corr_symbol)
-                                & (local_data['account'] == corr_account)
-                                & (local_data['status'] == 'open'))
-                    else:
-                        mask = ((local_data['symbol'] == corr_symbol)
-                                & (local_data['account'] == corr_account)
-                                & (local_data['status'] == 'new'))
-                if not mask.any():
-                    logger.warning(f"Manual correction: sl_no '{sl_no}' / symbol+account '{corr.get('symbol')}+{corr.get('account')}' not found in local CSV, skipping.")
-                    continue
-                logger.info(f"Manual correction: sl_no '{sl_no}' not found, matched by symbol+account: {corr_symbol}+{corr_account}")
+            # Primary match: by sl_no. For exits also include symbol+account open rows
+            # (the tracked positions use long sl_nos like EW_20260506_M&M_deepti, not 1/2/3).
+            corr_symbol = str(corr.get('symbol', '')).strip()
+            corr_account = str(corr.get('account', '')).strip()
 
-            idx = local_data[mask].index[0]
-            row = local_data.loc[idx]
+            sl_no_mask = local_data['sl_no'].astype(str) == str(sl_no)
+            if entry_exit == 'exit' and corr_symbol and corr_account:
+                # Also match real tracked positions by symbol+account+status=open
+                sym_acct_mask = ((local_data['symbol'] == corr_symbol)
+                                 & (local_data['account'] == corr_account)
+                                 & (local_data['status'].isin(['open', 'new', 'pending'])))
+                mask = sl_no_mask | sym_acct_mask
+            else:
+                mask = sl_no_mask
+                if not mask.any() and corr_symbol and corr_account:
+                    mask = ((local_data['symbol'] == corr_symbol)
+                            & (local_data['account'] == corr_account)
+                            & (local_data['status'] == 'new'))
+
+            if not mask.any():
+                logger.warning(f"Manual correction: sl_no '{sl_no}' / symbol+account '{corr_symbol}+{corr_account}' not found in local CSV, skipping.")
+                continue
 
             if entry_exit == 'entry':
+                # Entry only applies to first matching row (one BUY per signal)
+                idx = local_data[mask].index[0]
+                row = local_data.loc[idx]
                 local_open_date = row.get('open_date')
                 if pd.notna(local_open_date) and local_open_date >= corr_date:
                     logger.debug(f"Skipping entry correction for {sl_no} — already applied (local={local_open_date.date()}, sheet={corr_date.date()})")
@@ -541,13 +538,11 @@ class ElliotCashStratergy:
                 local_data.loc[idx, 'open_order_status'] = 'Complete'
                 local_data.loc[idx, 'status'] = 'open'
                 local_data.loc[idx, 'open_date'] = corr_date.strftime("%Y-%m-%d")
-                # Recompute profit_target
                 try:
                     pct = float(row['percent_increase'])
                     local_data.loc[idx, 'profit_target'] = price * (1 + pct / 100)
                 except Exception:
                     pass
-                # Compute quantity if missing
                 try:
                     if pd.isna(row.get('quantity')):
                         qty = int(float(row['amount']) / price)
@@ -561,19 +556,24 @@ class ElliotCashStratergy:
                                            f"buy_price={price}")
 
             elif entry_exit == 'exit':
-                local_close_date = row.get('close_date')
-                if pd.notna(local_close_date) and local_close_date >= corr_date:
-                    logger.debug(f"Skipping exit correction for {sl_no} — already applied (local={local_close_date.date()}, sheet={corr_date.date()})")
-                    continue
-
-                local_data.loc[idx, 'sell_price'] = price
-                local_data.loc[idx, 'close_order_status'] = 'Complete'
-                local_data.loc[idx, 'close_date'] = corr_date.strftime("%Y-%m-%d")
-                local_data.loc[idx, 'status'] = 'close'
-                changed = True
-                logger.info(f"Manual exit applied for {sl_no}: sell_price={price}, close_date={corr_date.date()}")
-                self.notifier.send_success(row['account'], row['symbol'], "manual exit synced",
-                                           f"sell_price={price}")
+                # Exit applies to ALL matching rows (sl_no duplicates + real tracked positions)
+                applied = False
+                for idx in local_data[mask].index:
+                    row = local_data.loc[idx]
+                    local_close_date = row.get('close_date')
+                    if pd.notna(local_close_date) and local_close_date >= corr_date:
+                        logger.debug(f"Skipping exit for row {idx} ({row.get('sl_no')}) — already applied")
+                        continue
+                    local_data.loc[idx, 'sell_price'] = price
+                    local_data.loc[idx, 'close_order_status'] = 'Complete'
+                    local_data.loc[idx, 'close_date'] = corr_date.strftime("%Y-%m-%d")
+                    local_data.loc[idx, 'status'] = 'close'
+                    applied = True
+                    logger.info(f"Manual exit applied for row {idx} sl_no={row.get('sl_no')} symbol={row.get('symbol')}: sell_price={price}")
+                if applied:
+                    changed = True
+                    self.notifier.send_success(corr_account, corr_symbol, "manual exit synced",
+                                               f"sell_price={price}")
 
         if changed:
             local_data.to_csv(self.csv_path, index=False)

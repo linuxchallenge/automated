@@ -50,7 +50,8 @@
       "Bash(/home/adithya/venv/bin/pip install *)",
       "Bash(wait)",
       "Bash(/home/adithya/venv/bin/python *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(pip3 install *)"
     ]
   },
   "hooks": {
