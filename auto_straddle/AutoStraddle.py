@@ -241,7 +241,6 @@ def main():
         ew_generator = ElliotWaveSignalGenerator(EW_ACCOUNTS_URL, NIFTY200_CSV)
         elliot_cash_obj = ElliotCashStratergy()
         elliot_cash_obj.sync_elliot_strategy()
-        elliot_cash_obj.sync_manual_corrections()
     else:
         ew_generator = None
         elliot_cash_obj = None
@@ -291,10 +290,6 @@ def main():
     cash_sl_updated_today = False
     # Flag to track if EW signals have been generated today (runs at 3:45–4:15 PM)
     ew_signals_generated_today = False
-    # Flag to track if EW manual corrections have been synced today (runs at 9:00–9:15 AM)
-    ew_corrections_synced_today = False
-    # Flag to track if EW manual corrections have been synced in the afternoon window (runs at 15:10–15:16 AM)
-    ew_corrections_synced_afternoon = False
 
     try:
         while True:
@@ -364,26 +359,6 @@ def main():
                 except Exception as e:
                     logging.error("Fund snapshot failed: %s", e)
 
-                # Sync EW manual corrections once per day at 9:00–9:15 AM
-                if EW_STRATEGY_ENABLED and time_dt(9, 0) <= current_time_dt <= time_dt(9, 15):
-                    if not ew_corrections_synced_today:
-                        logging.info("EW: Syncing manual corrections")
-                        try:
-                            elliot_cash_obj.sync_manual_corrections()
-                            ew_corrections_synced_today = True
-                        except Exception as e:
-                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-
-                # Sync EW manual corrections again before afternoon execution at 15:10–15:16
-                # Catches manual Sheet updates made after the morning sync window
-                if EW_STRATEGY_ENABLED and time_dt(15, 10) <= current_time_dt <= time_dt(15, 16):
-                    if not ew_corrections_synced_afternoon:
-                        logging.info("EW: Syncing manual corrections (afternoon)")
-                        try:
-                            elliot_cash_obj.sync_manual_corrections()
-                            ew_corrections_synced_afternoon = True
-                        except Exception as e:
-                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
                 # Elliott Wave strategy execution (same timing as cash strategy)
                 if EW_STRATEGY_ENABLED:
@@ -435,8 +410,6 @@ def main():
                 if current_time_dt < time_dt(0, 5):
                     cash_sl_updated_today = False
                     ew_signals_generated_today = False
-                    ew_corrections_synced_today = False
-                    ew_corrections_synced_afternoon = False
                     fund_optimizer.reset_weekly_flag()
 
                 # Sleep for a specified interval (e.g., 1 minute)

@@ -51,7 +51,14 @@
       "Bash(wait)",
       "Bash(/home/adithya/venv/bin/python *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(pip3 install *)"
+      "Bash(pip3 install *)",
+      "Bash(pip3 show *)",
+      "Read(//home/adithya/**)",
+      "Bash(sudo apt list --installed)",
+      "Bash(dpkg -l python3-pylint)",
+      "Bash(sudo apt-get install -y python3-pylint)",
+      "Bash(~/.local/bin/pip install *)",
+      "Bash(~/.local/bin/pylint *)"
     ]
   },
   "hooks": {

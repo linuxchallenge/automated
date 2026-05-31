@@ -108,13 +108,13 @@ class TelegramNotifier:
             logger.error(f"Failed to send Telegram notification: {e}")
             return False
 
-    def send_buy_failed(self, account, symbol, sl, percent_increase):
+    def send_buy_failed(self, account, symbol, quantity, sl, percent_increase):  # pylint: disable=too-many-arguments,too-many-positional-arguments
         chat_id = self._get_chat_id(account)
         if not chat_id:
             return False
         message = (
             f"EW BUY FAILED {account} {symbol}\n"
-            f"SL: {sl} | Target: +{percent_increase}%\n"
+            f"Qty: {quantity} | SL: {sl} | Target: +{percent_increase}%\n"
             f"Please buy manually and update Google Sheet, or will retry tomorrow."
         )
         try:
@@ -159,12 +159,6 @@ class ElliotCashStratergy:
             "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
             "/pub?output=csv"
         )
-        # Manual entry/exit corrections sheet — columns: sl_no | account | symbol | entry_exit | price | date
-        self.manual_corrections_url = (
-            "https://docs.google.com/spreadsheets/d/e/"
-            "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
-            "/pub?output=csv"
-        )
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
         self._cached_positions = None
@@ -176,6 +170,7 @@ class ElliotCashStratergy:
 
         self._session = None
         self._session_created_at = None
+        self._place_order = None
         self._session_ttl = timedelta(minutes=10)
 
         self._order_retry_count = {}
@@ -349,9 +344,8 @@ class ElliotCashStratergy:
                     if price:
                         return price
                     raise ValueError(f"Angel One LTP fallback returned None for {symbol}") from e
-                else:
-                    logger.error(f"No Angel One API available for fallback for {symbol}")
-                    raise ValueError(f"No Angel One API available for fallback for {symbol}") from e
+                logger.error(f"No Angel One API available for fallback for {symbol}")
+                raise ValueError(f"No Angel One API available for fallback for {symbol}") from e
             except ValueError:
                 raise
             except Exception as e2:
@@ -424,162 +418,15 @@ class ElliotCashStratergy:
                 logger.info(f"Inserted new EW row: {sl_no}")
             else:
                 remote_status = str(row.get('status', '')).strip().lower()
-                sl_no_mask = local_data['sl_no'].astype(str) == sl_no
-                # Apply close to ALL local rows with this sl_no (handles duplicates)
                 if remote_status == 'close':
+                    sl_no_mask = local_data['sl_no'].astype(str) == sl_no
                     active = local_data.loc[sl_no_mask, 'status'].isin(['open', 'new', 'pending'])
                     if active.any():
                         local_data.loc[sl_no_mask & active, 'status'] = 'close'
                         logger.info(f"Closed EW row(s) from remote sheet: {sl_no}")
-                else:
-                    local_row = local_data[sl_no_mask].iloc[0]
-                    remote_date = row.get('date')
-                    local_date = local_row.get('date')
-                    if pd.notna(remote_date) and pd.notna(local_date) and remote_date > local_date:
-                        for col in remote_data.columns:
-                            if col in local_data.columns:
-                                local_data.loc[sl_no_mask, col] = row[col]
-                        logger.info(f"Updated EW row from remote: {sl_no} (remote_date={remote_date}, local_date={local_date})")
 
         local_data.to_csv(self.csv_path, index=False)
         logger.info("EW sync completed.")
-
-    def sync_manual_corrections(self):
-        """Sync manual entry/exit corrections from the Google Sheet.
-
-        Sheet columns: sl_no | account | symbol | entry_exit | price | date
-
-        entry_exit = 'entry' (manual BUY) or 'exit' (manual SELL).
-
-        Dedup logic per sl_no + entry_exit:
-          - entry: skip if local open_date is already >= sheet date
-          - exit:  skip if local close_date is already >= sheet date
-
-        On entry apply:
-          buy_price = price, open_order_status = 'Complete', status = 'open',
-          open_date = date, profit_target recomputed from percent_increase.
-
-        On exit apply:
-          sell_price = price, close_order_status = 'Complete',
-          close_date = date, status = 'close'.
-        """
-        try:
-            corrections = pd.read_csv(self.manual_corrections_url)
-            corrections.columns = [c.strip().lower() for c in corrections.columns]
-        except Exception as e:
-            logger.error(f"Failed to download manual corrections sheet: {e}")
-            return
-
-        if corrections.empty:
-            logger.info("Manual corrections sheet is empty, nothing to sync.")
-            return
-
-        corrections['date'] = pd.to_datetime(corrections['date'], errors='coerce')
-        corrections['price'] = pd.to_numeric(corrections['price'], errors='coerce')
-
-        try:
-            local_data = pd.read_csv(self.csv_path)
-        except FileNotFoundError:
-            logger.warning("Local EW CSV not found, skipping manual corrections sync.")
-            return
-
-        local_data['open_date'] = pd.to_datetime(local_data.get('open_date'), errors='coerce')
-        local_data['close_date'] = pd.to_datetime(local_data.get('close_date'), errors='coerce')
-
-        changed = False
-
-        for _, corr in corrections.iterrows():
-            sl_no = str(corr.get('sl_no', '')).strip()
-            entry_exit = str(corr.get('entry_exit', '')).strip().lower()
-            price = corr.get('price')
-            corr_date = corr.get('date')
-
-            if not sl_no or entry_exit not in ('entry', 'exit'):
-                logger.warning(f"Skipping invalid correction row: sl_no={sl_no} entry_exit={entry_exit}")
-                continue
-
-            if pd.isna(corr_date) or pd.isna(price):
-                logger.warning(f"Skipping correction row with missing date/price: {sl_no}")
-                continue
-
-            # Primary match: by sl_no. For exits also include symbol+account open rows
-            # (the tracked positions use long sl_nos like EW_20260506_M&M_deepti, not 1/2/3).
-            corr_symbol = str(corr.get('symbol', '')).strip()
-            corr_account = str(corr.get('account', '')).strip()
-
-            sl_no_mask = local_data['sl_no'].astype(str) == str(sl_no)
-            if entry_exit == 'exit' and corr_symbol and corr_account:
-                # Also match real tracked positions by symbol+account+status=open
-                sym_acct_mask = ((local_data['symbol'] == corr_symbol)
-                                 & (local_data['account'] == corr_account)
-                                 & (local_data['status'].isin(['open', 'new', 'pending'])))
-                mask = sl_no_mask | sym_acct_mask
-            else:
-                mask = sl_no_mask
-                if not mask.any() and corr_symbol and corr_account:
-                    mask = ((local_data['symbol'] == corr_symbol)
-                            & (local_data['account'] == corr_account)
-                            & (local_data['status'] == 'new'))
-
-            if not mask.any():
-                logger.warning(f"Manual correction: sl_no '{sl_no}' / symbol+account '{corr_symbol}+{corr_account}' not found in local CSV, skipping.")
-                continue
-
-            if entry_exit == 'entry':
-                # Entry only applies to first matching row (one BUY per signal)
-                idx = local_data[mask].index[0]
-                row = local_data.loc[idx]
-                local_open_date = row.get('open_date')
-                if pd.notna(local_open_date) and local_open_date >= corr_date:
-                    logger.debug(f"Skipping entry correction for {sl_no} — already applied (local={local_open_date.date()}, sheet={corr_date.date()})")
-                    continue
-
-                local_data.loc[idx, 'buy_price'] = price
-                local_data.loc[idx, 'open_order_status'] = 'Complete'
-                local_data.loc[idx, 'status'] = 'open'
-                local_data.loc[idx, 'open_date'] = corr_date.strftime("%Y-%m-%d")
-                try:
-                    pct = float(row['percent_increase'])
-                    local_data.loc[idx, 'profit_target'] = price * (1 + pct / 100)
-                except Exception:
-                    pass
-                try:
-                    if pd.isna(row.get('quantity')):
-                        qty = int(float(row['amount']) / price)
-                        local_data.loc[idx, 'quantity'] = qty
-                except Exception:
-                    pass
-
-                changed = True
-                logger.info(f"Manual entry applied for {sl_no}: buy_price={price}, open_date={corr_date.date()}")
-                self.notifier.send_success(row['account'], row['symbol'], "manual entry synced",
-                                           f"buy_price={price}")
-
-            elif entry_exit == 'exit':
-                # Exit applies to ALL matching rows (sl_no duplicates + real tracked positions)
-                applied = False
-                for idx in local_data[mask].index:
-                    row = local_data.loc[idx]
-                    local_close_date = row.get('close_date')
-                    if pd.notna(local_close_date) and local_close_date >= corr_date:
-                        logger.debug(f"Skipping exit for row {idx} ({row.get('sl_no')}) — already applied")
-                        continue
-                    local_data.loc[idx, 'sell_price'] = price
-                    local_data.loc[idx, 'close_order_status'] = 'Complete'
-                    local_data.loc[idx, 'close_date'] = corr_date.strftime("%Y-%m-%d")
-                    local_data.loc[idx, 'status'] = 'close'
-                    applied = True
-                    logger.info(f"Manual exit applied for row {idx} sl_no={row.get('sl_no')} symbol={row.get('symbol')}: sell_price={price}")
-                if applied:
-                    changed = True
-                    self.notifier.send_success(corr_account, corr_symbol, "manual exit synced",
-                                               f"sell_price={price}")
-
-        if changed:
-            local_data.to_csv(self.csv_path, index=False)
-            logger.info("Manual corrections sync completed.")
-        else:
-            logger.info("Manual corrections sync: no updates needed.")
 
     # ------------------------------------------------------------------
     # Order processing
@@ -630,7 +477,7 @@ class ElliotCashStratergy:
                         data.loc[idx, 'open_order_status'] = 'buy_failed'
                         data.to_csv(self.csv_path, index=False)
                         self.notifier.send_buy_failed(
-                            row['account'], symbol,
+                            row['account'], symbol, quantity,
                             row['sl'], row['percent_increase']
                         )
                         continue
@@ -675,7 +522,8 @@ class ElliotCashStratergy:
             data.loc[idx, 'highest_close'] = highest_close
 
         # Update days held
-        days_held = int(row.get('days_held') or 0)
+        days_held_val = row.get('days_held')
+        days_held = int(float(days_held_val)) if pd.notna(days_held_val) else 0
         open_date = row.get('open_date')
         if pd.notna(open_date):
             try:
