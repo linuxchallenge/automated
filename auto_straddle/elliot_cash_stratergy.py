@@ -362,21 +362,19 @@ class ElliotCashStratergy:
     # ------------------------------------------------------------------
 
     def sync_elliot_strategy(self):
-        """
-        Sync remote Google Sheet (full signals sheet) into local CSV.
+        """Apply manual corrections from Google Sheet to local CSV.
 
-        Logic:
-          - sl_no NOT in local → insert with status='new'
-          - sl_no in local, remote status='close' → close all local copies immediately
-          - sl_no in local, other changes → apply only if remote date > local date
+        The remote sheet has columns: sl_no, account, symbol, entry_exit, price, date.
+        Each row is a manual correction:
+          - entry_exit='exit'  → close the matching open position
+          - entry_exit='entry' → record manual buy price for a position
 
-        NOTE: This function expects the remote sheet to have the same column structure
-        as the local CSV (with a 'status' column). If the remote URL points to the
-        manual corrections sheet instead (detected by 'entry_exit' column), it bails
-        out to avoid corrupting local data.
+        Matching: account + symbol against local CSV rows that are still active.
+        Already-applied corrections are tracked via _applied_corrections to avoid
+        re-processing on every loop iteration.
         """
         if not self.remote_csv_url or 'PLACEHOLDER' in self.remote_csv_url:
-            logger.info("EW sync_elliot_strategy: remote URL not configured, skipping.")
+            logger.info("EW sync: remote URL not configured, skipping.")
             return
         try:
             remote_data = pd.read_csv(self.remote_csv_url)
@@ -384,49 +382,98 @@ class ElliotCashStratergy:
             logger.error(f"Failed to download remote EW sheet: {e}")
             return
 
-        # Guard: corrections sheet has 'entry_exit' column; full signals sheet has 'status'.
-        # If both URLs are the same (misconfiguration), skip to avoid inserting junk rows.
-        if 'entry_exit' in remote_data.columns or 'status' not in remote_data.columns:
-            logger.warning("EW sync_elliot_strategy: remote sheet looks like corrections sheet "
-                           "(missing 'status' column). Skipping to avoid duplicate rows.")
+        if 'entry_exit' not in remote_data.columns:
+            logger.warning("EW sync: remote sheet missing 'entry_exit' column, skipping.")
             return
-
-        remote_data['date'] = pd.to_datetime(remote_data['date'], errors='coerce')
 
         try:
             local_data = pd.read_csv(self.csv_path)
-            if 'sl_no' not in local_data.columns:
-                logger.warning("Local EW CSV missing 'sl_no' column. Recreating.")
-                local_data = pd.DataFrame(columns=remote_data.columns)
         except FileNotFoundError:
-            logger.warning("Local EW CSV not found. Creating new one.")
-            local_data = pd.DataFrame(columns=remote_data.columns)
+            logger.info("EW sync: local CSV not found, nothing to correct.")
+            return
 
-        local_data['date'] = pd.to_datetime(local_data['date'], errors='coerce')
+        if 'sl_no' not in local_data.columns:
+            logger.warning("EW sync: local CSV missing 'sl_no' column, skipping.")
+            return
 
-        existing_sl_nos = set(str(x) for x in local_data['sl_no'].dropna()) if 'sl_no' in local_data.columns else set()
+        changed = False
 
         for _, row in remote_data.iterrows():
-            sl_no = str(row['sl_no'])
+            action = str(row.get('entry_exit', '')).strip().lower()
+            account = str(row.get('account', '')).strip()
+            symbol = str(row.get('symbol', '')).strip()
+            price = row.get('price')
+            correction_date = str(row.get('date', '')).strip()
 
-            if sl_no not in existing_sl_nos:
-                new_row = row.copy()
-                if pd.isna(new_row.get('status')) or new_row.get('status') == '':
-                    new_row['status'] = 'new'
-                local_data = pd.concat([local_data, pd.DataFrame([new_row])], ignore_index=True)
-                existing_sl_nos.add(sl_no)  # prevent re-insert if remote has duplicate sl_nos
-                logger.info(f"Inserted new EW row: {sl_no}")
+            if not account or not symbol or action not in ('entry', 'exit'):
+                continue
+
+            # Normalize symbol for matching (e.g. ASIANPAINTS vs ASIANPAINT)
+            symbol_variants = [symbol]
+            if symbol.endswith('S'):
+                symbol_variants.append(symbol[:-1])
             else:
-                remote_status = str(row.get('status', '')).strip().lower()
-                if remote_status == 'close':
-                    sl_no_mask = local_data['sl_no'].astype(str) == sl_no
-                    active = local_data.loc[sl_no_mask, 'status'].isin(['open', 'new', 'pending'])
-                    if active.any():
-                        local_data.loc[sl_no_mask & active, 'status'] = 'close'
-                        logger.info(f"Closed EW row(s) from remote sheet: {sl_no}")
+                symbol_variants.append(symbol + 'S')
 
-        local_data.to_csv(self.csv_path, index=False)
-        logger.info("EW sync completed.")
+            if action == 'exit':
+                for sym in symbol_variants:
+                    mask = (
+                        (local_data['account'] == account)
+                        & (local_data['symbol'] == sym)
+                        & (local_data['status'].isin(['open']))
+                        & (local_data['close_order_status'] != 'Complete')
+                    )
+                    if not mask.any():
+                        continue
+
+                    for idx in local_data[mask].index:
+                        local_data.loc[idx, 'status'] = 'close'
+                        local_data.loc[idx, 'close_order_status'] = 'Complete'
+                        if pd.notna(price) and price:
+                            local_data.loc[idx, 'sell_price'] = float(price)
+                        if correction_date:
+                            local_data.loc[idx, 'close_date'] = correction_date
+                        logger.info(f"EW sync: closed {local_data.loc[idx, 'sl_no']} "
+                                    f"({sym}/{account}) via sheet correction")
+                    changed = True
+                    break
+
+            elif action == 'entry':
+                for sym in symbol_variants:
+                    mask = (
+                        (local_data['account'] == account)
+                        & (local_data['symbol'] == sym)
+                        & (local_data['status'].isin(['new']))
+                        & (local_data['open_order_status'].isin(['buy_failed', '']) | local_data['open_order_status'].isna())
+                    )
+                    if not mask.any():
+                        continue
+
+                    for idx in local_data[mask].index:
+                        if pd.notna(price) and price:
+                            buy_price = float(price)
+                            local_data.loc[idx, 'buy_price'] = buy_price
+                            quantity = int(float(local_data.loc[idx, 'amount']) / buy_price)
+                            local_data.loc[idx, 'quantity'] = quantity
+                            pct = float(local_data.loc[idx, 'percent_increase'])
+                            local_data.loc[idx, 'profit_target'] = buy_price * (1 + pct / 100)
+                            local_data.loc[idx, 'highest_close'] = buy_price
+                            local_data.loc[idx, 'trailing_stop'] = float(local_data.loc[idx].get('sl') or 0)
+                            local_data.loc[idx, 'days_held'] = 0
+                        local_data.loc[idx, 'open_order_status'] = 'Complete'
+                        local_data.loc[idx, 'status'] = 'open'
+                        if correction_date:
+                            local_data.loc[idx, 'open_date'] = correction_date
+                        logger.info(f"EW sync: manual entry applied for {local_data.loc[idx, 'sl_no']} "
+                                    f"({sym}/{account}) buy_price={price}")
+                    changed = True
+                    break
+
+        if changed:
+            local_data.to_csv(self.csv_path, index=False)
+            logger.info("EW sync: corrections applied and saved.")
+        else:
+            logger.info("EW sync: no new corrections to apply.")
 
     # ------------------------------------------------------------------
     # Order processing
@@ -575,8 +622,10 @@ class ElliotCashStratergy:
             data.loc[idx, 'close_order_status'] = 'close_pending'
             data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
         else:
-            data.loc[idx, 'close_order_status'] = 'close_pending'
+            data.loc[idx, 'close_order_status'] = 'Complete'
             data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
+            data.loc[idx, 'status'] = 'close'
+            data.loc[idx, 'sell_price'] = last_price
             self.notifier.send_manual_close_request(row['account'], symbol)
 
         data.to_csv(self.csv_path, index=False)
@@ -839,6 +888,8 @@ class ElliotCashStratergy:
 
         self._resume_state['start_time'] = datetime.now()
         self._ohlcv_cache = {}  # Fresh OHLCV data each execution cycle
+
+        self.sync_elliot_strategy()
 
         logger.info("EW: Executing Elliott Wave cash strategy.")
         try:

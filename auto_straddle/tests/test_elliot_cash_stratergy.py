@@ -31,7 +31,11 @@ from elliot_cash_stratergy import ElliotCashStratergy
 # ---------------------------------------------------------------------------
 
 def _base_row(**kwargs):
-    """Return a minimal CSV row dict with sensible defaults."""
+    """Return a minimal CSV row dict with sensible defaults.
+
+    String columns use empty string (not None) so pandas infers object dtype
+    rather than float64, avoiding TypeError on later string assignment.
+    """
     defaults = {
         "sl_no": "EW_20260419_RELIANCE_dummy",
         "symbol": "RELIANCE",
@@ -44,16 +48,19 @@ def _base_row(**kwargs):
         "signal_type": "Wave3_Entry",
         "confidence": 72.0,
         "exchange": "NSE",
-        "profit_target": None,
-        "buy_order_id": None,
-        "buy_price": None,
-        "quantity": None,
-        "open_order_status": None,
-        "open_date": None,
-        "close_order_id": None,
-        "close_order_status": None,
-        "sell_price": None,
-        "close_date": None,
+        "profit_target": "",
+        "buy_order_id": "",
+        "buy_price": "",
+        "quantity": "",
+        "open_order_status": "",
+        "open_date": "",
+        "close_order_id": "",
+        "close_order_status": "",
+        "sell_price": "",
+        "close_date": "",
+        "trailing_stop": "",
+        "highest_close": "",
+        "days_held": "",
     }
     defaults.update(kwargs)
     return defaults
@@ -64,7 +71,14 @@ def _write_csv(path, rows):
 
 
 def _read_csv(path):
-    return pd.read_csv(path)
+    df = pd.read_csv(path)
+    str_cols = ['open_order_status', 'close_order_status', 'open_date', 'close_date',
+                'buy_order_id', 'close_order_id', 'sell_price', 'buy_price',
+                'profit_target', 'quantity', 'trailing_stop', 'highest_close', 'days_held']
+    for col in str_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(object)
+    return df
 
 
 def _make_place_order(buy_order_id="ORD001", order_status="Complete", fill_price=None):
@@ -99,63 +113,68 @@ class TestElliotCashStratergy(unittest.TestCase):
         self.strategy.nso_open = True
 
     # -----------------------------------------------------------------------
-    # 1. sync_elliot_strategy — inserts new rows from remote
+    # 1. sync_elliot_strategy — apply corrections from Google Sheet
     # -----------------------------------------------------------------------
 
-    def test_sync_inserts_new_rows(self):
-        """Rows in remote sheet that are absent locally should be inserted."""
-        # No local CSV — triggers FileNotFoundError path in sync
-        if os.path.exists(self.csv_path):
-            os.remove(self.csv_path)
+    def test_sync_exit_closes_open_position(self):
+        """Exit correction should set status=close and record sell_price."""
+        row = _base_row(
+            status="open", account="deepti",
+            buy_price=3000.0, quantity=3,
+            open_order_status="Complete",
+        )
+        _write_csv(self.csv_path, [row])
 
-        remote_df = pd.DataFrame([_base_row(date="2026-04-20")])
+        corrections = pd.DataFrame([{
+            "sl_no": 1, "account": "deepti", "symbol": "RELIANCE",
+            "entry_exit": "exit", "price": 3450.0, "date": "2026-04-25",
+        }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[
-            remote_df,               # remote download
-            FileNotFoundError(),     # local CSV missing → triggers create-new path
-        ]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result.iloc[0]["sl_no"], "EW_20260419_RELIANCE_dummy")
-        self.assertEqual(result.iloc[0]["status"], "new")
+        self.assertEqual(result.iloc[0]["status"], "close")
+        self.assertAlmostEqual(result.iloc[0]["sell_price"], 3450.0, places=0)
+        self.assertEqual(result.iloc[0]["close_order_status"], "Complete")
 
-    def test_sync_updates_row_when_remote_date_newer(self):
-        """If remote date > local date, the local row should be updated."""
-        local_row = _base_row(date="2026-04-19", status="new")
-        _write_csv(self.csv_path, [local_row])
+    def test_sync_entry_opens_new_position(self):
+        """Entry correction should set buy_price, status=open, profit_target."""
+        row = _base_row(status="new", sl=2800.0, percent_increase=15.0, amount=10000.0)
+        _write_csv(self.csv_path, [row])
 
-        # Remote has same sl_no but newer date and updated buy_price
-        remote_row = _base_row(date="2026-04-20", status="open", buy_price=3050.0)
-        remote_df = pd.DataFrame([remote_row])
+        corrections = pd.DataFrame([{
+            "sl_no": 1, "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "entry", "price": 3000.0, "date": "2026-04-19",
+        }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[
-            remote_df,
-            _read_csv(self.csv_path),
-        ]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         self.assertEqual(result.iloc[0]["status"], "open")
-        self.assertAlmostEqual(result.iloc[0]["buy_price"], 3050.0, places=0)
+        self.assertAlmostEqual(result.iloc[0]["buy_price"], 3000.0, places=0)
+        self.assertAlmostEqual(result.iloc[0]["profit_target"], 3450.0, places=0)
 
-    def test_sync_does_not_update_when_local_date_newer(self):
-        """If local date >= remote date, local row should NOT be overwritten."""
-        local_row = _base_row(date="2026-04-21", status="open")
-        _write_csv(self.csv_path, [local_row])
+    def test_sync_does_not_reclose_already_closed(self):
+        """Exit correction should not re-apply to already closed positions."""
+        row = _base_row(
+            status="close", account="deepti",
+            buy_price=3000.0, sell_price=3450.0,
+            close_order_status="Complete",
+        )
+        _write_csv(self.csv_path, [row])
 
-        remote_row = _base_row(date="2026-04-19", status="new")
-        remote_df = pd.DataFrame([remote_row])
+        corrections = pd.DataFrame([{
+            "sl_no": 1, "account": "deepti", "symbol": "RELIANCE",
+            "entry_exit": "exit", "price": 2900.0, "date": "2026-04-20",
+        }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[
-            remote_df,
-            _read_csv(self.csv_path),
-        ]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
-        self.assertEqual(result.iloc[0]["status"], "open", "Local status should not be reverted")
+        self.assertAlmostEqual(result.iloc[0]["sell_price"], 3450.0, places=0)
 
     # -----------------------------------------------------------------------
     # 2. _process_new_orders — BUY, profit_target, quantity
@@ -263,7 +282,8 @@ class TestElliotCashStratergy(unittest.TestCase):
         po.place_cash_order.assert_not_called()
         # Telegram manual close request sent
         mock_close.assert_called_once_with("dummy", "RELIANCE")
-        self.assertEqual(data.iloc[0]["close_order_status"], "close_pending")
+        self.assertEqual(data.iloc[0]["close_order_status"], "Complete")
+        self.assertEqual(data.iloc[0]["status"], "close")
 
     def test_process_open_positions_no_action_when_between_sl_and_target(self):
         """When price is between SL and target, no close should be triggered."""
@@ -348,45 +368,35 @@ class TestElliotCashStratergy(unittest.TestCase):
 
 
     # -----------------------------------------------------------------------
-    # 5. sync_manual_corrections — entry/exit from Google Sheet
+    # 5. sync_elliot_strategy — entry/exit corrections from Google Sheet
     # -----------------------------------------------------------------------
-
-    MANUAL_CORRECTIONS_URL = (
-        "https://docs.google.com/spreadsheets/d/e/"
-        "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
-        "/pub?output=csv"
-    )
 
     def _corrections_df(self, rows):
         return pd.DataFrame(rows, columns=["sl_no", "account", "symbol", "entry_exit", "price", "date"])
 
-    def test_manual_entry_updates_buy_fields(self):
+    def test_sync_manual_entry_updates_buy_fields(self):
         """Manual 'entry' row should set buy_price, open_date, profit_target, status=open."""
         row = _base_row(status="new", sl=2800.0, percent_increase=15.0, amount=10000.0)
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "sl_no": 1,
             "account": "dummy", "symbol": "RELIANCE",
             "entry_exit": "entry", "price": 3000.0, "date": "2026-04-19",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
-             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
-                   return_value={"dummy_telegram": "CHAT456"}):
-            self.strategy.sync_manual_corrections()
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         row_out = result.iloc[0]
         self.assertEqual(row_out["status"], "open")
         self.assertAlmostEqual(row_out["buy_price"], 3000.0, places=0)
         self.assertEqual(row_out["open_order_status"], "Complete")
-        # profit_target = 3000 * 1.15 = 3450
         self.assertAlmostEqual(row_out["profit_target"], 3450.0, places=0)
-        # quantity = int(10000 / 3000) = 3
         self.assertEqual(int(row_out["quantity"]), 3)
 
-    def test_manual_exit_updates_sell_fields(self):
+    def test_sync_manual_exit_updates_sell_fields(self):
         """Manual 'exit' row should set sell_price, close_date, status=close."""
         row = _base_row(
             status="open", account="dummy",
@@ -396,15 +406,13 @@ class TestElliotCashStratergy(unittest.TestCase):
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "sl_no": 1,
             "account": "dummy", "symbol": "RELIANCE",
             "entry_exit": "exit", "price": 3450.0, "date": "2026-04-25",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
-             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
-                   return_value={"dummy_telegram": "CHAT456"}):
-            self.strategy.sync_manual_corrections()
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         row_out = result.iloc[0]
@@ -412,8 +420,8 @@ class TestElliotCashStratergy(unittest.TestCase):
         self.assertAlmostEqual(row_out["sell_price"], 3450.0, places=0)
         self.assertEqual(row_out["close_order_status"], "Complete")
 
-    def test_manual_entry_no_double_apply(self):
-        """Entry correction with same or older date must not overwrite existing open_date."""
+    def test_sync_entry_no_double_apply(self):
+        """Entry correction should not overwrite already-open positions."""
         row = _base_row(
             status="open", buy_price=3000.0,
             open_order_status="Complete", open_date="2026-04-19",
@@ -421,20 +429,19 @@ class TestElliotCashStratergy(unittest.TestCase):
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "sl_no": 1,
             "account": "dummy", "symbol": "RELIANCE",
-            "entry_exit": "entry", "price": 2800.0, "date": "2026-04-18",  # older date
+            "entry_exit": "entry", "price": 2800.0, "date": "2026-04-18",
         }])
 
         with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
-            self.strategy.sync_manual_corrections()
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
-        # buy_price must remain at original 3000, not be overwritten with 2800
         self.assertAlmostEqual(result.iloc[0]["buy_price"], 3000.0, places=0)
 
-    def test_manual_exit_no_double_apply(self):
-        """Exit correction with same or older date must not overwrite existing close_date."""
+    def test_sync_exit_no_double_apply(self):
+        """Exit correction should not re-apply to already closed positions."""
         row = _base_row(
             status="close", buy_price=3000.0, sell_price=3450.0,
             open_order_status="Complete", close_order_status="Complete",
@@ -443,37 +450,36 @@ class TestElliotCashStratergy(unittest.TestCase):
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "EW_20260419_RELIANCE_dummy",
+            "sl_no": 1,
             "account": "dummy", "symbol": "RELIANCE",
-            "entry_exit": "exit", "price": 2900.0, "date": "2026-04-20",  # older date
+            "entry_exit": "exit", "price": 2900.0, "date": "2026-04-20",
         }])
 
         with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
-            self.strategy.sync_manual_corrections()
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         self.assertAlmostEqual(result.iloc[0]["sell_price"], 3450.0, places=0)
 
-    def test_manual_correction_unknown_sl_no_skipped(self):
-        """Correction for an sl_no not in local CSV should be silently skipped."""
+    def test_sync_unknown_symbol_skipped(self):
+        """Correction for a symbol not in local CSV should be silently skipped."""
         row = _base_row(status="new")
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "EW_UNKNOWN_XYZ_dummy",
+            "sl_no": 1,
             "account": "dummy", "symbol": "XYZ",
             "entry_exit": "entry", "price": 500.0, "date": "2026-04-19",
         }])
 
         with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
-            self.strategy.sync_manual_corrections()
+            self.strategy.sync_elliot_strategy()
 
-        # Original row untouched
         result = _read_csv(self.csv_path)
         self.assertEqual(result.iloc[0]["status"], "new")
 
-    def test_manual_exit_fallback_by_symbol_account(self):
-        """Exit correction with non-matching sl_no should fallback to symbol+account match."""
+    def test_sync_exit_matches_by_symbol_account(self):
+        """Exit correction matches by account+symbol (sheet sl_no is just a row number)."""
         row = _base_row(
             status="open", account="deepti",
             sl_no="EW_20260506_M&M_deepti", symbol="M&M",
@@ -483,15 +489,13 @@ class TestElliotCashStratergy(unittest.TestCase):
         _write_csv(self.csv_path, [row])
 
         corrections = self._corrections_df([{
-            "sl_no": "1",  # doesn't match EW_20260506_M&M_deepti
+            "sl_no": 1,
             "account": "deepti", "symbol": "M&M",
             "entry_exit": "exit", "price": 3120.0, "date": "2026-05-18",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
-             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
-                   return_value={"deepti_telegram": "CHAT789"}):
-            self.strategy.sync_manual_corrections()
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         row_out = result.iloc[0]
@@ -499,18 +503,41 @@ class TestElliotCashStratergy(unittest.TestCase):
         self.assertAlmostEqual(row_out["sell_price"], 3120.0, places=0)
         self.assertEqual(row_out["close_order_status"], "Complete")
 
-    def test_manual_correction_empty_sheet_no_op(self):
+    def test_sync_empty_sheet_no_op(self):
         """Empty corrections sheet should not modify local CSV."""
         row = _base_row(status="new")
         _write_csv(self.csv_path, [row])
 
-        corrections = self._corrections_df([])   # empty
+        corrections = self._corrections_df([])
 
         with patch("elliot_cash_stratergy.pd.read_csv", return_value=corrections):
-            self.strategy.sync_manual_corrections()
+            self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         self.assertEqual(result.iloc[0]["status"], "new")
+
+    def test_sync_symbol_variant_matching(self):
+        """ASIANPAINTS in sheet should match ASIANPAINT in local CSV."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl_no="EW_20260514_ASIANPAINT_deepti", symbol="ASIANPAINT",
+            buy_price=2579.0, quantity=3,
+            open_order_status="Complete",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": 1,
+            "account": "deepti", "symbol": "ASIANPAINTS",
+            "entry_exit": "exit", "price": 2700.0, "date": "2026-06-01",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_elliot_strategy()
+
+        result = _read_csv(self.csv_path)
+        self.assertEqual(result.iloc[0]["status"], "close")
+        self.assertAlmostEqual(result.iloc[0]["sell_price"], 2700.0, places=0)
 
 
 if __name__ == "__main__":

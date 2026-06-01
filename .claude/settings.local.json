@@ -58,7 +58,9 @@
       "Bash(dpkg -l python3-pylint)",
       "Bash(sudo apt-get install -y python3-pylint)",
       "Bash(~/.local/bin/pip install *)",
-      "Bash(~/.local/bin/pylint *)"
+      "Bash(~/.local/bin/pylint *)",
+      "Bash(/tmp/test_venv/bin/pip install *)",
+      "Bash(sudo apt-get install -y python3-venv python3-pip)"
     ]
   },
   "hooks": {
