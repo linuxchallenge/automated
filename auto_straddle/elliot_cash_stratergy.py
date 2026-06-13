@@ -435,6 +435,44 @@ class ElliotCashStratergy:
                             local_data.loc[idx, 'close_date'] = correction_date
                         logger.info(f"EW sync: closed {local_data.loc[idx, 'sl_no']} "
                                     f"({sym}/{account}) via sheet correction")
+
+                        # Generate P&L report for sync-closed trades
+                        r = local_data.loc[idx]
+                        buy_price = float(r.get('buy_price') or 0)
+                        sell_price = float(r.get('sell_price') or 0)
+                        quantity = int(float(r.get('quantity') or 0))
+                        if buy_price > 0 and sell_price > 0 and quantity > 0:
+                            profit_loss = (sell_price - buy_price) * quantity
+                            self.notifier.send_success(account, sym, "p/l",
+                                                       f"elliot_wave {profit_loss}")
+                            brokerage_dict = brokrage_calculator.calculate_equity_delivery(
+                                buy_price, sell_price, quantity)
+                            brokerage = brokerage_dict['total_charges']
+                            close_dt = correction_date or datetime.now().strftime("%Y-%m-%d")
+                            pl_dict = {
+                                'Date': str(close_dt)[:10],
+                                'Account': account,
+                                'Symbol': sym,
+                                'Quantity': quantity,
+                                'NumberofTrade': 1,
+                                'TotalPNL': profit_loss,
+                                'Brokerage': brokerage,
+                                'CloseTime': datetime.now().strftime("%H:%M:%S"),
+                                'Stratergy': 'elliot_wave',
+                                'NetPNL': profit_loss - brokerage
+                            }
+                            current_month = str(close_dt)[5:7]
+                            pnl_dir = Path.home() / 'temp' / 'data_collection' / 'pnl'
+                            pnl_dir.mkdir(parents=True, exist_ok=True)
+                            file_name = str(pnl_dir / f"consolidated_pnl_{current_month}.csv")
+                            if os.path.exists(file_name):
+                                df = pd.read_csv(file_name)
+                                df = pd.concat([df, pd.DataFrame([pl_dict])], ignore_index=True)
+                            else:
+                                df = pd.DataFrame([pl_dict])
+                            df.to_csv(file_name, index=False)
+                            logger.info(f"EW sync: P&L report generated for {r.get('sl_no', '')} "
+                                        f"({sym}/{account}) net_pnl={profit_loss - brokerage:.2f}")
                     changed = True
                     break
 
