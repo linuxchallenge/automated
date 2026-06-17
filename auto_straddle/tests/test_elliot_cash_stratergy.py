@@ -17,6 +17,7 @@ Run:
 import os
 import unittest
 import tempfile
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -130,7 +131,12 @@ class TestElliotCashStratergy(unittest.TestCase):
             "entry_exit": "exit", "price": 3450.0, "date": "2026-04-25",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}), \
+             patch("elliot_cash_stratergy.brokrage_calculator.calculate_equity_delivery",
+                   return_value={"total_charges": 30.0}), \
+             patch("elliot_cash_stratergy.os.path.exists", return_value=False):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
@@ -260,8 +266,8 @@ class TestElliotCashStratergy(unittest.TestCase):
 
         self.assertEqual(data.iloc[0]["close_order_id"], "CLOSE002")
 
-    def test_process_open_positions_dummy_sends_telegram(self):
-        """For dummy/non-API accounts, manual close request should be sent (no API call)."""
+    def test_process_open_positions_dummy_tries_api(self):
+        """All accounts (including dummy) try the API sell. Dummy succeeds via mock."""
         row = _base_row(
             status="open", account="dummy",
             sl=2900.0, profit_target=3450.0,
@@ -270,20 +276,16 @@ class TestElliotCashStratergy(unittest.TestCase):
         _write_csv(self.csv_path, [row])
         data = _read_csv(self.csv_path)
 
-        po = _make_place_order()
+        po = _make_place_order(buy_order_id="SELL_DUMMY")
 
         with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=2800.0), \
-             patch.object(self.strategy.notifier, "send_manual_close_request") as mock_close, \
              patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
                    return_value={"dummy_telegram": "CHAT456"}):
             self.strategy._process_open_positions(data, po)
 
-        # No API sell call for dummy
-        po.place_cash_order.assert_not_called()
-        # Telegram manual close request sent
-        mock_close.assert_called_once_with("dummy", "RELIANCE")
-        self.assertEqual(data.iloc[0]["close_order_status"], "Complete")
-        self.assertEqual(data.iloc[0]["status"], "close")
+        po.place_cash_order.assert_called_once_with("dummy", "RELIANCE", 3, "SELL")
+        self.assertEqual(data.iloc[0]["close_order_id"], "SELL_DUMMY")
+        self.assertEqual(data.iloc[0]["close_order_status"], "close_pending")
 
     def test_process_open_positions_no_action_when_between_sl_and_target(self):
         """When price is between SL and target, no close should be triggered."""
@@ -411,7 +413,12 @@ class TestElliotCashStratergy(unittest.TestCase):
             "entry_exit": "exit", "price": 3450.0, "date": "2026-04-25",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}), \
+             patch("elliot_cash_stratergy.brokrage_calculator.calculate_equity_delivery",
+                   return_value={"total_charges": 30.0}), \
+             patch("elliot_cash_stratergy.os.path.exists", return_value=False):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
@@ -494,7 +501,12 @@ class TestElliotCashStratergy(unittest.TestCase):
             "entry_exit": "exit", "price": 3120.0, "date": "2026-05-18",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}), \
+             patch("elliot_cash_stratergy.brokrage_calculator.calculate_equity_delivery",
+                   return_value={"total_charges": 30.0}), \
+             patch("elliot_cash_stratergy.os.path.exists", return_value=False):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
@@ -532,12 +544,238 @@ class TestElliotCashStratergy(unittest.TestCase):
             "entry_exit": "exit", "price": 2700.0, "date": "2026-06-01",
         }])
 
-        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}), \
+             patch("elliot_cash_stratergy.brokrage_calculator.calculate_equity_delivery",
+                   return_value={"total_charges": 30.0}), \
+             patch("elliot_cash_stratergy.os.path.exists", return_value=False):
             self.strategy.sync_elliot_strategy()
 
         result = _read_csv(self.csv_path)
         self.assertEqual(result.iloc[0]["status"], "close")
         self.assertAlmostEqual(result.iloc[0]["sell_price"], 2700.0, places=0)
+
+
+    # -----------------------------------------------------------------------
+    # 6. Sell failure — telegram, retry, sync resolution
+    # -----------------------------------------------------------------------
+
+    def test_sell_fails_sends_telegram(self):
+        """When SELL order fails after retries, sell_failed status is set and telegram sent."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl=2900.0, profit_target=3450.0,
+            buy_price=3000.0, quantity=3,
+        )
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order()
+        po.place_cash_order.return_value = None  # sell always fails
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=2800.0), \
+             patch.object(self.strategy.notifier, "send_sell_failed") as mock_notify, \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}):
+            self.strategy._process_open_positions(data, po)
+
+        self.assertEqual(data.iloc[0]["close_order_status"], "sell_failed")
+        self.assertEqual(data.iloc[0]["status"], "open")
+        mock_notify.assert_called_once_with("deepti", "RELIANCE", 3, 2800.0)
+
+    def test_sell_fails_retry_succeeds(self):
+        """sell_failed row is re-evaluated next cycle; if exit still triggered and sell succeeds, close_pending is set."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl=2900.0, profit_target=3450.0,
+            buy_price=3000.0, quantity=3,
+            close_order_status="sell_failed",
+        )
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order(buy_order_id="RETRY_SELL_OK")
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=2800.0), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}):
+            self.strategy._process_open_positions(data, po)
+
+        self.assertEqual(data.iloc[0]["close_order_id"], "RETRY_SELL_OK")
+        self.assertEqual(data.iloc[0]["close_order_status"], "close_pending")
+
+    def test_sell_failed_keeps_sending_telegram(self):
+        """sell_failed row retried next cycle — if sell fails again, telegram is sent again."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl=2900.0, profit_target=3450.0,
+            buy_price=3000.0, quantity=3,
+            close_order_status="sell_failed",
+        )
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order()
+        po.place_cash_order.return_value = None  # sell fails again
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=2800.0), \
+             patch.object(self.strategy.notifier, "send_sell_failed") as mock_notify, \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}):
+            self.strategy._process_open_positions(data, po)
+
+        self.assertEqual(data.iloc[0]["close_order_status"], "sell_failed")
+        mock_notify.assert_called_once()
+
+    def test_sell_fails_sync_resolves_with_pnl(self):
+        """sell_failed row resolved by Google Sheet exit correction — P&L generated."""
+        row = _base_row(
+            status="open", account="deepti",
+            sl_no="EW_20260601_RELIANCE_deepti",
+            buy_price=3000.0, quantity=3,
+            open_order_status="Complete",
+            close_order_status="sell_failed",
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": 1,
+            "account": "deepti", "symbol": "RELIANCE",
+            "entry_exit": "exit", "price": 3200.0, "date": "2026-06-10",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]), \
+             patch.object(self.strategy.notifier, "send_success") as mock_pnl, \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"deepti_telegram": "CHAT123"}), \
+             patch("elliot_cash_stratergy.brokrage_calculator.calculate_equity_delivery",
+                   return_value={"total_charges": 30.0}), \
+             patch("elliot_cash_stratergy.os.path.exists", return_value=False):
+            self.strategy.sync_elliot_strategy()
+
+        result = _read_csv(self.csv_path)
+        self.assertEqual(result.iloc[0]["status"], "close")
+        self.assertEqual(result.iloc[0]["close_order_status"], "Complete")
+        self.assertAlmostEqual(result.iloc[0]["sell_price"], 3200.0, places=0)
+        mock_pnl.assert_called_once()
+        pnl_args = mock_pnl.call_args[0]
+        self.assertEqual(pnl_args[0], "deepti")
+        self.assertEqual(pnl_args[2], "p/l")
+
+    def test_non_deepti_sell_tries_api(self):
+        """Non-deepti accounts also try the API sell, not immediate manual close."""
+        row = _base_row(
+            status="open", account="dummy",
+            sl=2900.0, profit_target=3450.0,
+            buy_price=3000.0, quantity=3,
+        )
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order()
+        po.place_cash_order.return_value = None  # API fails for this account
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=2800.0), \
+             patch.object(self.strategy.notifier, "send_sell_failed") as mock_notify, \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}):
+            self.strategy._process_open_positions(data, po)
+
+        po.place_cash_order.assert_called()
+        self.assertEqual(data.iloc[0]["close_order_status"], "sell_failed")
+        self.assertEqual(data.iloc[0]["status"], "open")
+        mock_notify.assert_called_once()
+
+    # -----------------------------------------------------------------------
+    # 7. Buy failure — retry, sync resolution
+    # -----------------------------------------------------------------------
+
+    def test_buy_fails_sends_telegram(self):
+        """When BUY fails, buy_failed is set and send_buy_failed telegram is sent."""
+        row = _base_row(sl=2800.0, percent_increase=15.0)
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order()
+        po.place_cash_order.return_value = None  # buy always fails
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=3000.0), \
+             patch.object(self.strategy.notifier, "send_buy_failed") as mock_notify, \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}):
+            self.strategy._process_new_orders(data, po)
+
+        self.assertEqual(data.iloc[0]["open_order_status"], "buy_failed")
+        self.assertEqual(data.iloc[0]["status"], "new")
+        mock_notify.assert_called_once()
+
+    def test_buy_fails_retry_succeeds(self):
+        """buy_failed row retried next cycle — if buy succeeds, status becomes open."""
+        row = _base_row(sl=2800.0, percent_increase=15.0, open_order_status="buy_failed")
+        _write_csv(self.csv_path, [row])
+        data = _read_csv(self.csv_path)
+
+        po = _make_place_order(buy_order_id="RETRY_BUY_OK")
+
+        with patch.object(self.strategy, "get_nse_ltp_with_fallback", return_value=3000.0), \
+             patch("elliot_cash_stratergy.configuration.ConfigurationLoader.get_configuration",
+                   return_value={"dummy_telegram": "CHAT456"}):
+            self.strategy._process_new_orders(data, po)
+
+        self.assertEqual(data.iloc[0]["status"], "open")
+        self.assertEqual(data.iloc[0]["buy_order_id"], "RETRY_BUY_OK")
+
+    def test_buy_fails_sync_resolves(self):
+        """buy_failed row resolved by Google Sheet entry correction."""
+        row = _base_row(
+            status="new", open_order_status="buy_failed",
+            sl=2800.0, percent_increase=15.0, amount=10000.0,
+        )
+        _write_csv(self.csv_path, [row])
+
+        corrections = self._corrections_df([{
+            "sl_no": 1,
+            "account": "dummy", "symbol": "RELIANCE",
+            "entry_exit": "entry", "price": 3100.0, "date": "2026-06-10",
+        }])
+
+        with patch("elliot_cash_stratergy.pd.read_csv", side_effect=[corrections, _read_csv(self.csv_path)]):
+            self.strategy.sync_elliot_strategy()
+
+        result = _read_csv(self.csv_path)
+        self.assertEqual(result.iloc[0]["status"], "open")
+        self.assertEqual(result.iloc[0]["open_order_status"], "Complete")
+        self.assertAlmostEqual(result.iloc[0]["buy_price"], 3100.0, places=0)
+
+    # -----------------------------------------------------------------------
+    # 8. Execution order — sync before processing
+    # -----------------------------------------------------------------------
+
+    def test_sync_runs_before_order_processing(self):
+        """execute_strategy calls sync_elliot_strategy before _process_new_orders."""
+        call_order = []
+
+        fake_now = datetime(2026, 6, 17, 9, 28, 0)
+
+        with patch.object(self.strategy, "sync_elliot_strategy",
+                          side_effect=lambda: call_order.append("sync")), \
+             patch.object(self.strategy, "_process_new_orders",
+                          side_effect=lambda *a: call_order.append("new")), \
+             patch.object(self.strategy, "_process_open_positions",
+                          side_effect=lambda *a, **kw: (call_order.append("open"), (None, True))[-1]), \
+             patch.object(self.strategy, "_process_pending_orders",
+                          side_effect=lambda *a: call_order.append("pending")), \
+             patch("elliot_cash_stratergy.pd.read_csv",
+                   return_value=pd.DataFrame([_base_row()])), \
+             patch("pandas.DataFrame.to_csv"), \
+             patch("elliot_cash_stratergy.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.strptime.side_effect = datetime.strptime
+            self.strategy.execute_strategy(_make_place_order())
+
+        self.assertTrue(len(call_order) >= 2)
+        self.assertEqual(call_order[0], "sync")
 
 
 if __name__ == "__main__":

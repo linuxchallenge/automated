@@ -60,7 +60,9 @@
       "Bash(~/.local/bin/pip install *)",
       "Bash(~/.local/bin/pylint *)",
       "Bash(/tmp/test_venv/bin/pip install *)",
-      "Bash(sudo apt-get install -y python3-venv python3-pip)"
+      "Bash(sudo apt-get install -y python3-venv python3-pip)",
+      "Bash(read hash *)",
+      "Bash(git diff *)"
     ]
   },
   "hooks": {

@@ -632,40 +632,32 @@ class ElliotCashStratergy:
         return trailing_stop, days_held
 
     def _trigger_sell(self, data, idx, row, place_order, *, last_price):  # pylint: disable=too-many-arguments
-        """Place SELL order (API or manual) and update CSV. Returns True if handled."""
+        """Place SELL order via API and update CSV. Returns True if handled."""
         symbol = row['symbol']
 
-        if row['account'] == "deepti":
-            order_id = None
-            for attempt in range(self._max_order_retries):
-                order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
-                if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
-                    self._reset_retry_count(row['account'], symbol, "close")
-                    break
-                if attempt < self._max_order_retries - 1:
-                    sleep(2 * (attempt + 1))
+        order_id = None
+        for attempt in range(self._max_order_retries):
+            order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
+            if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
+                self._reset_retry_count(row['account'], symbol, "close")
+                break
+            if attempt < self._max_order_retries - 1:
+                sleep(2 * (attempt + 1))
 
-            if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
-                logger.error(f"EW: SELL order failed after retries for {symbol}")
-                data.loc[idx, 'close_order_id'] = None
-                data.loc[idx, 'close_order_status'] = 'sell_failed'
-                data.to_csv(self.csv_path, index=False)
-                self.notifier.send_sell_failed(
-                    row['account'], symbol,
-                    row['quantity'], last_price
-                )
-                return False
+        if not order_id or (isinstance(order_id, float) and pd.isna(order_id)):
+            logger.error(f"EW: SELL order failed after retries for {symbol}")
+            data.loc[idx, 'close_order_id'] = None
+            data.loc[idx, 'close_order_status'] = 'sell_failed'
+            data.to_csv(self.csv_path, index=False)
+            self.notifier.send_sell_failed(
+                row['account'], symbol,
+                row['quantity'], last_price
+            )
+            return False
 
-            data.loc[idx, 'close_order_id'] = order_id
-            data.loc[idx, 'close_order_status'] = 'close_pending'
-            data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
-        else:
-            data.loc[idx, 'close_order_status'] = 'Complete'
-            data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
-            data.loc[idx, 'status'] = 'close'
-            data.loc[idx, 'sell_price'] = last_price
-            self.notifier.send_manual_close_request(row['account'], symbol)
-
+        data.loc[idx, 'close_order_id'] = order_id
+        data.loc[idx, 'close_order_status'] = 'close_pending'
+        data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
         data.to_csv(self.csv_path, index=False)
         return True
 
