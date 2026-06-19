@@ -38,9 +38,12 @@ class telegram_send_api(object):
                 response = requests.post(url, data=payload, files=files, timeout=10)
         except Exception as e:
             print(f"Error sending file: {e}")
-            response = requests.post(url, data=payload, files=files, timeout=10)
-            print(response.text)
-        files['document'].close()
+            try:
+                response = requests.post(url, data=payload, files=files, timeout=10)
+            except Exception as e2:
+                print(f"Error sending file on retry: {e2}")
+        finally:
+            files['document'].close()
 
     def send_message(self, chat_id, message):
         payload = {
@@ -60,8 +63,10 @@ class telegram_send_api(object):
                 response = requests.post(url, data=payload, files=files, timeout=10)
         except Exception as e:
             print(f"Error sending message: {e}")
-            response = requests.post(url, data=payload, files=files, timeout=10)
-            print(response.text)
+            try:
+                response = requests.post(url, data=payload, files=files, timeout=10)
+            except Exception as e2:
+                print(f"Error sending message on retry: {e2}")
 
 #x = telegram_send_api()
 #x.send_file("-4008545231", "sold_options_info_2024-01-06_account1_UnderlyingSymbol.BANKNIFTY.csv")
