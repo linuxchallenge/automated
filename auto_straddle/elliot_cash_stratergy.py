@@ -88,6 +88,7 @@ class TelegramNotifier:
         message = f"EW strategy {message_type} {account} {symbol} {details}"
         chat_id = self._get_chat_id(account)
         if not chat_id:
+            logger.error(f"Wrong account {account}")
             return False
         try:
             self.telegram_api.send_message(chat_id, message)
@@ -443,8 +444,13 @@ class ElliotCashStratergy:
                         quantity = int(float(r.get('quantity') or 0))
                         if buy_price > 0 and sell_price > 0 and quantity > 0:
                             profit_loss = (sell_price - buy_price) * quantity
-                            self.notifier.send_success(account, sym, "p/l",
+                            logger.info(f"EW SYNC: PL report {account} {sym} {profit_loss}")
+                            ret = self.notifier.send_success(account, sym, "p/l",
                                                        f"elliot_wave {profit_loss}")
+                            if ret:
+                                logger.info(f"EW SYNC: PL report sent for {account} {sym}")
+                            else:
+                                logger.error(f"EW SYNC: Failed to send PL report for {account} {sym}")
                             brokerage_dict = brokrage_calculator.calculate_equity_delivery(
                                 buy_price, sell_price, quantity)
                             brokerage = brokerage_dict['total_charges']
