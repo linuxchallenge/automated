@@ -382,27 +382,62 @@ class cash_stratergy:
                 wait_time = (attempt + 1) * 2  # 2, 4, 6 seconds
                 time.sleep(wait_time)
 
+    def get_yahoo_nse_ltp(self, symbol, max_retries=3, use_cache=True):
+        cache_key = f"YAHOO_NSE_{symbol}"
+
+        if use_cache:
+            cached_price = self.price_cache.get(cache_key)
+            if cached_price is not None:
+                return cached_price
+
+        yahoo_headers = {
+            "accept": "application/json",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        yahoo_symbol = f"{symbol}.NS"
+
+        for attempt in range(max_retries):
+            try:
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1d"
+
+                self.price_cache.record_call()
+                response = requests.get(url, headers=yahoo_headers, timeout=10)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'chart' in data and 'result' in data['chart'] and data['chart']['result']:
+                        result = data['chart']['result'][0]
+                        meta = result.get('meta', {})
+                        price = meta.get('regularMarketPrice')
+
+                        if price:
+                            self.price_cache.set(cache_key, float(price))
+                            self.price_cache.set(symbol, float(price))
+                            logger.info(f"Yahoo Finance NSE price for {symbol}: {price}")
+                            return float(price)
+                        else:
+                            logger.warning(f"No price in Yahoo response for {symbol}")
+                    else:
+                        error_msg = data.get('chart', {}).get('error', {}).get('description', 'Unknown error')
+                        logger.warning(f"Yahoo Finance error for {symbol}: {error_msg}")
+                else:
+                    logger.warning(f"Yahoo Finance returned status {response.status_code} for {symbol}")
+
+            except Exception as e:
+                logger.warning(f"Error fetching Yahoo NSE price for {symbol} (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+
+        raise ValueError(f"Failed to fetch Yahoo NSE price for {symbol} after {max_retries} attempts")
+
     def get_nse_ltp_with_fallback(self, symbol):
-        """
-        Fetch NSE LTP with fallback to alternative method
-
-        Args:
-            symbol: Stock symbol
-
-        Returns:
-            float: Last traded price or None if all methods fail
-
-        Raises:
-            ValueError: If all methods fail to fetch price
-        """
         try:
-            # Primary method: Direct NSE API with caching
-            return self.get_nse_ltp(symbol, max_retries=3)
+            return self.get_yahoo_nse_ltp(symbol, max_retries=3)
         except Exception as e:
-            logger.warning(f"Primary NSE API failed for {symbol}: {e}")
+            logger.warning(f"Yahoo Finance failed for {symbol}: {e}")
 
             try:
-                # Fallback: Angel One ltpData API
                 angel_api = getattr(getattr(self, '_place_order', None), 'obj_1', None)
                 if angel_api:
                     logger.info(f"Trying Angel One LTP fallback for {symbol}")
@@ -411,14 +446,16 @@ class cash_stratergy:
                         return price
                     else:
                         logger.error(f"Angel One LTP fallback returned None for {symbol}")
-                        raise ValueError(f"Angel One LTP fallback returned None for {symbol}") from e
                 else:
-                    logger.error(f"No Angel One API available for fallback for {symbol}")
-                    raise ValueError(f"No Angel One API available for fallback for {symbol}") from e
-            except ValueError:
-                raise
+                    logger.warning(f"No Angel One API available, trying NSE direct for {symbol}")
             except Exception as e2:
-                logger.error(f"Angel One LTP fallback also failed for {symbol}: {e2}")
+                logger.warning(f"Angel One LTP fallback failed for {symbol}: {e2}")
+
+            try:
+                logger.info(f"Trying NSE direct API as last resort for {symbol}")
+                return self.get_nse_ltp(symbol, max_retries=2)
+            except Exception as e3:
+                logger.error(f"All methods failed to fetch price for {symbol}: Yahoo={e}, NSE={e3}")
                 raise ValueError(f"All methods failed to fetch price for {symbol}") from e
 
 
