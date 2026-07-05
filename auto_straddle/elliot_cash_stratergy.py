@@ -446,7 +446,7 @@ class ElliotCashStratergy:
                             profit_loss = (sell_price - buy_price) * quantity
                             logger.info(f"EW SYNC: PL report {account} {sym} {profit_loss}")
                             ret = self.notifier.send_success(account, sym, "p/l",
-                                                       f"elliot_wave {profit_loss}")
+                                                       f"elliot wave {profit_loss:.2f}")
                             if ret:
                                 logger.info(f"EW SYNC: PL report sent for {account} {sym}")
                             else:
@@ -801,7 +801,7 @@ class ElliotCashStratergy:
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
 
                         self.notifier.send_success(row['account'], row['symbol'], "p/l",
-                                                   f"elliot_wave {profit_loss}")
+                                                   f"elliot wave {profit_loss:.2f}")
 
                         brokerage_dict = brokrage_calculator.calculate_equity_delivery(
                             row['buy_price'], final_price, row['quantity'])

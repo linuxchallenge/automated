@@ -10,7 +10,10 @@
 # pylint: disable=C0103
 # pylint: disable=W0105
 
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 
 apiurl = 'https://api.telegram.org/bot{token}/{method}'.format
 token = '5924214275:AAGdOZwDp72f15flvxok3NX_v3eqr0LjuT8'
@@ -34,14 +37,14 @@ class telegram_send_api(object):
         try:
             response = requests.post(url, data=payload, files=files, timeout=10)
             if response.status_code != 200:
-                print(response.text)
+                logger.warning(f"Telegram send_file failed ({response.status_code}): {response.text}")
                 response = requests.post(url, data=payload, files=files, timeout=10)
         except Exception as e:
-            print(f"Error sending file: {e}")
+            logger.error(f"Error sending file: {e}")
             try:
                 response = requests.post(url, data=payload, files=files, timeout=10)
             except Exception as e2:
-                print(f"Error sending file on retry: {e2}")
+                logger.error(f"Error sending file on retry: {e2}")
         finally:
             files['document'].close()
 
@@ -55,18 +58,23 @@ class telegram_send_api(object):
         files = {}
         method = 'sendMessage'
         url = apiurl(token=token, method=method)
-        print(url)
         try:
             response = requests.post(url, data=payload, files=files, timeout=10)
             if response.status_code != 200:
-                print(response.text)
+                logger.warning(f"Telegram send_message failed ({response.status_code}): {response.text}")
+                # Retry without markdown parse_mode in case of formatting issues
+                payload.pop('parse_mode', None)
                 response = requests.post(url, data=payload, files=files, timeout=10)
+                if response.status_code != 200:
+                    raise Exception(f"Telegram API error {response.status_code}: {response.text}")
         except Exception as e:
-            print(f"Error sending message: {e}")
+            logger.error(f"Error sending message: {e}")
             try:
+                payload.pop('parse_mode', None)
                 response = requests.post(url, data=payload, files=files, timeout=10)
             except Exception as e2:
-                print(f"Error sending message on retry: {e2}")
+                logger.error(f"Error sending message on retry: {e2}")
+                raise
 
 #x = telegram_send_api()
 #x.send_file("-4008545231", "sold_options_info_2024-01-06_account1_UnderlyingSymbol.BANKNIFTY.csv")
