@@ -464,6 +464,18 @@ class ElliotCashStratergy:
             if not account or not symbol or action not in ('entry', 'exit'):
                 continue
 
+            # Stale-correction guard: a correction may only touch positions
+            # whose signal date is on/before the correction date. The sheet
+            # is re-read every cycle, so without this an already-applied
+            # correction left in the sheet re-applies to any future position
+            # of the same symbol (this corrupted PFC/ZYDUSLIFE/LENSKART).
+            corr_dt = pd.to_datetime(correction_date, errors='coerce')
+            if pd.isna(corr_dt):
+                logger.warning(f"EW sync: skipping correction {symbol}/{account} — "
+                               f"missing/invalid date '{correction_date}'")
+                continue
+            signal_dates = pd.to_datetime(local_data['date'], errors='coerce')
+
             # Normalize symbol for matching (e.g. ASIANPAINTS vs ASIANPAINT)
             symbol_variants = [symbol]
             if symbol.endswith('S'):
@@ -478,6 +490,7 @@ class ElliotCashStratergy:
                         & (local_data['symbol'] == sym)
                         & (local_data['status'].isin(['open']))
                         & (local_data['close_order_status'] != 'Complete')
+                        & (signal_dates <= corr_dt)
                     )
                     if not mask.any():
                         continue
@@ -544,6 +557,7 @@ class ElliotCashStratergy:
                         & (local_data['symbol'] == sym)
                         & (local_data['status'].isin(['new']))
                         & (local_data['open_order_status'].isin(['buy_failed', '']) | local_data['open_order_status'].isna())
+                        & (signal_dates <= corr_dt)
                     )
                     if not mask.any():
                         continue
@@ -607,6 +621,18 @@ class ElliotCashStratergy:
 
                 if last_price > row['sl']:
                     quantity = int(float(row['amount']) / last_price)
+
+                    if quantity < 1:
+                        logger.warning(
+                            f"EW: {row['sl_no']} skipped — price {last_price} exceeds "
+                            f"per-trade amount {row['amount']}, quantity would be 0")
+                        data.loc[idx, 'status'] = 'close'
+                        data.loc[idx, 'open_order_status'] = 'not_affordable'
+                        data.to_csv(self.csv_path, index=False)
+                        self.notifier.send_error(
+                            row['account'], symbol, "open",
+                            f"Skipped: price {last_price} exceeds per-trade amount {row['amount']}")
+                        continue
 
                     order_id = None
                     for attempt in range(self._max_order_retries):
@@ -719,6 +745,9 @@ class ElliotCashStratergy:
         data.loc[idx, 'close_order_id'] = order_id
         data.loc[idx, 'close_order_status'] = 'close_pending'
         data.loc[idx, 'close_date'] = datetime.now().strftime("%Y-%m-%d")
+        # Provisional sell price = LTP at trigger time; real fill overwrites it
+        # for API accounts, and it is the dummy-account fill price.
+        data.loc[idx, 'sell_price'] = last_price
         data.to_csv(self.csv_path, index=False)
         return True
 
@@ -841,7 +870,11 @@ class ElliotCashStratergy:
                     data.to_csv(self.csv_path, index=False)
                     continue
 
-                status, final_price = place_order.order_status(row['account'], order_id, row['buy_price'])
+                if is_open_pending or pd.isna(row.get('sell_price')):
+                    fallback_price = row['buy_price']
+                else:
+                    fallback_price = row['sell_price']
+                status, final_price = place_order.order_status(row['account'], order_id, fallback_price)
 
                 if status == "Complete":
                     if not is_open_pending:
@@ -888,9 +921,7 @@ class ElliotCashStratergy:
 
                         df.to_csv(file_name, index=False)
                         data.loc[idx, 'close_order_status'] = 'Complete'
-
-                        if row['account'] == 'deepti':
-                            data.loc[idx, 'status'] = 'close'
+                        data.loc[idx, 'status'] = 'close'
                     else:
                         data.loc[idx, 'buy_price'] = final_price
                         data.loc[idx, 'open_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -21,6 +21,7 @@ Note:
 from elliott_wave_strategy import *
 import pandas as pd
 from datetime import datetime, timedelta
+from tv_data import load_stock_data_tv
 
 pd.set_option("display.max_rows", 300)
 pd.set_option("display.max_columns", 20)
@@ -52,12 +53,14 @@ def main():
     # ── Load Nifty 200 symbols from CSV ────────────────────────────────
     symbols = load_nifty200_from_csv("ind_nifty200list.csv")
 
-    # ── 6-month date range ─────────────────────────────────────────────
+    # ── Date range: 500 daily bars from TradingView (matches live view),
+    # but only signals from the last 6 months are reported/traded ──────
     end_date = datetime.today().strftime("%Y-%m-%d")
     start_date = (datetime.today() - timedelta(days=183)).strftime("%Y-%m-%d")
+    signal_cutoff = datetime.today() - timedelta(days=183)
 
     # ── Load Data ────────────────────────────────────────────────────────
-    stock_data = load_stock_data(symbols, start=start_date, end=end_date)
+    stock_data = load_stock_data_tv(symbols, n_bars=500)
 
     if not stock_data:
         print("Failed to load data! Check your internet connection.")
@@ -81,6 +84,7 @@ def main():
         swings = detect_swing_points(df, config)
         structures = identify_wave_structures(swings, config)
         signals = generate_signals(df, structures, config)
+        signals = [s for s in signals if s.date >= signal_cutoff]
 
         if signals:
             all_signals[sym] = signals

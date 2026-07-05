@@ -62,7 +62,8 @@
       "Bash(/tmp/test_venv/bin/pip install *)",
       "Bash(sudo apt-get install -y python3-venv python3-pip)",
       "Bash(read hash *)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(/usr/bin/python3 -m pytest tests/test_elliot_cash_stratergy.py -q)"
     ]
   },
   "hooks": {

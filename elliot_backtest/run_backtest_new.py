@@ -20,6 +20,7 @@ Note:
 
 from elliott_wave_strategy import *
 import pandas as pd
+from tv_data import load_stock_data_tv
 
 pd.set_option("display.max_rows", 300)
 pd.set_option("display.max_columns", 20)
@@ -52,11 +53,9 @@ def main():
     # Place ind_nifty200list.csv in the same folder as this script.
     # Falls back to Nifty 50 if CSV not found.
     symbols = load_nifty200_from_csv("ind_nifty200list.csv")
-    start_date = "2016-01-01"
-    end_date = "2026-04-12"
 
-    # ── Load Data ────────────────────────────────────────────────────────
-    stock_data = load_stock_data(symbols, start=start_date, end=end_date)
+    # ── Load Data: ~10 years of daily bars from TradingView ─────────────
+    stock_data = load_stock_data_tv(symbols, n_bars=2500)
 
     if not stock_data:
         print("Failed to load data! Check your internet connection.")
