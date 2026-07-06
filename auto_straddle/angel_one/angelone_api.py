@@ -149,10 +149,12 @@ class angelone_api(object):
                 "ordertype":"MARKET",
                 "producttype":"DELIVERY",
                 "duration":"DAY",
-                "quantity":qty
+                "quantity":int(float(qty))
                 }
             params["price"] = 0
             response = self.obj.placeOrder(params)
+            if response is None:
+                logger.error(f"placeOrder returned no order id (rejected?) params={params}")
             return response
         except Exception as e:
             print("Order placement failed: {}".format(str(e)))

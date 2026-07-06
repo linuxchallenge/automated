@@ -1319,7 +1319,13 @@ Strategy Breakdown:"""
 
                 buy_price = float(row.get('buy_price', 0))
                 sell_price = float(row.get('sell_price', 0))
-                quantity = int(float(row.get('quantity', 0)))
+                qty_val = float(row.get('quantity', 0))
+
+                if pd.isna(buy_price) or pd.isna(sell_price) or pd.isna(qty_val):
+                    logger.warning("Skipping EW trade %s - missing buy/sell/quantity",
+                                   row.get('sl_no', ''))
+                    continue
+                quantity = int(qty_val)
 
                 if buy_price <= 0 or sell_price <= 0 or quantity <= 0:
                     logger.warning("Skipping EW trade %s - invalid data: buy=%.2f sell=%.2f qty=%d",

@@ -722,9 +722,11 @@ class ElliotCashStratergy:
         """Place SELL order via API and update CSV. Returns True if handled."""
         symbol = row['symbol']
 
+        # CSV quantity is float (column has blanks) — brokers reject non-int qty
+        sell_qty = int(float(row['quantity']))
         order_id = None
         for attempt in range(self._max_order_retries):
-            order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
+            order_id = place_order.place_cash_order(row['account'], symbol, sell_qty, "SELL")
             if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
                 self._reset_retry_count(row['account'], symbol, "close")
                 break

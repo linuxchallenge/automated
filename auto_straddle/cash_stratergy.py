@@ -967,7 +967,7 @@ class cash_stratergy:
                         # Try to place close order with retry logic
                         order_id = None
                         for attempt in range(self._max_order_retries):
-                            order_id = place_order.place_cash_order(row['account'], symbol, row['quantity'], "SELL")
+                            order_id = place_order.place_cash_order(row['account'], symbol, int(float(row['quantity'])), "SELL")
 
                             if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
                                 # Success
