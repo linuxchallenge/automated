@@ -50,6 +50,13 @@ from fund_optimizer import FundOptimizer
 logger = logging.getLogger(__name__)
 strike = {'NIFTY': 23000, 'BANKNIFTY': 49000, 'FINNIFTY': 15000}
 
+# Inherits BaseException (not Exception) so no `except Exception` in strategies or
+# libraries (tvDatafeed, websocket, yfinance) can swallow it — it must exit the
+# program so autotrade.sh restarts it.
+class WatchdogTimeout(BaseException):
+    pass
+
+
 # Define the timeout handler
 def timeout_handler(_signum, _frame):
     print("Timeout! The operation took too long.")
@@ -64,7 +71,7 @@ def timeout_handler(_signum, _frame):
 
     x.send_message(id3, "Timeout! The operation took too long restart the program.")
 
-    raise TimeoutError("Operation took too long to complete")
+    raise WatchdogTimeout("Operation took too long to complete")
 
 
 def read_csv_from_google_sheet(url, max_retries=3):

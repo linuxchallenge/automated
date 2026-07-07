@@ -65,7 +65,9 @@
       "Bash(git diff *)",
       "Bash(/usr/bin/python3 -m pytest tests/test_elliot_cash_stratergy.py -q)",
       "Bash(/home/adithya/Code/automated/venv/bin/python3 -m unittest tests.test_elliot_cash_stratergy)",
-      "Bash(/home/adithya/Code/automated/venv/bin/python3 -m py_compile cash_stratergy.py angel_one/angelone_api.py elliot_cash_stratergy.py)"
+      "Bash(/home/adithya/Code/automated/venv/bin/python3 -m py_compile cash_stratergy.py angel_one/angelone_api.py elliot_cash_stratergy.py)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import tvDatafeed; print\\('tv ok'\\)\")",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import yfinance; print\\('yf', yfinance.__version__\\)\")"
     ]
   },
   "hooks": {

@@ -7,7 +7,7 @@ import re
 import string
 import time
 import pandas as pd
-from websocket import create_connection
+from websocket import create_connection, WebSocketTimeoutException
 import requests
 from urllib.parse import quote
 from pathlib import Path
@@ -530,79 +530,86 @@ class TvDatafeed:
 
         self.__create_connection()
 
-        self.__send_message("set_auth_token", [self.token])
-        self.__send_message("chart_create_session", [self.chart_session, ""])
-        self.__send_message("quote_create_session", [self.session])
-        self.__send_message(
-            "quote_set_fields",
-            [
-                self.session,
-                "ch",
-                "chp",
-                "current_session",
-                "description",
-                "local_description",
-                "language",
-                "exchange",
-                "fractional",
-                "is_tradable",
-                "lp",
-                "lp_time",
-                "minmov",
-                "minmove2",
-                "original_name",
-                "pricescale",
-                "pro_name",
-                "short_name",
-                "type",
-                "update_mode",
-                "volume",
-                "currency_code",
-                "rchp",
-                "rtc",
-            ],
-        )
+        try:
+            self.__send_message("set_auth_token", [self.token])
+            self.__send_message("chart_create_session", [self.chart_session, ""])
+            self.__send_message("quote_create_session", [self.session])
+            self.__send_message(
+                "quote_set_fields",
+                [
+                    self.session,
+                    "ch",
+                    "chp",
+                    "current_session",
+                    "description",
+                    "local_description",
+                    "language",
+                    "exchange",
+                    "fractional",
+                    "is_tradable",
+                    "lp",
+                    "lp_time",
+                    "minmov",
+                    "minmove2",
+                    "original_name",
+                    "pricescale",
+                    "pro_name",
+                    "short_name",
+                    "type",
+                    "update_mode",
+                    "volume",
+                    "currency_code",
+                    "rchp",
+                    "rtc",
+                ],
+            )
 
-        self.__send_message(
-            "quote_add_symbols", [self.session, symbol,
-                                  {"flags": ["force_permission"]}]
-        )
-        self.__send_message("quote_fast_symbols", [self.session, symbol])
+            self.__send_message(
+                "quote_add_symbols", [self.session, symbol,
+                                      {"flags": ["force_permission"]}]
+            )
+            self.__send_message("quote_fast_symbols", [self.session, symbol])
 
-        self.__send_message(
-            "resolve_symbol",
-            [
-                self.chart_session,
-                "symbol_1",
-                '={"symbol":"'
-                + symbol
-                + '","adjustment":"splits","session":'
-                + ('"regular"' if not extended_session else '"extended"')
-                + "}",
-            ],
-        )
-        self.__send_message(
-            "create_series",
-            [self.chart_session, "s1", "s1", "symbol_1", interval, n_bars],
-        )
-        self.__send_message("switch_timezone", [
-                            self.chart_session, "exchange"])
+            self.__send_message(
+                "resolve_symbol",
+                [
+                    self.chart_session,
+                    "symbol_1",
+                    '={"symbol":"'
+                    + symbol
+                    + '","adjustment":"splits","session":'
+                    + ('"regular"' if not extended_session else '"extended"')
+                    + "}",
+                ],
+            )
+            self.__send_message(
+                "create_series",
+                [self.chart_session, "s1", "s1", "symbol_1", interval, n_bars],
+            )
+            self.__send_message("switch_timezone", [
+                                self.chart_session, "exchange"])
 
-        raw_data = ""
+            raw_data = ""
 
-        logger.debug("getting data for %s...", symbol)
-        while True:
+            logger.debug("getting data for %s...", symbol)
+            while True:
+                try:
+                    result = self.ws.recv()
+                    raw_data = raw_data + result + "\n"
+                except WebSocketTimeoutException as e:
+                    logger.warning("websocket recv timed out for %s: %s", symbol, e)
+                    break
+
+                if "series_completed" in result:
+                    break
+
+            return self.__create_df(raw_data, symbol)
+        finally:
+            # Always release the socket — leaked connections get the IP rate-limited by TV
             try:
-                result = self.ws.recv()
-                raw_data = raw_data + result + "\n"
-            except Exception as e:
-                logger.debug(e)
-                break
-
-            if "series_completed" in result:
-                break
-
-        return self.__create_df(raw_data, symbol)
+                self.ws.close()
+            except Exception:
+                pass
 
     def search_symbol(self, text: str, exchange: str = ''):
         url = self.__search_url.format(text, exchange)
