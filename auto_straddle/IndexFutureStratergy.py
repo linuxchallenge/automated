@@ -327,6 +327,9 @@ class IndexFutureStratergy:
                         if status == "Complete":
                             current_trade.loc[row_number, 'enter_order_state'] = 'open'
                             current_trade.loc[row_number, 'entry_price_pe'] = price
+                        elif status == "Open":
+                            # Order still filling - keep open_pending and re-check next cycle
+                            self.logger.info(f"PE entry order {order_id} still open for {account}, will re-check")
                         else:
                             # Send telegram message
                             sym = current_trade.loc[row_number, 'Symbol']
@@ -336,6 +339,9 @@ class IndexFutureStratergy:
                             current_trade.loc[row_number, 'enter_order_state'] = 'error'
 
                         current_trade.to_csv(file_name, index=False)
+                    elif status == "Open":
+                        # Order still filling - keep open_pending and re-check next cycle
+                        self.logger.info(f"CE entry order {order_id} still open for {account}, will re-check")
                     else:
                         # Send telegram message
                         sym = current_trade.loc[row_number, 'Symbol']
@@ -369,6 +375,11 @@ class IndexFutureStratergy:
                         if status == "Complete":
                             current_trade.loc[row_number, 'exit_order_state'] = 'close'
                             current_trade.loc[row_number, 'exit_price_pe'] = price
+                        elif status == "Open":
+                            # Order still filling - keep close_pending and re-check next cycle
+                            self.logger.info(f"PE exit order {order_id} still open for {account}, will re-check")
+                            current_trade.to_csv(file_name, index=False)
+                            return
                         else:
                             # Send telegram message
                             sym = current_trade.loc[row_number, 'Symbol']
@@ -420,6 +431,9 @@ class IndexFutureStratergy:
                                             current_trade.loc[row_number, 'profit'], brokarage, quantity)
 
                         current_trade.to_csv(file_name, index=False)
+                    elif status == "Open":
+                        # Order still filling - keep close_pending and re-check next cycle
+                        self.logger.info(f"CE exit order {order_id} still open for {account}, will re-check")
                     else:
                         # Send telegram message
                         sym = current_trade.loc[row_number, 'Symbol']

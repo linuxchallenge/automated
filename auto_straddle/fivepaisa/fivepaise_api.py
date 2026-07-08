@@ -1209,7 +1209,8 @@ class fivepaise_api(object):
             if order_status_lower in ('fully executed', 'complete'):
                 order_ret = "Complete"
             elif order_status_lower in ('open', 'pending', 'ordered',
-                                        'partially executed', 'after market order req received'):
+                                        'partially executed', 'partly executed',
+                                        'after market order req received'):
                 order_ret = "Open"
             elif 'rejected' in order_status_lower or 'cancelled' in order_status_lower:
                 order_ret = "Rejected"

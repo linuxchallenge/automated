@@ -67,7 +67,16 @@
       "Bash(/home/adithya/Code/automated/venv/bin/python3 -m unittest tests.test_elliot_cash_stratergy)",
       "Bash(/home/adithya/Code/automated/venv/bin/python3 -m py_compile cash_stratergy.py angel_one/angelone_api.py elliot_cash_stratergy.py)",
       "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import tvDatafeed; print\\('tv ok'\\)\")",
-      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import yfinance; print\\('yf', yfinance.__version__\\)\")"
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import yfinance; print\\('yf', yfinance.__version__\\)\")",
+      "Bash(git -C /home/adithya/Code/automated log --since=\"4 days ago\" --stat --date=iso)",
+      "Bash(awk '{print substr\\($2,1,2\\)}')",
+      "Bash(git -C /home/adithya/Code/automated show 041c98a --stat)",
+      "Bash(git -C /home/adithya/Code/automated show 041c98a -- extra_files/tvDataFeed/main.py)",
+      "Bash(git -C /home/adithya/Code/automated show d5880b2 -- auto_straddle/elliot_cash_stratergy.py)",
+      "Bash(git -C /home/adithya/Code/automated show 570fed9 -- auto_straddle/ledger_calculation.py auto_straddle/angel_one/angelone_api.py)",
+      "Bash(git -C /home/adithya/Code/automated log --oneline -S \"Cached token validation\" -- extra_files/tvDataFeed/main.py)",
+      "Bash(awk -F'[ ,]' '{print $2}')",
+      "Bash(grep -v \"^$\")"
     ]
   },
   "hooks": {
