@@ -76,7 +76,9 @@
       "Bash(git -C /home/adithya/Code/automated show 570fed9 -- auto_straddle/ledger_calculation.py auto_straddle/angel_one/angelone_api.py)",
       "Bash(git -C /home/adithya/Code/automated log --oneline -S \"Cached token validation\" -- extra_files/tvDataFeed/main.py)",
       "Bash(awk -F'[ ,]' '{print $2}')",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Read(//tmp/**)",
+      "Bash(./venv/bin/python -m pytest auto_straddle/tests/test_elliot_cash_stratergy.py -v)"
     ]
   },
   "hooks": {

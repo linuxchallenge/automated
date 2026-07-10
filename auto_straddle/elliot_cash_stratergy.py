@@ -512,16 +512,20 @@ class ElliotCashStratergy:
                         quantity = int(float(r.get('quantity') or 0))
                         if buy_price > 0 and sell_price > 0 and quantity > 0:
                             profit_loss = (sell_price - buy_price) * quantity
+                            brokerage_dict = brokrage_calculator.calculate_equity_delivery(
+                                buy_price, sell_price, quantity)
+                            brokerage = brokerage_dict['total_charges']
+                            days_held_val = r.get('days_held')
+                            days_held = int(float(days_held_val)) if pd.notna(days_held_val) else 0
                             logger.info(f"EW SYNC: PL report {account} {sym} {profit_loss}")
                             ret = self.notifier.send_success(account, sym, "p/l",
-                                                       f"elliot wave {profit_loss:.2f}")
+                                                       self._build_pnl_message(
+                                                           buy_price, sell_price, quantity,
+                                                           brokerage, days_held))
                             if ret:
                                 logger.info(f"EW SYNC: PL report sent for {account} {sym}")
                             else:
                                 logger.error(f"EW SYNC: Failed to send PL report for {account} {sym}")
-                            brokerage_dict = brokrage_calculator.calculate_equity_delivery(
-                                buy_price, sell_price, quantity)
-                            brokerage = brokerage_dict['total_charges']
                             close_dt = correction_date or datetime.now().strftime("%Y-%m-%d")
                             pl_dict = {
                                 'Date': str(close_dt)[:10],
@@ -822,8 +826,14 @@ class ElliotCashStratergy:
                 # --- EXIT CHECKS (priority order, matching backtest) ---
                 reason = None
 
+                # 0. Latched exit: a previous SELL attempt failed. The exit
+                #    decision was already made, so retry every cycle
+                #    regardless of current price (alerts on each failure).
+                if close_status == 'sell_failed':
+                    reason = "Sell_Failed_Retry"
+
                 # 1. Hard stop loss
-                if last_price <= hard_sl:
+                elif last_price <= hard_sl:
                     reason = "Stop_Loss"
 
                 # 2. Trailing stop
@@ -851,6 +861,23 @@ class ElliotCashStratergy:
                 last_sl_no = row['sl_no']
 
         return last_sl_no, True
+
+    @staticmethod
+    def _build_pnl_message(buy_price, sell_price, quantity, brokerage, days_held):  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        """Build a descriptive P/L report string for Telegram."""
+        invested = buy_price * quantity
+        realized = sell_price * quantity
+        gross = realized - invested
+        pct = (gross / invested * 100) if invested else 0.0
+        net = gross - brokerage
+        return (
+            f"elliot wave\n"
+            f"Buy: {buy_price:.2f} x {quantity} = {invested:.2f}\n"
+            f"Sell: {sell_price:.2f} x {quantity} = {realized:.2f}\n"
+            f"Gross P/L: {gross:+.2f} ({pct:+.2f}%)\n"
+            f"Brokerage: {brokerage:.2f} | Net P/L: {net:+.2f}\n"
+            f"Days held: {days_held}"
+        )
 
     def _process_pending_orders(self, data, place_order):
         """Process rows with pending orders — check order status and record PnL."""
@@ -890,12 +917,17 @@ class ElliotCashStratergy:
 
                         profit_loss = (final_price - row['buy_price']) * row['quantity']
 
-                        self.notifier.send_success(row['account'], row['symbol'], "p/l",
-                                                   f"elliot wave {profit_loss:.2f}")
-
                         brokerage_dict = brokrage_calculator.calculate_equity_delivery(
                             row['buy_price'], final_price, row['quantity'])
                         brokerage = brokerage_dict['total_charges']
+
+                        days_held_val = row.get('days_held')
+                        days_held = int(float(days_held_val)) if pd.notna(days_held_val) else 0
+                        self.notifier.send_success(row['account'], row['symbol'], "p/l",
+                                                   self._build_pnl_message(
+                                                       row['buy_price'], final_price,
+                                                       int(float(row['quantity'])),
+                                                       brokerage, days_held))
 
                         pl_dict = {
                             'Date': str(close_date_val)[:10],
