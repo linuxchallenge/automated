@@ -154,12 +154,25 @@ class ElliotCashStratergy:
     def __init__(self):
         ELLIOT_DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.csv_path = str(ELLIOT_DATA_DIR / 'elliot_cash_stratergy.csv')
-        # Remote Google Sheet URL for date-based full-row corrections (same column structure as local CSV)
-        self.remote_csv_url = (
-            "https://docs.google.com/spreadsheets/d/e/"
-            "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
-            "/pub?output=csv"
-        )
+        # Remote Google Sheet URLs for date-based full-row corrections, one sheet
+        # per account (each sheet has the same column structure as the local CSV)
+        self.remote_csv_urls = {
+            'deepti': (
+                "https://docs.google.com/spreadsheets/d/e/"
+                "2PACX-1vTruc_tyeub2h90CDyKxbZ2eggT97R__8a3JLcavhEBhCdfjr9YxvK_U-trRNDQsiaQv8Ec1oHk4y3I"
+                "/pub?output=csv"
+            ),
+            'leelu': (
+                "https://docs.google.com/spreadsheets/d/e/"
+                "2PACX-1vT4MwgpZU9Ln8tqS2cLn-JPtH2L3tgv2byhN91ZQXGlW2gF8MacJXy8FiW0Ja_ob5PVLRZSsX2rh9_p"
+                "/pub?output=csv"
+            ),
+            'avanthi': (
+                "https://docs.google.com/spreadsheets/d/e/"
+                "2PACX-1vSls4oqs37K6EcL1I9Mpnal3GH1jQfdVYyAEAT4OpdcttscDtNI3nAVCrnR5vsoktFFIF9rDLiY1gXC"
+                "/pub?output=csv"
+            ),
+        }
         self.execution_tracker = {"morning": 0, "afternoon": 0}
         self.nso_open = None
         self._cached_positions = None
@@ -418,9 +431,9 @@ class ElliotCashStratergy:
     # ------------------------------------------------------------------
 
     def sync_elliot_strategy(self):
-        """Apply manual corrections from Google Sheet to local CSV.
+        """Apply manual corrections from per-account Google Sheets to local CSV.
 
-        The remote sheet has columns: sl_no, account, symbol, entry_exit, price, date.
+        Each remote sheet has columns: sl_no, account, symbol, entry_exit, price, date.
         Each row is a manual correction:
           - entry_exit='exit'  → close the matching open position
           - entry_exit='entry' → record manual buy price for a position
@@ -429,18 +442,25 @@ class ElliotCashStratergy:
         Already-applied corrections are tracked via _applied_corrections to avoid
         re-processing on every loop iteration.
         """
-        if not self.remote_csv_url or 'PLACEHOLDER' in self.remote_csv_url:
-            logger.info("EW sync: remote URL not configured, skipping.")
-            return
-        try:
-            remote_data = pd.read_csv(self.remote_csv_url)
-        except Exception as e:
-            logger.error(f"Failed to download remote EW sheet: {e}")
-            return
+        frames = []
+        for sheet_account, url in self.remote_csv_urls.items():
+            if not url or 'PLACEHOLDER' in url:
+                logger.info(f"EW sync: remote URL for {sheet_account} not configured, skipping.")
+                continue
+            try:
+                sheet_data = pd.read_csv(url)
+            except Exception as e:
+                logger.error(f"Failed to download remote EW sheet for {sheet_account}: {e}")
+                continue
+            if 'entry_exit' not in sheet_data.columns:
+                logger.warning(f"EW sync: {sheet_account} sheet missing 'entry_exit' column, skipping.")
+                continue
+            frames.append(sheet_data)
 
-        if 'entry_exit' not in remote_data.columns:
-            logger.warning("EW sync: remote sheet missing 'entry_exit' column, skipping.")
+        if not frames:
+            logger.info("EW sync: no remote sheets available, skipping.")
             return
+        remote_data = pd.concat(frames, ignore_index=True)
 
         try:
             local_data = pd.read_csv(self.csv_path)

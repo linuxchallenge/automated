@@ -1,30 +1,36 @@
 # Edit this file to introduce tasks to be run by cron.
-# 
+#
 # Each task to run has to be defined through a single line
 # indicating with different fields when the task will be run
 # and what command to run for the task
-# 
+#
 # To define the time you can provide concrete values for
 # minute (m), hour (h), day of month (dom), month (mon),
 # and day of week (dow) or use '*' in these fields (for 'any').
-# 
+#
 # Notice that tasks will be started based on the cron's system
 # daemon's notion of time and timezones.
-# 
+#
 # Output of the crontab jobs (including errors) is sent through
 # email to the user the crontab file belongs to (unless redirected).
-# 
+#
 # For example, you can run a backup of all your user accounts
 # at 5 a.m every week with:
 # 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
-# 
+#
 # For more information see the manual pages of crontab(5) and cron(8)
-# 
+#
 # m h  dom mon dow   command
-45 15 * * 1-5 python3 /home/pitest/automated/DailySchedule/DailySchedule.py
-32 15 * * 1-5 python3 /home/pitest/automated/PortfolioReport/PortfolioAllert.py
+#45 15 * * 1-5 python3 /home/pitest/automated/daily_price_action/price_action.py
+#32 15 * * 1-5 python3 /home/pitest/automated/PortfolioReport/PortfolioAllert.py
+40 23 * * 1-7 sh /home/pitest/automated/gitupdate.sh > /tmp/gitupadate 2>&1
 @reboot sleep 110; /usr/bin/python3 /home/pitest/automated/ip_address/ip2.py &
-@reboot sleep 120; /usr/bin/python3 /home/pitest/automated/IntradayIndexMovement/Intraday_movement.py &
+@reboot sleep 120; /usr/bin/python3 /home/pitest/automated/auto_straddle/csv_data_fetcher.py &
+#@reboot sleep 120; /usr/bin/python3 /home/pitest/automated/IntradayIndexMovement/Intraday_movement.py &
 #@reboot sleep 140; /usr/bin/python3 /home/pitest/automated/auto_straddle/AutoStraddle.py &
 @reboot sleep 140; sh //home/pitest/automated/autotrade.sh >/tmp/cronlog 2>&1
-
+0 17 * * 5 python3 /home/pitest/automated/auto_straddle/relative_strength.py > /tmp/rs.txt 2>&1
+55 23 * * * python3 /home/pitest/automated/auto_straddle/send_email.py
+*/15 * * * * /usr/bin/python3 /home/pitest/automated/ip_address/check_public_ip.py
+45 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && /usr/bin/python3 /home/pitest/automated/monthly_pnl_report.py --send >> /tmp/monthly_pnl_report.log 2>&1
+0 9 * * 6 /usr/bin/python3 /home/pitest/automated/monthly_pnl_report.py --weekly --send >> /tmp/weekly_pnl_report.log 2>&1

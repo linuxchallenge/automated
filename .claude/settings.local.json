@@ -78,7 +78,9 @@
       "Bash(awk -F'[ ,]' '{print $2}')",
       "Bash(grep -v \"^$\")",
       "Read(//tmp/**)",
-      "Bash(./venv/bin/python -m pytest auto_straddle/tests/test_elliot_cash_stratergy.py -v)"
+      "Bash(./venv/bin/python -m pytest auto_straddle/tests/test_elliot_cash_stratergy.py -v)",
+      "Bash(../venv/bin/python -m pytest tests/test_elliot_cash_stratergy.py -q)",
+      "Bash(venv/bin/python -c ' *)"
     ]
   },
   "hooks": {

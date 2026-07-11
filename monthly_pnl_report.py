@@ -6,7 +6,7 @@ Example: python monthly_pnl_report.py 4   (for April)
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -86,7 +86,7 @@ def indian_format(value):
     return ("-" if neg else "") + result
 
 
-def load_pnl_data(month=None):
+def load_pnl_data(month=None, required=True):
     """Load consolidated PNL CSV for given month number."""
     if month is None:
         month = datetime.now().month
@@ -107,6 +107,8 @@ def load_pnl_data(month=None):
             df = df[df['Date'].dt.year == latest_year]
             return df, path
 
+    if not required:
+        return None, None
     print(f"File not found: {filename}")
     sys.exit(1)
 
@@ -240,14 +242,36 @@ def split_message(text, max_len):
 
 
 def main():
-    """Generate and optionally send monthly PNL reports."""
-    month = int(sys.argv[1]) if len(sys.argv) > 1 else datetime.now().month
-    month_name = datetime(datetime.now().year, month, 1).strftime('%B %Y')
+    """Generate and optionally send monthly (or --weekly) PNL reports."""
+    positional = [a for a in sys.argv[1:] if not a.startswith('--')]
 
-    df, path = load_pnl_data(month)
-    print(f"Loaded {len(df)} trades from {path}")
+    if '--weekly' in sys.argv:
+        # Last 7 days (Saturday run covers Mon-Fri of the ending week).
+        # The window may span a month boundary, so load both months' CSVs.
+        today = datetime.now()
+        start = today - timedelta(days=6)
+        frames = []
+        for year_month in sorted({(start.year, start.month), (today.year, today.month)}):
+            mdf, mpath = load_pnl_data(year_month[1], required=False)
+            if mdf is not None:
+                frames.append(mdf)
+                print(f"Loaded {len(mdf)} trades from {mpath}")
+        if not frames:
+            print("No PNL data files found for weekly report")
+            sys.exit(1)
+        df = pd.concat(frames, ignore_index=True)
+        df = df[df['Date'].dt.date >= start.date()]
+        title = f"Week {start.strftime('%d-%b')} to {today.strftime('%d-%b %Y')}"
+        if df.empty:
+            print(f"No trades in {title} — nothing to report")
+            return
+    else:
+        month = int(positional[0]) if positional else datetime.now().month
+        title = datetime(datetime.now().year, month, 1).strftime('%B %Y')
+        df, path = load_pnl_data(month)
+        print(f"Loaded {len(df)} trades from {path}")
 
-    reports = generate_all_reports(df, month_name)
+    reports = generate_all_reports(df, title)
 
     # Print to console
     for account, report in reports.items():

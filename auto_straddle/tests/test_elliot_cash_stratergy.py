@@ -108,8 +108,11 @@ class TestElliotCashStratergy(unittest.TestCase):
             self.strategy = ElliotCashStratergy()
 
         self.strategy.csv_path = self.csv_path
-        # Use a real-looking URL so the PLACEHOLDER guard doesn't skip sync in tests
-        self.strategy.remote_csv_url = "https://docs.google.com/spreadsheets/d/TEST_SHEET/export?format=csv"
+        # Use a single real-looking URL so the PLACEHOLDER guard doesn't skip sync
+        # in tests and mocked pd.read_csv side_effect lists stay one-read-per-sheet
+        self.strategy.remote_csv_urls = {
+            "deepti": "https://docs.google.com/spreadsheets/d/TEST_SHEET/export?format=csv"
+        }
         # Bypass market-open check in tests
         self.strategy.nso_open = True
 
