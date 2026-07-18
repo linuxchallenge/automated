@@ -34,8 +34,8 @@ STRATERGY_SEQ = {
 # Closing/verifying already-open hedges is driven by hedge_*_price/state
 # fields in the CSV and is NOT gated by this.
 HEDGE_ENABLED_FOR = {
-    ("SENSEX", "as"),
     ("NIFTY", "fr"),
+    ("SENSEX", "fr"),
 }
 
 class NiftyPositionalStrategy:
