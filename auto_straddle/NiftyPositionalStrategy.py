@@ -35,6 +35,7 @@ STRATERGY_SEQ = {
 # fields in the CSV and is NOT gated by this.
 HEDGE_ENABLED_FOR = {
     ("SENSEX", "as"),
+    ("NIFTY", "fr"),
 }
 
 class NiftyPositionalStrategy:
@@ -434,6 +435,11 @@ class NiftyPositionalStrategy:
                     except Exception as e:
                         logging.error("Failed to get data from OptionChainData: %s", e)
                         continue
+
+                    # SENSEX chain is fetched only here (straddle strategies dump
+                    # NIFTY/BANKNIFTY), so dump it for offline analysis
+                    if INDEX_SEQ_KEY == "SENSEX" and option_chain_analyzer is not None:
+                        self.dump_option_chain_data_to_csv(option_chain_analyzer, INDEX_SEQ_KEY)
 
                     # Loop through all accounts
                     for account in self.accounts:
@@ -840,7 +846,8 @@ class NiftyPositionalStrategy:
                     existing_sold_options_info,
                     account,
                     quantity,
-                    place_order_obj
+                    place_order_obj,
+                    option_chain_analyzer
                 )
                 return  # Position closed, no need to place hedges
 
@@ -874,6 +881,22 @@ class NiftyPositionalStrategy:
             else:
                 existing_sold_options_info = pd.concat([existing_sold_options_info, pd.DataFrame([sold_options_info])], ignore_index=True)
             self.store_sold_options_info(existing_sold_options_info, account)
+
+    def dump_option_chain_data_to_csv(self, option_chain_info, symbol):
+        """Append one option chain snapshot to csv/options_chain_{symbol}_{date}.csv"""
+        try:
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            file_name = f"csv/options_chain_{symbol}_{current_date}.csv"
+
+            if os.path.exists(file_name):
+                data_frame = pd.read_csv(file_name)
+            else:
+                data_frame = pd.DataFrame()
+
+            data_frame = pd.concat([data_frame, pd.DataFrame([option_chain_info])], ignore_index=True)
+            data_frame.to_csv(file_name, index=False)
+        except Exception as e:
+            logging.error("Failed to dump option chain data for %s: %s", symbol, e)
 
     def get_sold_options_file_path(self, account, symbol):
         """Get file path using expiry date instead of current date"""
@@ -1524,7 +1547,25 @@ class NiftyPositionalStrategy:
             logging.error(traceback.format_exc())
             raise
 
-    def _close_position(self, existing_sold_options_info, account, quantity, place_order_obj):
+    def _dummy_close_prices(self, option_chain_analyzer, ce_was_opened, pe_was_opened):
+        """Current market prices of the sold strikes, for dummy close fills.
+
+        For dummy, order_status echoes back the stored close price as the
+        "fill"; the prev_* analyzer fields track our sold strikes for both
+        fr and as. Without this, dummy exits record stale/NaN prices."""
+        updates = {}
+        if option_chain_analyzer is None:
+            return updates
+        ce_ltp = option_chain_analyzer.get('prev_ce_strangle_price')
+        pe_ltp = option_chain_analyzer.get('prev_pe_strangle_price')
+        if ce_was_opened and ce_ltp is not None:
+            updates['strangle_ce_close_price'] = ce_ltp
+        if pe_was_opened and pe_ltp is not None:
+            updates['strangle_pe_close_price'] = pe_ltp
+        return updates
+
+    def _close_position(self, existing_sold_options_info, account, quantity, place_order_obj,
+                        option_chain_analyzer=None):
         """Close open positions including hedges"""
         try:
             # Check if it's expiry day closing
@@ -1558,6 +1599,9 @@ class NiftyPositionalStrategy:
                 'trade_state': 'closing',
                 'close_time': datetime.now()
             }
+            if account == 'dummy' and not is_expiry_closing:
+                updates.update(self._dummy_close_prices(
+                    option_chain_analyzer, ce_was_opened, pe_was_opened))
 
             # Only update CE states if CE was opened
             if ce_was_opened:
