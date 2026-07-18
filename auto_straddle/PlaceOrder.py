@@ -18,8 +18,19 @@ import pandas as pd
 import angel_one.angelone_api as angel_api
 import fivepaisa.fivepaise_api as fivepaise_module
 import zerodha.zerodha_api as zerodha_module
+import TelegramSend
+import configuration
 
 logger = logging.getLogger(__name__)
+
+# Exchange freeze quantity limits (units per single order)
+freeze_qty_limit = {
+    'NIFTY': 1800,
+    'BANKNIFTY': 900,
+    'FINNIFTY': 1800,
+    'MIDCPNIFTY': 4200,
+    'SENSEX': 1000,
+}
 
 # Map commoidity to symbol
 commodity_to_symbol = {
@@ -42,6 +53,7 @@ class PlaceOrder:
         self.obj_3 = None
         self.obj_4 = None
         self.account_id = None
+        self.partial_reject_alerted = set()
 
     def init_account(self, account):
         self.account_id = account
@@ -163,6 +175,49 @@ class PlaceOrder:
         return order_id, expiry_ret
 
 
+    def send_telegram_alert(self, account, message):
+        """Send a Telegram alert to the account's configured group"""
+        try:
+            telegram_api = TelegramSend.telegram_send_api()
+            telegram_group = account + "_telegram"
+            chat_id = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+            telegram_api.send_message(chat_id, message)
+        except Exception as e:
+            logging.error(f"Failed to send Telegram alert for {account}: {e}")
+
+    def split_order_by_freeze_limit(self, order_func, rollback_func, account, strike, pe_ce, symbol, qty, intraday, multiplier, freeze_limit):
+        """Split an order whose total units exceed the exchange freeze limit into
+        multiple orders. qty is in lots. Returns comma-joined order ids, or -1 if
+        any chunk fails (already-placed chunks are rolled back via rollback_func)."""
+        max_lots = freeze_limit // multiplier
+        if max_lots <= 0:
+            logging.error(f"Freeze limit {freeze_limit} smaller than lot size {multiplier} for {symbol}, cannot split")
+            return -1
+        remaining = int(qty)
+        order_ids = []
+        placed_lots = 0
+        logging.info(f"Splitting order for {account} {symbol} {strike} {pe_ce}: {remaining} lots exceeds freeze limit {freeze_limit} units, max {max_lots} lots per order")
+        while remaining > 0:
+            chunk = min(remaining, max_lots)
+            order_id = order_func(account, strike, pe_ce, symbol, chunk, intraday)
+            if order_id == -1:
+                logging.error(f"Split order chunk failed for {account} {symbol} {strike} {pe_ce} after {placed_lots} lots placed (order ids: {order_ids})")
+                rollback_msg = ""
+                if placed_lots > 0:
+                    rollback_id = rollback_func(account, strike, pe_ce, symbol, placed_lots, intraday)
+                    if rollback_id == -1:
+                        rollback_msg = f" Rollback FAILED - {placed_lots} lots (order ids: {','.join(order_ids)}) are LIVE and untracked, square off manually!"
+                    else:
+                        rollback_msg = f" Rolled back {placed_lots} lots (rollback order id: {rollback_id})."
+                self.send_telegram_alert(account, f"❌ Split order chunk failed | {symbol} {strike} {pe_ce} | Qty: {qty} lots.{rollback_msg}")
+                return -1
+            order_ids.append(str(order_id))
+            placed_lots += chunk
+            remaining -= chunk
+            time.sleep(1)
+        logging.info(f"Split order complete for {account} {symbol} {strike} {pe_ce}: order ids {order_ids}")
+        return ','.join(order_ids)
+
     def place_orders(self, account, atm_ce_strike, pe_ce, symbol, qty, intraday=True):
         multiplication_factor = {
             'NIFTY': 65,
@@ -181,6 +236,11 @@ class PlaceOrder:
         except (ValueError, TypeError) as e:
             logging.error(f"Invalid quantity value: {qty}. Error: {e}")
             return -1
+
+        freeze_limit = freeze_qty_limit.get(symbol)
+        if freeze_limit and qty > freeze_limit:
+            return self.split_order_by_freeze_limit(self.place_orders, self.close_orders,
+                account, atm_ce_strike, pe_ce, symbol, qty // multiplier, intraday, multiplier, freeze_limit)
 
         print(f"Placing Sell order for account {account}: option with strike price {atm_ce_strike}")
         logging.info(f"Placing Sell order for account {account} {symbol}:  option with strike price {atm_ce_strike}")
@@ -258,6 +318,11 @@ class PlaceOrder:
             logging.error(f"Invalid quantity value: {qty}. Error: {e}")
             return -1
 
+        freeze_limit = freeze_qty_limit.get(symbol)
+        if freeze_limit and qty > freeze_limit:
+            return self.split_order_by_freeze_limit(self.buy_hedge_orders, self.close_hedge_orders,
+                account, strike, pe_ce, symbol, qty // multiplier, intraday, multiplier, freeze_limit)
+
         print(f"Placing Buy hedge order for account {account}: option with strike price {strike}")
         logging.info(f"Placing Buy hedge order for account {account} {symbol}: option with strike price {strike}")
         order_id = -1
@@ -327,6 +392,12 @@ class PlaceOrder:
 
         # Convert qty to integer
         qty = int(qty)
+
+        multiplier = multiplication_factor[symbol]
+        freeze_limit = freeze_qty_limit.get(symbol)
+        if freeze_limit and qty > freeze_limit:
+            return self.split_order_by_freeze_limit(self.close_hedge_orders, self.buy_hedge_orders,
+                account, strike, pe_ce, symbol, qty // multiplier, intraday, multiplier, freeze_limit)
 
         print(f"Closing hedge order for account {account}: option with strike price {strike}")
         logging.info(f"Closing hedge order for account {account}: option with strike price {strike} {symbol}")
@@ -514,6 +585,12 @@ class PlaceOrder:
         # Convert qty to integer
         qty = int(qty)
 
+        multiplier = multiplication_factor[symbol]
+        freeze_limit = freeze_qty_limit.get(symbol)
+        if freeze_limit and qty > freeze_limit:
+            return self.split_order_by_freeze_limit(self.close_orders, self.place_orders,
+                account, atm_ce_strike, pe_ce, symbol, qty // multiplier, intraday, multiplier, freeze_limit)
+
         print(f"Closing order for account {account}: option with strike price {atm_ce_strike}")
         logging.info(f"Closing order for account {account}: option with strike price {atm_ce_strike} {symbol}")
         order_id = -1
@@ -609,6 +686,31 @@ class PlaceOrder:
             return None
 
     def order_status(self, account, order_id, old_price):
+        # Split orders store multiple ids as a comma-joined string; poll each and aggregate
+        if isinstance(order_id, str) and ',' in order_id:
+            statuses = []
+            prices = []
+            for chunk_id in order_id.split(','):
+                chunk_status, chunk_price = self.order_status(account, chunk_id.strip(), old_price)
+                statuses.append(chunk_status)
+                prices.append(chunk_price)
+            logging.info(f"Aggregated split order statuses for {account} {order_id}: {statuses}")
+            if any(s in (-1, 'APIError') for s in statuses):
+                return 'APIError', -1
+            if any(s == 'NotFound' for s in statuses):
+                return 'NotFound', -1
+            if all(s == 'Complete' for s in statuses):
+                return 'Complete', sum(prices) / len(prices)
+            if all(s == 'Rejected' for s in statuses):
+                return 'Rejected', -1
+            if 'Rejected' in statuses:
+                # Some chunks filled, some rejected: never auto-retry full qty
+                if order_id not in self.partial_reject_alerted:
+                    self.partial_reject_alerted.add(order_id)
+                    self.send_telegram_alert(account, f"⚠️ Split order partially rejected | order ids: {order_id} | statuses: {statuses} | manual intervention needed")
+                return 'PartialRejected', -1
+            return 'Open', old_price
+
         print(f"Order status for order id {order_id}")
         logging.info(f"Order status for order id {order_id}")
         order_status = ''

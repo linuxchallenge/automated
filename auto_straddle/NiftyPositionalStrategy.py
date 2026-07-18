@@ -30,6 +30,13 @@ STRATERGY_SEQ = {
     "as"
 }
 
+# Hedge placement enabled only for these (symbol, stratergy) combinations.
+# Closing/verifying already-open hedges is driven by hedge_*_price/state
+# fields in the CSV and is NOT gated by this.
+HEDGE_ENABLED_FOR = {
+    ("SENSEX", "as"),
+}
+
 class NiftyPositionalStrategy:
     def __init__(self, accounts):
         self.accounts = accounts
@@ -99,8 +106,8 @@ class NiftyPositionalStrategy:
 
         # Check if it's the correct number of days before expiry
         if days_to_expiry == dates_to_expiry:
-            # Entry window is true if after 11 AM
-            is_entry_window = current_time >= time(11, 0)
+            entry_start = self.get_entry_start_time()
+            is_entry_window = current_time >= entry_start
 
             if is_entry_window:
                 logging.info("Entry window active. Current time: %s, "
@@ -108,16 +115,29 @@ class NiftyPositionalStrategy:
                            "Next expiry: %s", current_time, days_to_expiry, expiry_date)
             else:
                 logging.info("Entry window not active yet. Current time: %s, "
-                           "Entry starts at 11:00 AM", current_time)
+                           "Entry starts at %s", current_time, entry_start)
             return is_entry_window
 
         # If fewer days than required, allow entry (catch-up logic)
         if days_to_expiry < dates_to_expiry:
+            entry_start = self.get_entry_start_time(catch_up=True)
+            if current_time < entry_start:
+                logging.info("Catch-up entry for %s waiting for entry start %s (days_to_expiry=%s < required=%s)", self.symbol, entry_start, days_to_expiry, dates_to_expiry)
+                return False
             logging.info("Allowing entry for %s as we're past the ideal entry window (days_to_expiry=%s < required=%s)", self.symbol, days_to_expiry, dates_to_expiry)
             return True
 
         logging.debug("Not entry time for %s: days_to_expiry=%s, required_days=%s", self.symbol, days_to_expiry, dates_to_expiry)
         return False
+
+    def get_entry_start_time(self, catch_up=False):
+        """Entry window start per strategy: fr 9:30 (morning IV places strikes
+        wider), as 13:00 (shorter exposure for nearly the same credit).
+        Catch-up entries (prior entry day was a holiday) start at 9:30 —
+        waiting until afternoon would leave too little premium."""
+        if self.stratergy == 'as' and not catch_up:
+            return time(13, 0)
+        return time(9, 30)
 
     def should_exit_trade(self, option_chain_analyzer, sold_options_info, account):
         """
@@ -741,6 +761,10 @@ class NiftyPositionalStrategy:
         current_time = datetime.now().time()
         return current_time >= time(14, 50)
 
+    def is_hedge_enabled(self) -> bool:
+        """Check if hedge placement is enabled for the current symbol/strategy"""
+        return (self.symbol, self.stratergy) in HEDGE_ENABLED_FOR
+
     def _enter_hedge_for_open_position(self, existing_sold_options_info, account, quantity, place_order_obj):
         """Place hedge orders for an existing open position at end of day (after 2:50 PM)"""
         try:
@@ -821,7 +845,7 @@ class NiftyPositionalStrategy:
                 return  # Position closed, no need to place hedges
 
             # Check if it's time to place end-of-day hedges (after 2:50 PM, but not on expiry day)
-            if self.is_hedge_time() and not self.is_expiry_day():
+            if self.is_hedge_enabled() and self.is_hedge_time() and not self.is_expiry_day():
                 self._enter_hedge_for_open_position(
                     existing_sold_options_info,
                     account,

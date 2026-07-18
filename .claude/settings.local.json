@@ -80,7 +80,9 @@
       "Read(//tmp/**)",
       "Bash(./venv/bin/python -m pytest auto_straddle/tests/test_elliot_cash_stratergy.py -v)",
       "Bash(../venv/bin/python -m pytest tests/test_elliot_cash_stratergy.py -q)",
-      "Bash(venv/bin/python -c ' *)"
+      "Bash(venv/bin/python -c ' *)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python3 *)",
+      "Bash(awk -F: '$1>1100 && $1<1400')"
     ]
   },
   "hooks": {
