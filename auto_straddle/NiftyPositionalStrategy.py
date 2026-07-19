@@ -132,13 +132,15 @@ class NiftyPositionalStrategy:
         return False
 
     def get_entry_start_time(self, catch_up=False):
-        """Entry window start per strategy: fr 9:30 (morning IV places strikes
+        """Entry window start per strategy: fr 9:50 (morning IV places strikes
         wider), as 13:00 (shorter exposure for nearly the same credit).
         Catch-up entries (prior entry day was a holiday) start at 9:30 —
         waiting until afternoon would leave too little premium."""
-        if self.stratergy == 'as' and not catch_up:
+        if catch_up:
+            return time(9, 30)
+        if self.stratergy == 'as':
             return time(13, 0)
-        return time(9, 30)
+        return time(9, 50)
 
     def should_exit_trade(self, option_chain_analyzer, sold_options_info, account):
         """
