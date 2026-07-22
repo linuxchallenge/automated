@@ -84,7 +84,9 @@
       "Bash(/home/adithya/Code/automated/venv/bin/python3 *)",
       "Bash(awk -F: '$1>1100 && $1<1400')",
       "Bash(git -C /home/adithya/Code/automated log --oneline -3)",
-      "Bash(git -C /home/adithya/Code/automated status --short auto_straddle/)"
+      "Bash(git -C /home/adithya/Code/automated status --short auto_straddle/)",
+      "Bash(awk '{print $6, $7}')",
+      "Bash(timeout 40 ../venv/bin/python -c ' *)"
     ]
   },
   "hooks": {

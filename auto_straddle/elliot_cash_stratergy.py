@@ -624,6 +624,63 @@ class ElliotCashStratergy:
         except Exception:
             pass  # Non-Linux environments don't support SIGALRM
 
+    def _consolidate_duplicate_positions(self, data):
+        """Merge open rows that share the same sl_no into a single position.
+
+        The old accounts-sheet bug (an account listed on more than one sheet
+        row) generated several identical signal rows per account, each of
+        which placed a real broker order. Those lots are genuine holdings, so
+        we cannot simply drop the extra rows — that would orphan a real lot.
+        Instead we fold their quantity (and amount) into the first row and
+        drop the rest, so the engine manages the combined holding as one
+        position (one exit order, one P&L entry).
+
+        Only rows that are 'open' with no close activity are merged; anything
+        already selling/closed is left alone. Returns (data, changed).
+        """
+        if 'sl_no' not in data.columns or 'status' not in data.columns:
+            return data, False
+
+        eligible = data['status'] == 'open'
+        if 'close_order_status' in data.columns:
+            cstat = data['close_order_status'].astype(str).str.strip()
+            eligible &= (data['close_order_status'].isna() | (cstat == '') | (cstat == 'nan'))
+
+        dup = data.loc[eligible, 'sl_no']
+        dup_sl_nos = dup[dup.duplicated(keep=False)].unique()
+        if len(dup_sl_nos) == 0:
+            return data, False
+
+        drop_idx = []
+        for sl_no in dup_sl_nos:
+            rows = data[eligible & (data['sl_no'] == sl_no)]
+            keep_idx = rows.index[0]
+            qty = pd.to_numeric(rows['quantity'], errors='coerce').fillna(0)
+            total_qty = float(qty.sum())
+            if total_qty <= 0:
+                continue
+            buy = pd.to_numeric(rows['buy_price'], errors='coerce').fillna(0)
+            weighted_buy = float((buy * qty).sum() / total_qty)
+            data.loc[keep_idx, 'quantity'] = int(total_qty)
+            data.loc[keep_idx, 'buy_price'] = round(weighted_buy, 2)
+            if 'amount' in data.columns:
+                amt = pd.to_numeric(rows['amount'], errors='coerce').fillna(0)
+                data.loc[keep_idx, 'amount'] = float(amt.sum())
+            if 'percent_increase' in data.columns and 'profit_target' in data.columns:
+                pct = pd.to_numeric(pd.Series([rows.loc[keep_idx, 'percent_increase']]),
+                                    errors='coerce').iloc[0]
+                if pd.notna(pct):
+                    data.loc[keep_idx, 'profit_target'] = round(weighted_buy * (1 + pct / 100), 2)
+            drop_idx.extend(list(rows.index[1:]))
+            logger.warning(
+                f"EW: consolidated {len(rows)} duplicate rows for {sl_no} "
+                f"into qty={int(total_qty)} buy_price={weighted_buy:.2f}")
+
+        if drop_idx:
+            data = data.drop(index=drop_idx).reset_index(drop=True)
+            return data, True
+        return data, False
+
     def _process_new_orders(self, data, place_order):
         """Process rows with status 'new' — place BUY orders."""
         for idx, row in data[data['status'] == 'new'].iterrows():
@@ -1073,6 +1130,10 @@ class ElliotCashStratergy:
         except FileNotFoundError:
             logger.warning("EW: CSV not found, nothing to process.")
             return
+
+        data, deduped = self._consolidate_duplicate_positions(data)
+        if deduped:
+            data.to_csv(self.csv_path, index=False)
 
         new_count = len(data[data['status'] == 'new']) if 'status' in data.columns else 0
         open_count = len(data[data['status'] == 'open']) if 'status' in data.columns else 0

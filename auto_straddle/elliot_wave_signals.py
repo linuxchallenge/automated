@@ -372,6 +372,12 @@ class ElliotWaveSignalGenerator:
                 else:
                     new_amount = latest_map[account]['current_amount']
 
+        # Emit one result entry per account (latest state). The remote sheet
+        # may carry several rows per account — one per delta_change event — but
+        # signals must not be duplicated, so collapse to the final amount here.
+        for account in remote_df['account'].astype(str).str.strip().unique():
+            if account not in latest_map:
+                continue
             result.append({
                 'account': account,
                 'current_amount': round(latest_map[account]['current_amount'], 2),
