@@ -86,7 +86,21 @@
       "Bash(git -C /home/adithya/Code/automated log --oneline -3)",
       "Bash(git -C /home/adithya/Code/automated status --short auto_straddle/)",
       "Bash(awk '{print $6, $7}')",
-      "Bash(timeout 40 ../venv/bin/python -c ' *)"
+      "Bash(timeout 40 ../venv/bin/python -c ' *)",
+      "Bash(venv/bin/python -c \"import openpyxl; print\\('openpyxl', openpyxl.__version__\\)\")",
+      "Bash(venv/bin/python -c \"import pandas; print\\('pandas', pandas.__version__\\)\")",
+      "Bash(cd *)",
+      "Bash(venv/bin/python -)",
+      "Bash(venv/bin/python -c \"import tvDatafeed; print\\('OK', tvDatafeed.__file__\\)\")",
+      "Bash(../venv/bin/python -c ' *)",
+      "Bash(venv/bin/python -m py_compile weekly_index_report.py)",
+      "Bash(timeout 300 venv/bin/python weekly_index_report.py)",
+      "Bash(timeout 200 venv/bin/python -c ' *)",
+      "Bash(venv/bin/python -c \"import yfinance; print\\('yfinance', yfinance.__version__\\)\")",
+      "Bash(timeout 180 ../venv/bin/python -c ' *)",
+      "Bash(timeout 400 venv/bin/python weekly_index_report.py)",
+      "Bash(timeout 400 venv/bin/python weekly_index_report.py --send)",
+      "Bash(venv/bin/python *)"
     ]
   },
   "hooks": {

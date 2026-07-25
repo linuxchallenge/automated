@@ -11,9 +11,15 @@ from TelegramSend import telegram_send_api
 
 def is_valid_index_name(text):
     text = text.strip()
+    # Exclude PR (Price Return), TR (Total Return) and Dividend-point
+    # variants - they are calculation variants of the same underlying index,
+    # not separate indices worth ranking.
+    tokens = text.split()
+    if "Dividend" in tokens or "PR" in tokens or "TR" in tokens:
+        return False
     if (
         text.startswith("Nifty") or text.startswith("India VIX")
-    ) and " " in text and len(text.split()) < 10:
+    ) and " " in text and len(tokens) < 10:
         return True
     return False
 
