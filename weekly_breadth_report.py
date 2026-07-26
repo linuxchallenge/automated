@@ -90,27 +90,25 @@ def load_constituents(slug):
         return []
 
 
-def _bhav_day(day):
+def _bhav_day(day, errors):
     """EQ-series closes for one session as a DataFrame, cached on disk.
 
-    Returns None for non-trading days. An empty cache file marks a known
-    holiday so it is not re-requested on later runs.
+    Only successful sessions are cached. A failure (holiday, network problem,
+    NSE outage) is never recorded on disk: a transient error must not be
+    frozen in as a permanent "no trading that day".
     """
     path = os.path.join(BHAV_CACHE, f'{day}.csv')
     if os.path.exists(path):
-        if os.path.getsize(path) == 0:
-            return None
         return pd.read_csv(path)
     try:
         raw = bhavcopy_raw(day)
-    except Exception:
-        open(path, 'w', encoding='utf-8').close()   # holiday / not published yet
+    except Exception as e:
+        errors.append((day, f"{type(e).__name__}: {e}"))
         return None
     try:
         df = pd.read_csv(io.StringIO(raw))
     except Exception as e:
-        # Malformed/HTML response. Do not cache — let it retry on the next run.
-        print(f"  {day}: unparseable bhavcopy ({type(e).__name__}), skipping")
+        errors.append((day, f"unparseable: {type(e).__name__}"))
         return None
     df.columns = [str(c).strip() for c in df.columns]   # legacy headers have spaces
     # NSE serves two schemas depending on the session date: the newer UDiFF
@@ -122,7 +120,7 @@ def _bhav_day(day):
         cols = {'SYMBOL': 'sym', 'SERIES': 'series',
                 'CLOSE_PRICE': 'close', 'PREV_CLOSE': 'prev'}
     else:
-        print(f"  {day}: unrecognised bhavcopy schema {list(df.columns)[:6]}")
+        errors.append((day, f"unrecognised schema {list(df.columns)[:4]}"))
         return None
     df = df[list(cols)].rename(columns=cols)
     df['series'] = df['series'].astype(str).str.strip()
@@ -147,20 +145,23 @@ def fetch_closes(tickers):
     days = [today - timedelta(days=i) for i in range(LOOKBACK_DAYS)]
     days = [d for d in days if d.weekday() < 5]   # skip weekends without asking NSE
 
-    closes, prevs, fetched, cached = {}, {}, 0, 0
+    closes, prevs, errors, cached = {}, {}, [], 0
     for day in sorted(days):
-        was_cached = os.path.exists(os.path.join(BHAV_CACHE, f'{day}.csv'))
-        df = _bhav_day(day)
-        if was_cached:
+        if os.path.exists(os.path.join(BHAV_CACHE, f'{day}.csv')):
             cached += 1
-        else:
-            fetched += 1
+        df = _bhav_day(day, errors)
         if df is None or df.empty:
             continue
         ts = pd.Timestamp(day)
         closes[ts] = df.set_index('sym')['close']
         prevs[ts] = df.set_index('sym')['prev']
-    print(f"  sessions: {len(closes)} ({cached} cached, {fetched} fetched)")
+    print(f"  sessions: {len(closes)} ({cached} from cache), {len(errors)} unavailable")
+    # ~15 of these a year are real NSE holidays; a much larger count means the
+    # feed itself is broken, so show what it actually said.
+    for day, err in errors[:3]:
+        print(f"    {day}: {err[:160]}")
+    if len(errors) > 3:
+        print(f"    ... and {len(errors) - 3} more")
     if not closes:
         return None
 
