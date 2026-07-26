@@ -100,7 +100,8 @@
       "Bash(timeout 180 ../venv/bin/python -c ' *)",
       "Bash(timeout 400 venv/bin/python weekly_index_report.py)",
       "Bash(timeout 400 venv/bin/python weekly_index_report.py --send)",
-      "Bash(venv/bin/python *)"
+      "Bash(venv/bin/python *)",
+      "Bash(timeout 180 ../venv/bin/python portfolio_avanthi.py)"
     ]
   },
   "hooks": {
