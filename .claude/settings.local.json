@@ -114,7 +114,10 @@
       "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --send)",
       "Bash(/home/adithya/Code/automated/venv/bin/python -)",
       "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)",
-      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import json;print\\(json.load\\(open\\('/home/adithya/Code/automated/auto_straddle/gemini_credentials.json'\\)\\)['api_key']\\)\")"
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import json;print\\(json.load\\(open\\('/home/adithya/Code/automated/auto_straddle/gemini_credentials.json'\\)\\)['api_key']\\)\")",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import jugaad_data, sys; print\\('jugaad', jugaad_data.__version__ if hasattr\\(jugaad_data,'__version__'\\) else 'ok'\\)\")",
+      "Bash(timeout 1800 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)",
+      "Bash(timeout 2400 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)"
     ]
   },
   "hooks": {

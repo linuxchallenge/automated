@@ -8,7 +8,9 @@ For each tracked index it reports, per week for the last 6 weeks:
 
 Constituent lists come from niftyindices.com (cached to ind_*list.csv in this
 directory, which is also the fallback if the download fails). Daily closes come
-from yfinance. Output is a PNG dashboard plus a compact text table.
+from the NSE bhavcopy via jugaad-data, cached per session under bhavcopy_cache/
+so each weekly run only fetches the handful of new sessions. Output is a PNG
+dashboard plus a compact text table.
 
 Commentary is rule-based (always) plus a free-tier Gemini reading of the same
 table (skipped silently if the key is missing or the call fails).
@@ -24,18 +26,19 @@ Run:  python weekly_breadth_report.py            (print + write PNG only)
 # pylint: disable=C0116
 # pylint: disable=C0103
 
+import io
 import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import requests
-import yfinance as yf
+from jugaad_data.nse import bhavcopy_raw
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'auto_straddle'))
 from TelegramSend import telegram_send_api
@@ -45,10 +48,14 @@ CHAT_ID = "-891000076"  # "Daily Nifty 200 update" group (same as weekly_index_r
 
 # --- Parameters ------------------------------------------------------------
 WEEKS = 6             # weeks of history shown
-BATCH = 100           # yfinance tickers per download call
 MIN_BARS = 210        # need >200 closes for a valid 200 DMA
-HISTORY = '2y'        # yfinance download period
+LOOKBACK_DAYS = 400   # calendar days back (~270 sessions: 200 DMA + 6 weeks + slack)
+ACTION_TOL = 0.20     # |prev_close/last_close - 1| above this = corporate action.
+                      # Splits/bonuses move price >=20%; smaller deviations are
+                      # ordinary moves across a session missing from the cache,
+                      # and adjusting on those corrupts the series.
 PNG_PATH = '/tmp/weekly_breadth.png'
+BHAV_CACHE = os.path.join(os.path.dirname(__file__), 'bhavcopy_cache')
 
 CONSTITUENT_URL = "https://niftyindices.com/IndexConstituent/{}.csv"
 UA = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36'}
@@ -77,28 +84,103 @@ def load_constituents(slug):
         print(f"  {slug}: download error ({e}), using cache")
     try:
         df = pd.read_csv(path)
-        return sorted({s.strip() + '.NS' for s in df['Symbol']})
+        return sorted({s.strip() for s in df['Symbol']})
     except Exception as e:
         print(f"  {slug}: no usable list ({e})")
         return []
 
 
-def fetch_closes(tickers):
-    """Daily adjusted closes for all tickers, downloaded in batches."""
-    frames = []
-    for i in range(0, len(tickers), BATCH):
-        batch = tickers[i:i + BATCH]
-        try:
-            d = yf.download(batch, period=HISTORY, interval='1d', auto_adjust=True,
-                            progress=False, threads=True)
-            frames.append(d['Close'])
-            print(f"  batch {i // BATCH + 1}: {d['Close'].shape}")
-        except Exception as e:
-            print(f"  batch {i // BATCH + 1} failed: {e}")
-    if not frames:
+def _bhav_day(day):
+    """EQ-series closes for one session as a DataFrame, cached on disk.
+
+    Returns None for non-trading days. An empty cache file marks a known
+    holiday so it is not re-requested on later runs.
+    """
+    path = os.path.join(BHAV_CACHE, f'{day}.csv')
+    if os.path.exists(path):
+        if os.path.getsize(path) == 0:
+            return None
+        return pd.read_csv(path)
+    try:
+        raw = bhavcopy_raw(day)
+    except Exception:
+        open(path, 'w', encoding='utf-8').close()   # holiday / not published yet
         return None
-    close = pd.concat(frames, axis=1).sort_index()
-    close = close.loc[:, ~close.columns.duplicated()]
+    try:
+        df = pd.read_csv(io.StringIO(raw))
+    except Exception as e:
+        # Malformed/HTML response. Do not cache — let it retry on the next run.
+        print(f"  {day}: unparseable bhavcopy ({type(e).__name__}), skipping")
+        return None
+    df.columns = [str(c).strip() for c in df.columns]   # legacy headers have spaces
+    # NSE serves two schemas depending on the session date: the newer UDiFF
+    # layout and the older sec_bhavdata_full one. Normalise both.
+    if 'TckrSymb' in df.columns:
+        cols = {'TckrSymb': 'sym', 'SctySrs': 'series',
+                'ClsPric': 'close', 'PrvsClsgPric': 'prev'}
+    elif 'SYMBOL' in df.columns:
+        cols = {'SYMBOL': 'sym', 'SERIES': 'series',
+                'CLOSE_PRICE': 'close', 'PREV_CLOSE': 'prev'}
+    else:
+        print(f"  {day}: unrecognised bhavcopy schema {list(df.columns)[:6]}")
+        return None
+    df = df[list(cols)].rename(columns=cols)
+    df['series'] = df['series'].astype(str).str.strip()
+    df['sym'] = df['sym'].astype(str).str.strip()
+    df = df[df['series'] == 'EQ'][['sym', 'close', 'prev']]
+    df = df.apply(lambda c: pd.to_numeric(c, errors='coerce') if c.name != 'sym' else c)
+    df = df.dropna().drop_duplicates(subset='sym')
+    df.to_csv(path, index=False)
+    return df
+
+
+def fetch_closes(tickers):
+    """Split-adjusted daily closes for `tickers`, from NSE bhavcopy.
+
+    Bhavcopy closes are unadjusted, but NSE restates PrvsClsgPric on an
+    ex-date, so prev_close(t) / close(t-1) recovers the exact corporate-action
+    factor. Prices before each action are scaled by it to give a continuous
+    series (otherwise a 2:1 split reads as a 50% crash through both DMAs).
+    """
+    os.makedirs(BHAV_CACHE, exist_ok=True)
+    today = datetime.now().date()
+    days = [today - timedelta(days=i) for i in range(LOOKBACK_DAYS)]
+    days = [d for d in days if d.weekday() < 5]   # skip weekends without asking NSE
+
+    closes, prevs, fetched, cached = {}, {}, 0, 0
+    for day in sorted(days):
+        was_cached = os.path.exists(os.path.join(BHAV_CACHE, f'{day}.csv'))
+        df = _bhav_day(day)
+        if was_cached:
+            cached += 1
+        else:
+            fetched += 1
+        if df is None or df.empty:
+            continue
+        ts = pd.Timestamp(day)
+        closes[ts] = df.set_index('sym')['close']
+        prevs[ts] = df.set_index('sym')['prev']
+    print(f"  sessions: {len(closes)} ({cached} cached, {fetched} fetched)")
+    if not closes:
+        return None
+
+    close = pd.DataFrame(closes).T.sort_index()
+    keep = [s for s in tickers if s in close.columns]
+    print(f"  matched {len(keep)}/{len(tickers)} index symbols in bhavcopy")
+    close = close[keep]
+    prev = pd.DataFrame(prevs).T.sort_index().reindex_like(close)
+
+    # Corporate-action factor, then back-adjust everything before each action.
+    ratio = prev / close.shift(1)
+    ratio = ratio.where((ratio - 1).abs() > ACTION_TOL, 1.0).fillna(1.0)
+    ratio = ratio.clip(lower=0.01, upper=100)
+    factor = ratio[::-1].cumprod()[::-1].shift(-1)
+    factor.iloc[-1] = 1.0
+    n_adj = int((ratio != 1.0).sum().sum())
+    if n_adj:
+        print(f"  back-adjusted {n_adj} corporate actions")
+    close = close * factor
+
     close = close.dropna(axis=1, thresh=MIN_BARS)
     # One missing bar makes rolling(200) NaN for the next 200 days, which would
     # silently drop that stock from the >200 DMA count while it still counts
