@@ -99,7 +99,16 @@ def _bhav_day(day, errors):
     """
     path = os.path.join(BHAV_CACHE, f'{day}.csv')
     if os.path.exists(path):
-        return pd.read_csv(path)
+        # A zero-byte or truncated file (killed mid-write, or a marker left by
+        # an older version of this script) must not abort the run — drop it and
+        # re-fetch so the cache repairs itself.
+        try:
+            cached_df = pd.read_csv(path)
+            if not cached_df.empty and {'sym', 'close', 'prev'} <= set(cached_df.columns):
+                return cached_df
+        except Exception:
+            pass
+        os.remove(path)
     try:
         raw = bhavcopy_raw(day)
     except Exception as e:
