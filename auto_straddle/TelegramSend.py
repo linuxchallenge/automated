@@ -48,6 +48,27 @@ class telegram_send_api(object):
         finally:
             files['document'].close()
 
+    def send_photo(self, chat_id, file):
+        """Send an image so it renders inline in the chat (unlike send_file)."""
+        payload = {
+            'chat_id': chat_id,
+            'disable_notification': False,
+            'parse_mode': 'markdown',
+        }
+        files = {}
+        method = 'sendPhoto'
+        files['photo'] = open(file, "rb")
+
+        url = apiurl(token=token, method=method)
+        try:
+            response = requests.post(url, data=payload, files=files, timeout=30)
+            if response.status_code != 200:
+                logger.warning(f"Telegram send_photo failed ({response.status_code}): {response.text}")
+        except Exception as e:
+            logger.error(f"Error sending photo: {e}")
+        finally:
+            files['photo'].close()
+
     def send_message(self, chat_id, message):
         payload = {
             'chat_id': chat_id,

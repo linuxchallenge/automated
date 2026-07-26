@@ -101,7 +101,20 @@
       "Bash(timeout 400 venv/bin/python weekly_index_report.py)",
       "Bash(timeout 400 venv/bin/python weekly_index_report.py --send)",
       "Bash(venv/bin/python *)",
-      "Bash(timeout 180 ../venv/bin/python portfolio_avanthi.py)"
+      "Bash(timeout 180 ../venv/bin/python portfolio_avanthi.py)",
+      "Bash(timeout 120 /home/adithya/Code/automated/venv/bin/python -c ' *)",
+      "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python breadth.py)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c ' *)",
+      "Bash(timeout 300 venv/bin/pip install matplotlib)",
+      "Bash(git status *)",
+      "Bash(git check-ignore *)",
+      "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -m py_compile weekly_breadth_report.py)",
+      "Bash(GEMINI_API_KEY=bogus_key /home/adithya/Code/automated/venv/bin/python -c ' *)",
+      "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --send)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -)",
+      "Bash(timeout 900 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import json;print\\(json.load\\(open\\('/home/adithya/Code/automated/auto_straddle/gemini_credentials.json'\\)\\)['api_key']\\)\")"
     ]
   },
   "hooks": {

@@ -29,8 +29,9 @@
 #@reboot sleep 120; /usr/bin/python3 /home/pitest/automated/IntradayIndexMovement/Intraday_movement.py &
 #@reboot sleep 140; /usr/bin/python3 /home/pitest/automated/auto_straddle/AutoStraddle.py &
 @reboot sleep 140; sh //home/pitest/automated/autotrade.sh >/tmp/cronlog 2>&1
-0 17 * * 5 python3 /home/pitest/automated/auto_straddle/relative_strength.py > /tmp/rs.txt 2>&1
-10 9 * * 6 python3 /home/pitest/automated/weekly_index_report.py --send > /tmp/weekly_index_report.txt 2>&1
+30 9 * * 6 python3 /home/pitest/automated/auto_straddle/relative_strength.py > /tmp/rs.txt 2>&1
+30 9 * * 6 python3 /home/pitest/automated/weekly_index_report.py --send > /tmp/weekly_index_report.txt 2>&1
+35 9 * * 6 python3 /home/pitest/automated/weekly_breadth_report.py --send > /tmp/weekly_breadth_report.txt 2>&1
 55 23 * * * python3 /home/pitest/automated/auto_straddle/send_email.py
 */15 * * * * /usr/bin/python3 /home/pitest/automated/ip_address/check_public_ip.py
 45 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && /usr/bin/python3 /home/pitest/automated/monthly_pnl_report.py --send >> /tmp/monthly_pnl_report.log 2>&1

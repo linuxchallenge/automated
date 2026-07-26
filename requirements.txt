@@ -19,3 +19,4 @@ netifaces2
 websocket-client
 curl-cffi
 httpx
+matplotlib
