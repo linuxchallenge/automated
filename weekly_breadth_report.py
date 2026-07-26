@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+import zipfile
 from datetime import datetime, timedelta
 
 import matplotlib
@@ -38,7 +39,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import requests
-from jugaad_data.nse import bhavcopy_raw
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'auto_straddle'))
 from TelegramSend import telegram_send_api
@@ -58,6 +58,11 @@ PNG_PATH = '/tmp/weekly_breadth.png'
 BHAV_CACHE = os.path.join(os.path.dirname(__file__), 'bhavcopy_cache')
 
 CONSTITUENT_URL = "https://niftyindices.com/IndexConstituent/{}.csv"
+# Fetched straight from NSE archives rather than via jugaad-data: that package
+# is also imported by DailySchedule/ and PortfolioReport/, and this report must
+# not force a version bump on them. requests + zipfile is all this needs.
+BHAV_URL = ("https://nsearchives.nseindia.com/content/cm/"
+            "BhavCopy_NSE_CM_0_0_0_{ymd}_F_0000.csv.zip")
 UA = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36'}
 
 # label, niftyindices constituent-file slug, plot colour
@@ -90,6 +95,27 @@ def load_constituents(slug):
         return []
 
 
+def _download_bhav(day):
+    """Raw bhavcopy CSV text for one session, straight from the NSE archive zip.
+
+    Raises on anything that is not a real bhavcopy so the caller can record why:
+    a 404 is an ordinary holiday, anything else points at a blocked or broken
+    feed. Reporting the status code matters — a proxy or block page returned as
+    200 shows up as a zip error otherwise.
+    """
+    url = BHAV_URL.format(ymd=day.strftime('%Y%m%d'))
+    r = requests.get(url, headers=UA, timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    if not r.content.startswith(b'PK'):
+        raise RuntimeError(f"not a zip (got {r.content[:40]!r})")
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        names = z.namelist()
+        if not names:
+            raise RuntimeError("empty zip")
+        return z.read(names[0]).decode('utf-8', errors='replace')
+
+
 def _bhav_day(day, errors):
     """EQ-series closes for one session as a DataFrame, cached on disk.
 
@@ -110,7 +136,7 @@ def _bhav_day(day, errors):
             pass
         os.remove(path)
     try:
-        raw = bhavcopy_raw(day)
+        raw = _download_bhav(day)
     except Exception as e:
         errors.append((day, f"{type(e).__name__}: {e}"))
         return None
