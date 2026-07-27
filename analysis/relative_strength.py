@@ -3,9 +3,20 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime, timedelta
 from urllib.parse import quote
+import re
 import time
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'auto_straddle'))
 from TelegramSend import telegram_send_api
+
+# --- Telegram destination (hardcoded) --------------------------------------
+CHAT_ID = "-891000076"  # "Daily Nifty 200 update" group (same as the other reports)
+
+# Indices to fetch before rebuilding the NSE session (see the refresh comment
+# in calculate_all_relative_strengths). ~20 keeps each session under ~2 min.
+SESSION_REFRESH_EVERY = 20
 
 # Can get from https://www.nseindia.com/market-data/live-market-indices also
 
@@ -435,6 +446,63 @@ def clean_index_name_for_api(index_name):
     return cleaned_name
 
 
+def _normalize_index_name(name):
+    """Reduce an index name to a form that ignores NSE's cosmetic variations.
+
+    NSE spells the same index differently across its website and its APIs:
+    "NIFTY OIL AND GAS" vs "NIFTY OIL & GAS", "NIFTY 500 MULTICAP" vs
+    "NIFTY500 MULTICAP", and a trailing "INDEX" that is part of the real name
+    for some ("NIFTY HEALTHCARE INDEX") but not others. Dropping punctuation,
+    spaces and the INDEX token makes those variants compare equal.
+    """
+    name = name.upper().replace('&', ' AND ')
+    name = re.sub(r'\bINDEX\b', ' ', name)
+    return re.sub(r'[^A-Z0-9]', '', name)
+
+
+_canonical_names = None
+
+
+def get_canonical_index_names(session=None):
+    """{normalized name: exact NSE name} from the allIndices API, fetched once.
+
+    This is the authoritative list of indices NSE publishes. Matching against
+    it beats hand-maintained spelling rules, which drift as NSE adds indices
+    and were in places transforming correct names into rejected ones.
+    Returns {} if the call fails, which just leaves the old behaviour.
+    """
+    global _canonical_names
+    if _canonical_names is not None:
+        return _canonical_names
+    _canonical_names = {}
+    try:
+        if session is None:
+            session = get_nse_session()
+        resp = session.get("https://www.nseindia.com/api/allIndices", timeout=30)
+        resp.raise_for_status()
+        for entry in resp.json()['data']:
+            _canonical_names.setdefault(_normalize_index_name(entry['index']),
+                                        entry['index'])
+        print(f"Loaded {len(_canonical_names)} canonical index names from NSE")
+    except Exception as e:
+        print(f"Could not load canonical index names ({e}); using name rules only")
+    return _canonical_names
+
+
+def resolve_index_name(api_name, session=None):
+    """Map a cleaned index name onto NSE's exact spelling, if it publishes one.
+
+    Names with no canonical match are passed through unchanged: many come from
+    the product-page scrape and are not real published indices, so they fail at
+    the fetch either way.
+    """
+    canonical = get_canonical_index_names(session).get(_normalize_index_name(api_name))
+    if canonical and canonical != api_name:
+        print(f"Resolved '{api_name}' -> '{canonical}'")
+        return canonical
+    return api_name
+
+
 def calculate_all_relative_strengths():
     """
     Calculate relative strength for all NSE indices against Nifty 50
@@ -503,6 +571,17 @@ def calculate_all_relative_strengths():
     for i, index_name in enumerate(indices_list, 1):
         print(f"\nProcessing {i}/{len(indices_list)}: {index_name}")
 
+        # NSE's session cookies go stale after ~15-30 minutes. Once they do,
+        # requests stall until the 30s timeout instead of failing outright, and
+        # the retry below only rebuilds the session on an explicit 401 — so a
+        # long run silently degrades from ~3s to ~26s per index. Refresh on a
+        # fixed interval to keep every session well inside its lifetime.
+        if i % SESSION_REFRESH_EVERY == 0:
+            print(f"Refreshing NSE session after {SESSION_REFRESH_EVERY} indices...")
+            refreshed = get_nse_session()
+            if refreshed is not None:
+                nse_session = refreshed
+
         # Skip Nifty 50 itself (it's the benchmark, so RS = 0.0)
         if index_name == "NIFTY 50":
             result = {
@@ -515,8 +594,9 @@ def calculate_all_relative_strengths():
             results.append(result)
             continue
 
-        # Clean index name for API call
-        api_index_name = clean_index_name_for_api(index_name)
+        # Clean index name for API call, then snap it to NSE's exact spelling
+        api_index_name = resolve_index_name(clean_index_name_for_api(index_name),
+                                            nse_session)
         print(f"API name: {api_index_name}")
 
         # Fetch index data (1 year of data)
@@ -554,7 +634,7 @@ def calculate_all_relative_strengths():
     return df_results
 
 
-def save_results(df_results, filename=None, send_to_telegram=True, telegram_chat_id="-891000076"):
+def save_results(df_results, filename=None, send_to_telegram=True, telegram_chat_id=CHAT_ID):
     """
     Save results to CSV and JSON files, and optionally send to Telegram
 
@@ -713,7 +793,14 @@ def test_few_indices():
 
 
 
-if __name__ == "__main__":
+def run(send=True, chat_id=CHAT_ID):
+    """Full relative-strength run: test, calculate, save/send, print.
+
+    Returns the results DataFrame so a caller can feed it to the combined
+    analysis, or None if NSE was unreachable. Standalone this used to exit(1)
+    on an API failure; as one stage of the weekly job it returns None instead
+    so the index and breadth sections still run.
+    """
     print("NSE Indices Relative Strength Calculator")
     print("="*50)
 
@@ -721,7 +808,7 @@ if __name__ == "__main__":
     if not test_few_indices():
         print("NSE API access failed. Cannot proceed without real data.")
         print("Please check your internet connection and try again later.")
-        exit(1)
+        return None
 
     print("\nTest successful! Proceeding with full calculation...")
     print("="*50)
@@ -731,7 +818,8 @@ if __name__ == "__main__":
 
     if results_df is not None:
         # Save results
-        csv_file, json_file = save_results(results_df)
+        csv_file, json_file = save_results(results_df, send_to_telegram=send,
+                                           telegram_chat_id=chat_id)
 
         # Print summary
         print("\nSUMMARY:")
@@ -758,3 +846,9 @@ if __name__ == "__main__":
         print(f"\n=== {category.capitalize()} Indices ({len(indices)}) ===")
         for idx in indices:
             print(" -", idx)
+
+    return results_df
+
+
+if __name__ == "__main__":
+    run(send=True)

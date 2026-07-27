@@ -118,7 +118,23 @@
       "Bash(/home/adithya/Code/automated/venv/bin/python -c \"import jugaad_data, sys; print\\('jugaad', jugaad_data.__version__ if hasattr\\(jugaad_data,'__version__'\\) else 'ok'\\)\")",
       "Bash(timeout 1800 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)",
       "Bash(timeout 2400 /home/adithya/Code/automated/venv/bin/python weekly_breadth_report.py --no-llm)",
-      "Bash(:)"
+      "Bash(:)",
+      "Bash(mkdir -p analysis)",
+      "Bash(git mv *)",
+      "Bash(echo \"no clash: $?\")",
+      "Bash(timeout 60 ../venv/bin/python -c ' *)",
+      "Bash(timeout 120 ../venv/bin/python -c ' *)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python weekly_analysis.py --send)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(ps -o pid,etime,time,stat,wchan:20 -p 8805)",
+      "Bash(ps -o pid,etime,time,stat,wchan:25 -p 8805)",
+      "Bash(timeout 100 ../venv/bin/python -u -c ' *)",
+      "Bash(kill 8805)",
+      "Bash(/home/adithya/Code/automated/venv/bin/python -u weekly_analysis.py --send)",
+      "Bash(timeout 60 ../venv/bin/python -u -c ' *)",
+      "Bash(timeout 200 ../venv/bin/python -u -c ' *)",
+      "Bash(kill 10623)",
+      "Bash(ps -o pid,etime,time -p 12703)"
     ]
   },
   "hooks": {

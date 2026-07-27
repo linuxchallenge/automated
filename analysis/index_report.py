@@ -8,8 +8,11 @@ For each tracked index/commodity (daily bars from TradingView) it reports:
   - % from last low fractal   (Williams bullish/swing-low fractal)
   - % from last up  fractal   (Williams bearish/swing-high fractal)
 
-Run:  python weekly_index_report.py            (print only)
-      python weekly_index_report.py --send      (also send to Telegram)
+Run:  python index_report.py            (print only)
+      python index_report.py --send      (also send to Telegram)
+
+Normally run as one stage of weekly_analysis.py; standalone entry kept for
+testing a single section without the other two.
 
 NOTE: TradingView symbols for the Nifty sub-indices vary; if a row shows
 "fetch failed", adjust its (symbol, exchange) in INSTRUMENTS below.
@@ -30,7 +33,8 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'auto_straddle'))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'auto_straddle'))
 from tvDatafeed import Interval, TvDatafeed
 from TelegramSend import telegram_send_api
 from alligator_api import alligator_api
@@ -69,7 +73,7 @@ _commodity = None
 
 def make_tv():
     """Create an authenticated TvDatafeed using the commodity TV login."""
-    creds_file = os.path.join(os.path.dirname(__file__), 'auto_straddle', 'tv_credentials.json')
+    creds_file = os.path.join(REPO_ROOT, 'auto_straddle', 'tv_credentials.json')
     try:
         creds = json.load(open(creds_file, encoding='utf-8'))
     except Exception as e:
@@ -271,7 +275,12 @@ def build_report(rows):
     return title + "```\n" + "".join(lines) + "```" + legend + note
 
 
-def main():
+def collect():
+    """Fetch every instrument and compute its metrics.
+
+    Returns list of (label, metrics|None, approx) — the input to build_report
+    and to the combined analysis.
+    """
     tv = make_tv()
     rows = []
     for label, symbol, exchange, fut, backup_kind, backup_arg in INSTRUMENTS:
@@ -292,18 +301,25 @@ def main():
         except Exception as e:
             print(f"  metric error {label}: {e}")
             rows.append((label, None, False))
+    return rows
 
+
+def run(send=False, chat_id=CHAT_ID):
+    """Build and optionally send the index report. Returns (rows, report)."""
+    rows = collect()
     report = build_report(rows)
     print("\n" + report)
 
-    if '--send' in sys.argv:
-        if CHAT_ID == "REPLACE_WITH_CHAT_ID":
-            print("\nCHAT_ID not set — refusing to send. Edit CHAT_ID at top of script.")
-            return
-        telegram_send_api().send_message(CHAT_ID, report)
-        print(f"\nSent to Telegram ({CHAT_ID})")
+    if send:
+        telegram_send_api().send_message(chat_id, report)
+        print(f"\nSent to Telegram ({chat_id})")
     else:
         print("\n--- Add --send flag to send to Telegram ---")
+    return rows, report
+
+
+def main():
+    run(send='--send' in sys.argv)
 
 
 if __name__ == '__main__':

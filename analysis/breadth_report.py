@@ -15,9 +15,14 @@ dashboard plus a compact text table.
 Commentary is rule-based (always) plus a free-tier Gemini reading of the same
 table (skipped silently if the key is missing or the call fails).
 
-Run:  python weekly_breadth_report.py            (print + write PNG only)
-      python weekly_breadth_report.py --send      (also send to Telegram)
-      python weekly_breadth_report.py --no-llm    (skip the Gemini call)
+Run:  python breadth_report.py            (print + write PNG only)
+      python breadth_report.py --send      (also send to Telegram)
+      python breadth_report.py --no-llm    (skip the Gemini call)
+
+Normally run as one stage of weekly_analysis.py; standalone entry kept for
+testing a single section without the other two. The constituent lists and the
+bhavcopy cache stay in the repo root (where they already are), not in this
+directory, so moving this file needed no data migration on the Pi.
 """
 
 # pylint: disable=W1203
@@ -27,9 +32,7 @@ Run:  python weekly_breadth_report.py            (print + write PNG only)
 # pylint: disable=C0103
 
 import io
-import json
 import os
-import re
 import sys
 import zipfile
 from datetime import datetime, timedelta
@@ -40,11 +43,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'auto_straddle'))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO_ROOT, 'auto_straddle'))
 from TelegramSend import telegram_send_api
+import llm_analysis
 
 # --- Telegram destination (hardcoded) --------------------------------------
-CHAT_ID = "-891000076"  # "Daily Nifty 200 update" group (same as weekly_index_report)
+CHAT_ID = "-891000076"  # "Daily Nifty 200 update" group (same as the other sections)
 
 # --- Parameters ------------------------------------------------------------
 WEEKS = 6             # weeks of history shown
@@ -55,7 +60,10 @@ ACTION_TOL = 0.20     # |prev_close/last_close - 1| above this = corporate actio
                       # ordinary moves across a session missing from the cache,
                       # and adjusting on those corrupts the series.
 PNG_PATH = '/tmp/weekly_breadth.png'
-BHAV_CACHE = os.path.join(os.path.dirname(__file__), 'bhavcopy_cache')
+# Constituent lists and the session cache live in the repo root, where this
+# script wrote them before it moved into analysis/ — keeping the paths pinned
+# there means the Pi's existing ~270-session cache is still found.
+BHAV_CACHE = os.path.join(REPO_ROOT, 'bhavcopy_cache')
 
 CONSTITUENT_URL = "https://niftyindices.com/IndexConstituent/{}.csv"
 # Fetched straight from NSE archives rather than via jugaad-data: that package
@@ -77,7 +85,7 @@ INDEXES = [
 
 def load_constituents(slug):
     """Download the constituent list, caching to ind_*list.csv; fall back to cache."""
-    path = os.path.join(os.path.dirname(__file__), f'{slug}.csv')
+    path = os.path.join(REPO_ROOT, f'{slug}.csv')
     try:
         r = requests.get(CONSTITUENT_URL.format(slug), headers=UA, timeout=30)
         if r.status_code == 200 and 'Symbol' in r.text[:200]:
@@ -390,12 +398,9 @@ def build_commentary(data):
 
 
 # --- Optional LLM commentary ------------------------------------------------
-# Free-tier Gemini. Purely additive: any failure just leaves the rule-based
+# Free-tier Gemini, transport shared with the combined analysis in
+# llm_analysis.py. Purely additive: any failure just leaves the rule-based
 # notes above in place, so the cron job never breaks on an LLM problem.
-GEMINI_MODEL = "gemini-flash-latest"
-LLM_MAX_CHARS = 1500   # keeps the whole report well under Telegram's 4096 cap
-GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/"
-              "models/{}:generateContent")
 GEMINI_PROMPT = (
     "Market breadth for Indian equity indices, week ending {week}.\n\n{facts}\n\n"
     "Definitions: 'above 50 DMA' is the percentage of that index's constituent "
@@ -433,57 +438,14 @@ def _llm_facts(data):
     return "\n\n".join(blocks)
 
 
-def _gemini_key():
-    """API key from env, else the gitignored credentials file."""
-    key = os.environ.get('GEMINI_API_KEY')
-    if key:
-        return key.strip()
-    path = os.path.join(os.path.dirname(__file__), 'auto_straddle',
-                        'gemini_credentials.json')
-    try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f)['api_key'].strip()
-    except Exception as e:
-        print(f"  no Gemini key ({e})")
-        return None
-
-
 def gemini_commentary(data):
     """LLM reading of the breadth figures, or None if anything goes wrong."""
-    key = _gemini_key()
-    if not key:
-        return None
     week = data[list(data)[0]]['rows'][-1]['week_end'].strftime('%d-%b-%Y')
     prompt = GEMINI_PROMPT.format(week=week, facts=_llm_facts(data))
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 2000},
-    }
-    try:
-        r = requests.post(GEMINI_URL.format(GEMINI_MODEL),
-                          headers={'x-goog-api-key': key,
-                                   'Content-Type': 'application/json'},
-                          json=payload, timeout=60)
-        if r.status_code != 200:
-            print(f"  Gemini HTTP {r.status_code}: {r.text[:200]}")
-            return None
-        parts = r.json()['candidates'][0]['content']['parts']
-        text = "".join(p.get('text', '') for p in parts).strip()
-    except Exception as e:
-        print(f"  Gemini error: {e}")
-        return None
-    if not text:
-        return None
-    # Telegram parse_mode='markdown' rejects unbalanced * _ ` [ ] — strip them
-    # so a stray character in the model's reply can't fail the whole send.
-    text = re.sub(r'[*_`\[\]]', '', text)
-    text = "\n".join(ln.strip() for ln in text.splitlines() if ln.strip())
-    # Telegram sendMessage caps at 4096 chars and send_message swallows the
-    # resulting 400, so cap the one variable-length part of the report.
-    return text[:LLM_MAX_CHARS].rstrip()
+    return llm_analysis.gemini_generate(prompt)
 
 
-def build_report(data):
+def build_report(data, include_llm=True):
     """Telegram markdown: latest-week snapshot plus 6-week %>50 DMA trend."""
     title = f"*Market Breadth — {datetime.now().strftime('%d-%b-%Y')}*\n"
     lines = [f"{'Index':<13}{'>50':>5}{'>200':>6}{'A/D':>6}{'d50':>5}\n",
@@ -510,7 +472,7 @@ def build_report(data):
     notes = build_commentary(data)
     body = "\n" + "\n".join(notes) + "\n" if notes else ""
 
-    if '--no-llm' not in sys.argv:
+    if include_llm:
         llm = gemini_commentary(data)
         if llm:
             body += "\n" + llm + "\n"
@@ -520,7 +482,8 @@ def build_report(data):
     return title + "```\n" + table + "```" + body + legend
 
 
-def main():
+def collect():
+    """Load constituents, fetch closes, compute breadth. Returns data or None."""
     members = {}
     for label, slug, _ in INDEXES:
         print(f"Loading {label} constituents ...")
@@ -530,34 +493,50 @@ def main():
 
     if not members:
         print("No constituent lists available — aborting.")
-        return
+        return None
 
     universe = sorted(set().union(*members.values()))
     print(f"Fetching closes for {len(universe)} tickers ...")
     close = fetch_closes(universe)
     if close is None or close.empty:
         print("Price download failed — aborting.")
-        return
+        return None
     print(f"usable: {close.shape[1]} tickers, {close.shape[0]} days, "
           f"last {close.index[-1].date()}")
 
     data = compute_breadth(close, members)
     if not data:
         print("No breadth data computed — aborting.")
-        return
+        return None
+    return data
 
-    report = build_report(data)
+
+def run(send=False, include_llm=True, chat_id=CHAT_ID):
+    """Build and optionally send the breadth report.
+
+    Returns (data, report, png); data is None if the section failed.
+    """
+    data = collect()
+    if data is None:
+        return None, None, None
+
+    report = build_report(data, include_llm=include_llm)
     print("\n" + report)
     png = render_dashboard(data)
     print(f"\nDashboard written to {png}")
 
-    if '--send' in sys.argv:
+    if send:
         tg = telegram_send_api()
-        tg.send_photo(CHAT_ID, png)
-        tg.send_message(CHAT_ID, report)
-        print(f"\nSent to Telegram ({CHAT_ID})")
+        tg.send_photo(chat_id, png)
+        tg.send_message(chat_id, report)
+        print(f"\nSent to Telegram ({chat_id})")
     else:
         print("\n--- Add --send flag to send to Telegram ---")
+    return data, report, png
+
+
+def main():
+    run(send='--send' in sys.argv, include_llm='--no-llm' not in sys.argv)
 
 
 if __name__ == '__main__':
