@@ -56,6 +56,8 @@ class AutoStraddleStrategy:
         self.nso_open = None
         # Cache for expiry dates
         self.expiry_dates = {}
+        # Tracks (account, symbol) already alerted about an order still pending at window close
+        self.pending_alert_sent = set()
         self._fetch_expiry_dates()
 
     def loss_limit(self, symbol):
@@ -155,6 +157,20 @@ class AutoStraddleStrategy:
             with open(error_options_file_path, 'w', encoding='utf-8') as _:
                 pass
 
+    def send_pending_order_alert(self, account, symbol):
+        """Alert that an order is still unfilled as the strategy window closes.
+
+        Unlike send_error_message this leaves the sold options file untouched, so
+        the order keeps being tracked.
+        """
+        x = TelegramSend.telegram_send_api()
+
+        telegram_group = account + "_telegram"
+
+        id1 = configuration.ConfigurationLoader.get_configuration().get(telegram_group)
+
+        x.send_message(id1, f"⏳ Auto Straddle: {symbol} | order still unfilled at window close | check manually")
+
     def check_if_trade_is_executed(self, account, symbol, place_order_obj):
 
         error_path = self.get_error_options_file_path(account, symbol)
@@ -168,6 +184,7 @@ class AutoStraddleStrategy:
         # return True if the order is executed, else False
         error_in_order = False
         error_messages = []
+        pending_order = False
         sold_options_file_path = self.get_sold_options_file_path(account, symbol)
         if os.path.exists(sold_options_file_path):
             # If the file exists, read its contents and populate sold_options_info
@@ -179,6 +196,9 @@ class AutoStraddleStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_open_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_price'] = price
+                elif order_status == 'Open':
+                    # Order is resting at the exchange, not a failure - re-check next loop
+                    pending_order = True
                 else:
                     error_in_order = True
                     pe_strike = existing_sold_options_info.iloc[-1]['atm_pe_strike']
@@ -193,6 +213,9 @@ class AutoStraddleStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_open_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_price'] = price
+                elif order_status == 'Open':
+                    # Order is resting at the exchange, not a failure - re-check next loop
+                    pending_order = True
                 else:
                     error_in_order = True
                     ce_strike = existing_sold_options_info.iloc[-1]['atm_ce_strike']
@@ -205,6 +228,9 @@ class AutoStraddleStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'pe_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_pe_close_price'] = price
+                elif order_status == 'Open':
+                    # Order is resting at the exchange, not a failure - re-check next loop
+                    pending_order = True
                 else:
                     error_in_order = True
                     pe_strike = existing_sold_options_info.iloc[-1]['atm_pe_strike']
@@ -218,6 +244,9 @@ class AutoStraddleStrategy:
                 if order_status == 'Complete':
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'ce_close_state'] = 'closed'
                     existing_sold_options_info.loc[existing_sold_options_info.index[-1], 'atm_ce_close_price'] = price
+                elif order_status == 'Open':
+                    # Order is resting at the exchange, not a failure - re-check next loop
+                    pending_order = True
                 else:
                     error_in_order = True
                     ce_strike = existing_sold_options_info.iloc[-1]['atm_ce_strike']
@@ -236,6 +265,22 @@ class AutoStraddleStrategy:
                 return False
 
             self.store_sold_options_info(existing_sold_options_info, account, symbol)
+
+            if pending_order:
+                # A leg is still open at the exchange - keep the file intact and
+                # re-check on the next loop instead of alerting
+                logging.info(f"Order still open for account {account} {symbol}, will re-check next loop")
+
+                # Option strategy window ends at 15:29, so this is the last chance to
+                # flag an order that never filled. File is left alone either way.
+                if (datetime.now().time() > time(15, 27)
+                        and (account, symbol) not in self.pending_alert_sent):
+                    self.pending_alert_sent.add((account, symbol))
+                    logging.warning(f"Order still unfilled at window close for {account} {symbol}")
+                    self.send_pending_order_alert(account, symbol)
+
+                return False
+
             return True
 
         return True
