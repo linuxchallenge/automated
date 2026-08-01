@@ -134,7 +134,15 @@
       "Bash(timeout 60 ../venv/bin/python -u -c ' *)",
       "Bash(timeout 200 ../venv/bin/python -u -c ' *)",
       "Bash(kill 10623)",
-      "Bash(ps -o pid,etime,time -p 12703)"
+      "Bash(ps -o pid,etime,time -p 12703)",
+      "Bash(grep -v '\\\\.csv$')",
+      "Bash(awk '$0>=\"2026-07-20\"')",
+      "Bash(chmod +x /home/adithya/Code/automated/csv_backup.sh)",
+      "Bash(ssh-add -l)",
+      "Bash(chmod 600 ~/.ssh/config)",
+      "Bash(sed -i 's/would archive $count files dated before $week_start into/would archive $count files untouched since $week_start into/; s/archived $count files into $archive, kept week from $week_start/archived $count files into $archive, kept everything modified since $week_start/' csv_backup.sh)",
+      "Bash(bash -n csv_backup.sh)",
+      "Bash(scp -q /home/adithya/Code/automated/csv_backup.sh pi:/home/pitest/automated/)"
     ]
   },
   "hooks": {

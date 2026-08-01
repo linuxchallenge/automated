@@ -34,3 +34,4 @@
 */15 * * * * /usr/bin/python3 /home/pitest/automated/ip_address/check_public_ip.py
 45 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && /usr/bin/python3 /home/pitest/automated/monthly_pnl_report.py --send >> /tmp/monthly_pnl_report.log 2>&1
 0 9 * * 6 /usr/bin/python3 /home/pitest/automated/monthly_pnl_report.py --weekly --send >> /tmp/weekly_pnl_report.log 2>&1
+50 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && /bin/bash /home/pitest/automated/csv_backup.sh >> /tmp/csv_backup.log 2>&1
