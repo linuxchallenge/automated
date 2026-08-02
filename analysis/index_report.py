@@ -62,9 +62,18 @@ INSTRUMENTS = [
     ("NIFTY200 ALPHA",  "NIFTY200ALPHA30", "NSE",  None, "nse", "NIFTY200 ALPHA 30"),
     ("GOLD",            "GOLD",          "MCX",    1,    "commodity", "GOLD"),
     ("SILVER",          "SILVER",        "MCX",    1,    "commodity", "SILVER"),
+    ("CRUDE OIL",       "CRUDEOIL",      "MCX",    1,    "commodity", "CRUDEOIL"),
     ("NASDAQ",          "IXIC",          "NASDAQ", None, "yf", "^IXIC"),
+    ("S&P 500",         "SPX",           "SP",     None, "yf", "^GSPC"),
     ("HANG SENG",       "HSI",           "HSI",    None, "yf", "^HSI"),
+    ("USDINR",          "USDINR",        "FX_IDC", None, "yf", "USDINR=X"),
 ]
+
+# Everything here is backdrop rather than Indian equity. The combined analysis
+# reads this block separately, otherwise the LLM treats the whole table as one
+# Indian equity list and leaves the global names out of its reading entirely.
+GLOBAL_MACRO = {"GOLD", "SILVER", "CRUDE OIL", "NASDAQ", "S&P 500",
+                "HANG SENG", "USDINR"}
 
 # Lazily-created backup feed handles (only built if TV actually fails).
 _nse_session = None
@@ -128,14 +137,15 @@ def _normalize(df):
     return df[['open', 'high', 'low', 'close']].dropna()
 
 
-def _fetch_comex_inr(metal):
-    """COMEX metal (USD) x USDINR -> INR-denominated daily OHLC via yfinance.
+def _fetch_comex_inr(usd_symbol):
+    """CME contract (USD) x USDINR -> INR-denominated daily OHLC via yfinance.
 
-    Report metrics are all relative %, so the ~constant MCX premium over COMEX
-    cancels out; this tracks MCX's % moves with ~2y of history (valid 200 EMA).
+    Report metrics are all relative %, so the ~constant MCX premium over the CME
+    contract cancels out; this tracks MCX's % moves with ~2y of history (valid
+    200 EMA), which commodity_data alone does not go back far enough to give.
     """
     import yfinance as yf
-    m = yf.download(metal, period='2y', interval='1d', progress=False)
+    m = yf.download(usd_symbol, period='2y', interval='1d', progress=False)
     fx = yf.download('USDINR=X', period='2y', interval='1d', progress=False)
     if m is None or len(m) == 0 or fx is None or len(fx) == 0:
         return None
@@ -147,12 +157,12 @@ def _fetch_comex_inr(metal):
 
 
 def _fetch_commodity(symbol):
-    """GOLD/SILVER backup: COMEXxINR (full history) then commodity_data (MCX)."""
+    """MCX backup: CMExINR (full history) then commodity_data (MCX)."""
     global _commodity
-    metal = {"GOLD": "GC=F", "SILVER": "SI=F"}.get(symbol)
-    if metal:
+    usd_symbol = {"GOLD": "GC=F", "SILVER": "SI=F", "CRUDEOIL": "CL=F"}.get(symbol)
+    if usd_symbol:
         try:
-            df = _fetch_comex_inr(metal)
+            df = _fetch_comex_inr(usd_symbol)
             if df is not None and len(df):
                 print(f"  using COMEXxINR backup for {symbol} ({len(df)} bars)")
                 return df
@@ -236,15 +246,20 @@ SHORT = {
     "NIFTY200 ALPHA": "200ALP30",
     "GOLD":           "GOLD",
     "SILVER":         "SILVER",
+    "CRUDE OIL":      "CRUDE",
     "NASDAQ":         "NASDAQ",
+    "S&P 500":        "S&P500",
     "HANG SENG":      "HANGSENG",
+    "USDINR":         "USDINR",
 }
 
 
 def _fmt(v):
     if v != v:  # NaN
         return f"{'-':>5}"
-    if abs(v) >= 10:  # 3-digit value: drop the decimal so a column separator survives
+    # Round before testing: 9.98 is under the threshold but renders as "+10.0",
+    # which fills all five columns and leaves no gap to the preceding field.
+    if abs(round(v, 1)) >= 10:  # 3-digit value: drop the decimal so a column separator survives
         return f"{v:+5.0f}"
     return f"{v:+5.1f}"
 

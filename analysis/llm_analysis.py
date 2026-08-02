@@ -26,6 +26,11 @@ GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/"
               "models/{}:generateContent")
 LLM_MAX_CHARS = 1500   # keeps each report well under Telegram's 4096 cap
+# Generous because generation time scales with the token budget and this model
+# thinks before answering: the combined call budgets 12000 tokens and has taken
+# over a minute, which a 60s timeout turned into a silently missing section.
+# Nothing here is latency-sensitive — it is a weekly cron job.
+GEMINI_TIMEOUT = 300
 
 
 def gemini_key():
@@ -69,7 +74,7 @@ def gemini_generate(prompt, max_chars=LLM_MAX_CHARS, max_tokens=2000, temperatur
         r = requests.post(GEMINI_URL.format(GEMINI_MODEL),
                           headers={'x-goog-api-key': key,
                                    'Content-Type': 'application/json'},
-                          json=payload, timeout=60)
+                          json=payload, timeout=GEMINI_TIMEOUT)
         if r.status_code != 200:
             print(f"  Gemini HTTP {r.status_code}: {r.text[:200]}")
             return None
@@ -135,25 +140,52 @@ def _rs_facts(rs_df):
 
 
 def _index_facts(index_rows):
-    """Trend/position metrics for the tracked majors and commodities."""
+    """Trend/position metrics, split into Indian equity and the global backdrop.
+
+    Presented as two labelled blocks rather than one list: under a single
+    "major indices and commodities" heading the model read the whole table as
+    Indian equity and left the US, Hong Kong, crude, gold and the rupee out of
+    its reading entirely. Imported lazily so this module keeps working if
+    index_report's TradingView dependency is unavailable.
+    """
     if not index_rows:
         return None
-    lines = []
+    try:
+        from index_report import GLOBAL_MACRO
+    except Exception:
+        GLOBAL_MACRO = set()
+
+    india, world = [], []
     for label, m, approx in index_rows:
         if m is None:
             continue
         note = "  (approximate, COMEX fallback)" if approx else ""
-        lines.append(
+        line = (
             f"{label}: last week {m['weekly_pct']:+.1f}%, "
             f"{m['vs50']:+.1f}% vs its 50 EMA, {m['vs200']:+.1f}% vs its 200 EMA, "
             f"{m['from_low']:+.1f}% from the last swing low, "
             f"{m['from_up']:+.1f}% from the last swing high{note}"
         )
-    if not lines:
+        (world if label in GLOBAL_MACRO else india).append(line)
+    if not india and not world:
         return None
-    return ("MAJOR INDICES AND COMMODITIES (daily bars; 'vs EMA' is how far the "
-            "current price sits above/below that EMA; swing high/low are the most "
-            "recent Williams fractals)\n" + "\n".join(lines))
+
+    common = ("daily bars; 'vs EMA' is how far the current price sits "
+              "above/below that EMA; swing high/low are the most recent "
+              "Williams fractals")
+    blocks = []
+    if india:
+        blocks.append(f"INDIAN INDICES ({common})\n" + "\n".join(india))
+    if world:
+        blocks.append(
+            "GLOBAL AND MACRO BACKDROP — same metrics, but these are NOT Indian "
+            "equity indices and must be read as the external conditions Indian "
+            "equities trade against: US equities (Nasdaq, S&P 500), China/Hong "
+            "Kong (Hang Seng), commodities quoted in rupees on MCX (gold, "
+            "silver, crude oil), and the rupee itself (USDINR — a RISE means a "
+            f"WEAKER rupee, which is a headwind for Indian equities) ({common})\n"
+            + "\n".join(world))
+    return "\n\n".join(blocks)
 
 
 def _breadth_facts(breadth_data):
@@ -182,23 +214,55 @@ def _breadth_facts(breadth_data):
 
 
 COMBINED_PROMPT = (
-    "You are reading three weekly datasets for the Indian equity market, week "
-    "ending {week}. They measure different things: relative strength is sector "
-    "and theme rotation, the index table is price trend and position, breadth is "
-    "how broad the participation is.\n\n{facts}\n\n"
-    "Write a combined reading in exactly 5 bullet points, each starting with "
-    "'- '. Requirements:\n"
-    "1. At least two bullets must connect findings ACROSS datasets (for example: "
-    "an index near its highs while its breadth is falling, or a sector leading on "
-    "relative strength while the broad market weakens).\n"
-    "2. Cite specific numbers and always state which period they cover "
-    "(one week, one month, six months, six-week trend).\n"
-    "3. Do not describe a one-week move as if it happened over six weeks, or "
-    "vice versa. Do not call an A/D ratio negative when it is merely below 1.0. "
-    "Relative strength is measured against Nifty 50, so a positive figure means "
+    "You are a buy-side strategist writing the Monday morning note for an Indian "
+    "equity desk, week ending {week}. Three datasets follow. They measure "
+    "different things: relative strength is sector and theme rotation within "
+    "India, the index table is price trend and position for Indian indices plus "
+    "the global and macro block, breadth is how broad participation is inside the "
+    "Indian indices.\n\n"
+    "AVAILABLE THIS WEEK: {available}. Write only about data shown below. If a "
+    "dataset is absent, never speculate about what it would have said.\n\n"
+    "{facts}\n\n"
+    "The reader has ALREADY SEEN all of these tables. A bullet that restates one "
+    "row is worthless to them. Every bullet must add something not visible from "
+    "reading a single row: a relationship between two datasets, a divergence, a "
+    "change of pace, or a consequence.\n\n"
+    "Write exactly 6 bullets, each starting with '- ', in this fixed order:\n"
+    "1. STANCE: the single most important thing about this week, combining price "
+    "trend with participation. Commit to a view — constructive, deteriorating or "
+    "mixed — and justify it with numbers.\n"
+    "2. CONFIRMATION: the strongest point where two datasets agree, naming both.\n"
+    "3. DIVERGENCE: the strongest point where two DIFFERENT datasets disagree — "
+    "an index rising while its breadth falls, a relative-strength leader inside "
+    "a weakening segment, a benchmark near its highs on narrowing participation. "
+    "Two timeframes within a single dataset are NOT a cross-dataset divergence "
+    "and do not belong here. If there is genuinely no material divergence, say "
+    "so and give the number that rules it out.\n"
+    "4. ROTATION: which sectors or themes money moved into and out of, from "
+    "relative strength, and whether the one-week and six-month pictures agree.\n"
+    "5. GLOBAL AND MACRO: US equities, Hang Seng, crude, gold and USDINR, and "
+    "what they imply for Indian equities. Never omit this bullet and never treat "
+    "those names as Indian indices.\n"
+    "6. WATCH: one falsifiable trigger for next week — a specific level or "
+    "threshold, and what crossing it would signal. Not 'watch whether X breaks'.\n"
+    "Do not use the same index, sector or theme as the subject of more than one "
+    "bullet — six bullets should cover six different things.\n"
+    "If a bullet needs a dataset that is absent, replace it with the next most "
+    "useful observation and state which data was missing.\n\n"
+    "Accuracy rules:\n"
+    "- Always state the period a number covers (one week, one month, six months, "
+    "the six-week trend). Never describe a one-week move as if it spanned six.\n"
+    "- An A/D ratio below 1.0 is weak, not negative.\n"
+    "- Relative strength is measured against Nifty 50: a positive figure is "
     "outperformance, not an absolute gain.\n"
-    "4. End with one bullet on what to watch next week.\n"
-    "No preamble, no headings, no markdown formatting, under 35 words each."
+    "- A rise in USDINR is rupee weakness; a fall is rupee strength.\n"
+    "- Use only numbers that appear above. Never compute or estimate new ones.\n\n"
+    "WEAK bullet, do not imitate — it just rereads one row:\n"
+    "'Nifty 50 rose 2.6% last week and sits 0.6% below its swing high.'\n"
+    "STRONG bullet — same row, but earns its place:\n"
+    "'Nifty 50's 2.6% week came with 50 DMA breadth up 16 points to 61%, so this "
+    "leg is broad participation rather than a few heavyweights carrying it.'\n\n"
+    "No preamble, no headings, no markdown. One sentence per bullet, 25-45 words."
 )
 
 
@@ -208,13 +272,18 @@ def combined_analysis(rs_df=None, index_rows=None, breadth_data=None, week=None)
     Needs at least two of the three datasets — with only one there is nothing
     to cross-reference and the per-section commentary already covers it.
     """
-    facts = [f for f in (_rs_facts(rs_df), _index_facts(index_rows),
-                         _breadth_facts(breadth_data)) if f]
-    if len(facts) < 2:
-        print(f"  combined analysis skipped: only {len(facts)} of 3 sections available")
+    sections = [("relative strength", _rs_facts(rs_df)),
+                ("the index table", _index_facts(index_rows)),
+                ("market breadth", _breadth_facts(breadth_data))]
+    present = [(name, f) for name, f in sections if f]
+    if len(present) < 2:
+        print(f"  combined analysis skipped: only {len(present)} of 3 sections available")
         return None
+    # Naming the available sections stops the model inventing sector rotation
+    # out of thin air on a week when relative strength failed to fetch.
     prompt = COMBINED_PROMPT.format(week=week or "this week",
-                                    facts="\n\n".join(facts))
+                                    available=", ".join(n for n, _ in present),
+                                    facts="\n\n".join(f for _, f in present))
     # Budget is generous because it also has to cover this model's thinking
     # tokens, which on a prompt this dense ran to several thousand and
     # otherwise truncated the reply after three of the five bullets.

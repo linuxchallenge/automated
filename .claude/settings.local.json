@@ -142,7 +142,14 @@
       "Bash(chmod 600 ~/.ssh/config)",
       "Bash(sed -i 's/would archive $count files dated before $week_start into/would archive $count files untouched since $week_start into/; s/archived $count files into $archive, kept week from $week_start/archived $count files into $archive, kept everything modified since $week_start/' csv_backup.sh)",
       "Bash(bash -n csv_backup.sh)",
-      "Bash(scp -q /home/adithya/Code/automated/csv_backup.sh pi:/home/pitest/automated/)"
+      "Bash(scp -q /home/adithya/Code/automated/csv_backup.sh pi:/home/pitest/automated/)",
+      "Bash(timeout 300 ../venv/bin/python -c ' *)",
+      "Bash(timeout 240 ../venv/bin/python -c ' *)",
+      "Bash(scp -o BatchMode=yes analysis/index_report.py analysis/llm_analysis.py pi:~/analysis_test/analysis/)",
+      "Bash(scp -o BatchMode=yes analysis/index_report.py pi:~/analysis_test/analysis/)",
+      "Bash(scp -o BatchMode=yes analysis/llm_analysis.py pi:~/analysis_test/analysis/)",
+      "Bash(scp -o BatchMode=yes /tmp/claude-1000/-home-adithya-Code-automated/d25b99e0-4b6d-41d1-87e5-63d5a568ed42/scratchpad/_combined_check.py pi:~/analysis_test/analysis/)",
+      "Bash(scp -o BatchMode=yes analysis/llm_analysis.py /tmp/claude-1000/-home-adithya-Code-automated/d25b99e0-4b6d-41d1-87e5-63d5a568ed42/scratchpad/_combined_check.py pi:~/analysis_test/analysis/)"
     ]
   },
   "hooks": {
