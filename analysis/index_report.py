@@ -231,6 +231,14 @@ def compute_metrics(df):
         'vs200': (close / ema200 - 1) * 100,
         'from_low': from_low,
         'from_up': from_up,
+        # Absolute levels. Unused by the table, which is percentages only, but
+        # the combined analysis needs them: asked for a falsifiable trigger with
+        # nothing but percentages to hand, the LLM invents a price level.
+        'close': close,
+        'ema50': ema50,
+        'ema200': ema200,
+        'swing_low': low_fr.iloc[-1] if len(low_fr) else None,
+        'swing_high': up_fr.iloc[-1] if len(up_fr) else None,
     }
 
 
