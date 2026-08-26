@@ -793,6 +793,13 @@ class cash_stratergy:
             if sl_no in local_data['sl_no'].values:
                 # Update existing entry - validate columns exist
                 update_cols = ['sl', 'profit_target']
+                local_row = local_data.loc[local_data['sl_no'] == sl_no].iloc[0]
+                remote_status = str(row.get('status', '')).strip().lower()
+                if remote_status == 'close' and str(local_row.get('status', '')).strip().lower() != 'close':
+                    update_cols.extend([
+                        'status', 'sell_price', 'close_order_status',
+                        'close_order_id', 'close_date'
+                    ])
                 existing_cols = [col for col in update_cols if col in row.index]
                 if existing_cols:
                     local_data.loc[local_data['sl_no'] == sl_no, existing_cols] = row[existing_cols].values
@@ -922,6 +929,11 @@ class cash_stratergy:
                 return last_sl_no, False  # Not completed
 
             try:
+                close_status = str(row.get('close_order_status', '')).strip().lower()
+                if close_status in ['close_pending', 'complete']:
+                    last_sl_no = row['sl_no']
+                    continue
+
                 # Skip if a close order is already pending (has close_order_id)
                 if pd.notna(row.get('close_order_id')) and row['close_order_id'] != -1 and row.get('close_order_status') != 'rejected':
                     # If we have an ID and it's not marked as rejected (internally), skip
@@ -964,10 +976,18 @@ class cash_stratergy:
                                 f"Price: {last_price}, SL: {row['sl']}, Profit Target: {profit_target}")
 
                     if row['account'] == "deepti":
+                        quantity = pd.to_numeric(row.get('quantity'), errors='coerce')
+                        if pd.isna(quantity) or quantity <= 0 or quantity != int(quantity):
+                            error_message = f"Invalid quantity for close: {row.get('quantity')}"
+                            logger.error(f"Row {row['sl_no']} ({symbol}): {error_message}")
+                            self.notifier.send_error(row['account'], symbol, "close", error_message)
+                            last_sl_no = row['sl_no']
+                            continue
+
                         # Try to place close order with retry logic
                         order_id = None
                         for attempt in range(self._max_order_retries):
-                            order_id = place_order.place_cash_order(row['account'], symbol, int(float(row['quantity'])), "SELL")
+                            order_id = place_order.place_cash_order(row['account'], symbol, int(quantity), "SELL")
 
                             if order_id and not (isinstance(order_id, float) and pd.isna(order_id)):
                                 # Success
