@@ -328,14 +328,14 @@ def calculate_commodity_futures(buy_price, sell_price, quantity, multiplier):
     ctt = 0.0001 * sell_price * quantity * multiplier
 
     # Exchange Transaction Charges
-    etc_rate = 0.000026  # 0.0026%
+    etc_rate = 0.000021  # 0.0021%
     etc = etc_rate * turnover
 
     # SEBI Charges
     sebi_charges = 0.000001 * turnover
 
     # GST
-    gst = 0.18 * (brokerage + etc)
+    gst = 0.18 * (brokerage + etc + sebi_charges)
 
     # Stamp Duty on buy side only
     stamp_duty = 0.00002 * buy_price * quantity * multiplier
