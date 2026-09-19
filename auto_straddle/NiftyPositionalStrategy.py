@@ -48,6 +48,7 @@ class NiftyPositionalStrategy:
         self.EXECUTION_INTERVAL = timedelta(minutes=5)  # 10 minutes interval
         self.TRADE_COOLDOWN = timedelta(minutes=30)  # 30 minutes cooldown
         self.MAX_TRADES_PER_EXPIRY = 2
+        self.ENTRY_CUTOFF_TIME = time(15, 10)  # no new entry after this; leaves iterations to poll order status
         self.nifty_date_pd = None
         self.sensex_date_pd = None
         self.stratergy = "fr"  # Fixed to 'fr' strategy
@@ -869,6 +870,14 @@ class NiftyPositionalStrategy:
 
     def _enter_new_position(self, option_chain_analyzer, account, quantity, place_order_obj, existing_sold_options_info):
         """Enter new position if conditions are met"""
+        # Entries placed too close to the market close cannot be polled for order
+        # status the same day, leaving the trade stuck in open_pending overnight
+        current_time = datetime.now().time()
+        if current_time >= self.ENTRY_CUTOFF_TIME:
+            logging.info("Skipping entry for account %s %s (%s): current time %s is past entry cutoff %s",
+                         account, self.symbol, self.stratergy, current_time, self.ENTRY_CUTOFF_TIME)
+            return
+
         sold_options_info = self.create_new_position(
             account,
             option_chain_analyzer['spot_price'],
