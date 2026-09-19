@@ -24,6 +24,7 @@ import configuration
 from alligator_api import alligator_api
 from TelegramSend import telegram_send_api
 from exchange_state import ExchangeData
+from market_data import MarketData
 import brokrage_calculator
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class IndexFutureStratergy:
         self.last_processed_symbol = None
         self.alligator_trends = {}
         self.tv_obj = TvDatafeed()
+        self.market_data = None
 
         # Load saved state
         loaded_time, loaded_symbol = self._load_execution_state()
@@ -239,6 +241,16 @@ class IndexFutureStratergy:
             return intraday_data
         except Exception as e:
             self.logger.error(f"Error in OHLCHistoricData: {e}")
+            return None
+
+    def OHLCHistoricData_broker(self, symbol_parse, place_order):
+        """Fetch 15m candles from the brokers (Angel One, then 5paisa)."""
+        try:
+            if self.market_data is None:
+                self.market_data = MarketData(place_order)
+            return self.market_data.get_ohlc(symbol_parse, segment='NSE_INDEX', interval='15m', days=90)
+        except Exception as e:
+            self.logger.error(f"Error in OHLCHistoricData_broker: {e}")
             return None
 
     def OHLCHistoricData_tv(self, symbol_parse):
@@ -505,7 +517,10 @@ class IndexFutureStratergy:
                     return
 
                 # Get the historic data
-                historic_data = self.OHLCHistoricData_tv(s)
+                historic_data = self.OHLCHistoricData_broker(s, place_order)
+
+                if historic_data is None:
+                    historic_data = self.OHLCHistoricData_tv(s)
 
                 if historic_data is None:
                     historic_data = self.OHLCHistoricData(s)
