@@ -248,7 +248,7 @@ class IndexFutureStratergy:
         try:
             if self.market_data is None:
                 self.market_data = MarketData(place_order)
-            return self.market_data.get_ohlc(symbol_parse, segment='NSE_INDEX', interval='15m', days=90)
+            return self.market_data.get_ohlc(symbol_parse, segment='NSE_INDEX', interval='15m')
         except Exception as e:
             self.logger.error(f"Error in OHLCHistoricData_broker: {e}")
             return None

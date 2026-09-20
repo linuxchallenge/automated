@@ -21,6 +21,7 @@ import traceback
 import pandas as pd
 import requests
 from tvDatafeed import Interval, TvDatafeed
+from market_data import MarketData
 import pytz
 import websocket
 
@@ -42,6 +43,7 @@ class commodity_data:
 
     def __init__(self):
         self.symbolTokenMap = {}  # Add this line
+        self._market_data = None
         logging.info("Initializing commodity_data")
         self.tv_obj = None
         self.tv_error = 0
@@ -161,9 +163,18 @@ class commodity_data:
     def timestamptodate(self, timestamp):
         return datetime.fromtimestamp(timestamp)
 
-    def historic_data(self, symbol, daily = False):
+    def historic_data(self, symbol, daily = False, place_order = None):
         try:
             logging.info(f"Fetching data for symbol: {symbol} {self.use_source}")
+
+            # Brokers first when a session is available; fall through to the
+            # existing tv/upstox/investing chain if they return nothing.
+            if place_order is not None:
+                broker_data = self.historic_data_broker(symbol, daily, place_order)
+                if broker_data is not None and not broker_data.empty:
+                    return broker_data
+                logging.warning(f"Broker data unavailable for {symbol}, falling back")
+
             if self.use_source == "tv":
                 try:
                     logging.info(f"Fetching data from TV for symbol: {symbol}")
@@ -181,6 +192,20 @@ class commodity_data:
             print(f"Error executing historic_data: {e}")
             logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
             logging.error(f"Error executing historic_data: {e}")
+            return None
+
+    def historic_data_broker(self, symbol, daily, place_order):
+        """MCX front-month candles from the brokers (Angel One, then 5paisa)."""
+        try:
+            if self._market_data is None:
+                self._market_data = MarketData(place_order)
+            return self._market_data.get_ohlc(
+                symbol,
+                segment='MCX_FUT',
+                interval='1d' if daily else '60m',
+            )
+        except Exception as e:
+            logging.error(f"Error executing historic_data_broker: {e}")
             return None
 
     def historic_data_tv(self, symbol, daily = False):

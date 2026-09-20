@@ -460,9 +460,9 @@ class CommodityStratergy:
                     return
 
                 # Get the historic data
-                historic_data = self.commodity_data.historic_data(s)
+                historic_data = self.commodity_data.historic_data(s, place_order=place_order)
 
-                historic_data_daily = self.commodity_data.historic_data(s, daily=True)
+                historic_data_daily = self.commodity_data.historic_data(s, daily=True, place_order=place_order)
 
                 # drop last row
                 historic_data_daily = historic_data_daily.drop(historic_data_daily.tail(1).index)
