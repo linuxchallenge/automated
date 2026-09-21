@@ -8,6 +8,7 @@
 # pylint: disable=C0103
 import logging
 from datetime import datetime, time, timedelta
+from time import monotonic, sleep
 import traceback
 import pandas as pd
 
@@ -101,6 +102,14 @@ INTERVAL_FREQ = {
     '1d': 'D',
 }
 
+# Angel's candle API allows roughly 3 requests/second. The strategies fetch
+# several symbols back-to-back in one loop iteration, which was throttling ~50
+# calls a day onto the 5paisa fallback, so pace calls and retry when refused.
+ANGEL_MIN_CALL_GAP = 0.4
+ANGEL_RATE_LIMIT_RETRIES = 3
+ANGEL_RATE_LIMIT_BACKOFF = 1.5
+ANGEL_RATE_LIMIT_MARKER = 'exceeding access rate'
+
 DEFAULT_PROVIDER_ORDER = ['angel', 'fivepaisa']
 
 
@@ -110,6 +119,10 @@ class MarketData:
     Providers read their session off the PlaceOrder object that the strategies
     already receive, so no extra login handling is needed.
     """
+
+    # Shared across instances: strategies build their own MarketData objects,
+    # but the rate limit is per Angel API key.
+    _last_angel_call = 0.0
 
     def __init__(self, place_order_obj, provider_order=None):
         self.place_order_obj = place_order_obj
@@ -238,7 +251,7 @@ class MarketData:
             "todate": to_date.strftime("%Y-%m-%d %H:%M"),
         }
 
-        response = self.place_order_obj.obj_1.obj.getCandleData(params)
+        response = self._angel_candle_request(params)
 
         if not response or not response.get('data'):
             logger.warning(f"Empty candle response from Angel: {response}")
@@ -246,6 +259,26 @@ class MarketData:
 
         data = pd.DataFrame(response['data'], columns=['Date', 'open', 'high', 'low', 'close', 'volume'])
         return self._normalise(data)
+
+    def _angel_candle_request(self, params):
+        """Call Angel's candle API, pacing requests and retrying when throttled."""
+        last_error = None
+        for attempt in range(ANGEL_RATE_LIMIT_RETRIES):
+            elapsed = monotonic() - MarketData._last_angel_call
+            if elapsed < ANGEL_MIN_CALL_GAP:
+                sleep(ANGEL_MIN_CALL_GAP - elapsed)
+            MarketData._last_angel_call = monotonic()
+            try:
+                return self.place_order_obj.obj_1.obj.getCandleData(params)
+            except Exception as e:
+                if ANGEL_RATE_LIMIT_MARKER not in str(e):
+                    raise
+                last_error = e
+                backoff = ANGEL_RATE_LIMIT_BACKOFF * (attempt + 1)
+                logger.warning(f"Angel rate limited, retry {attempt + 1}/{ANGEL_RATE_LIMIT_RETRIES} "
+                               f"in {backoff:.1f}s")
+                sleep(backoff)
+        raise last_error
 
     def _fetch_fivepaisa(self, mapping, interval, days):
         if self.place_order_obj.obj_2 is None:
