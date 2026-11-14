@@ -627,6 +627,41 @@ class angelone_api(object):
 
 
 
+    def get_option_leg_positions(self, symbol, strike_price, expiry):
+        """Open (netqty != 0) CE/PE legs of a synthetic-future strike, matched by symboltoken.
+
+        Returns a list of descriptions ([] means the broker shows the account flat on both
+        legs) or None when this cannot be established (API error, contract not resolvable).
+        None must be treated as "unverified", never as "flat".
+        """
+        try:
+            res = self.obj.position()
+            if not res or not res.get('status'):
+                logger.warning(f"get_option_leg_positions: no usable position response: {res}")
+                return None
+            positions = res.get('data') or []      # Angel sends data=null when the account is flat
+            expiry_date = pd.to_datetime(expiry).date()
+            open_legs = []
+            for pe_ce in ('CE', 'PE'):
+                df = self.getTokenInfo("NFO", "OPTIDX", symbol, strike_price, pe_ce, expiry)
+                if df is None or isinstance(df, int) or df.empty:
+                    logger.error(f"get_option_leg_positions: cannot resolve {symbol} {strike_price} {pe_ce}")
+                    return None
+                df = df.copy()
+                df['expiry'] = pd.to_datetime(df['expiry']).dt.date
+                df = df[df['expiry'] == expiry_date]
+                if df.empty:
+                    logger.error(f"get_option_leg_positions: no {symbol} {strike_price} {pe_ce} contract for {expiry_date}")
+                    return None
+                token = str(df.iloc[0]['token'])
+                for pos in positions:
+                    if str(pos.get('symboltoken')) == token and int(float(pos.get('netqty', 0) or 0)) != 0:
+                        open_legs.append(f"{pe_ce} {pos.get('tradingsymbol', token)} netqty={pos.get('netqty')}")
+            return open_legs
+        except Exception as e:
+            logger.error(f"get_option_leg_positions failed for {symbol} {strike_price}: {e}")
+            return None
+
     def get_commodity_position(self, symbol, trade_type):
         """Check if there is an open MCX commodity position matching the intended trade.
 
@@ -778,6 +813,13 @@ class angelone_api(object):
 
             # get orderbook for the order id
             orderbook = pd.DataFrame(orderbook)
+
+            # Angel returns data=None / [] when the day's orderbook is empty or the
+            # call was throttled; the frame then has no 'orderid' column.
+            if orderbook.empty or 'orderid' not in orderbook.columns:
+                logger.error(f"get_order_status: orderbook empty or missing 'orderid' column "
+                             f"while looking up {order_id} (columns={list(orderbook.columns)})")
+                return -1, -1
 
             try:
                 # Check if order exists in orderbook

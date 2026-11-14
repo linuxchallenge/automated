@@ -1219,6 +1219,9 @@ class NiftyPositionalStrategy:
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown PE open order status '{order_status}' for account {account}, continuing to wait")
+                    if order_status == 'APIError':
+                        self._alert_unreadable_order_status(
+                            account, 'PE open', existing_sold_options_info.iloc[-1]['pe_open_order_id'])
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE open order
@@ -1262,6 +1265,9 @@ class NiftyPositionalStrategy:
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown CE open order status '{order_status}' for account {account}, continuing to wait")
+                    if order_status == 'APIError':
+                        self._alert_unreadable_order_status(
+                            account, 'CE open', existing_sold_options_info.iloc[-1]['ce_open_order_id'])
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check PE close order - only if close order ID is valid
@@ -1287,6 +1293,9 @@ class NiftyPositionalStrategy:
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning(f"Unknown PE close order status '{order_status}' for account {account}, continuing to wait")
+                    if order_status == 'APIError':
+                        self._alert_unreadable_order_status(
+                            account, 'PE close', existing_sold_options_info.iloc[-1]['pe_close_order_id'])
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check CE close order - only if close order ID is valid
@@ -1313,6 +1322,9 @@ class NiftyPositionalStrategy:
                 else:
                     # Unknown status, log and continue waiting
                     logging.warning("Unknown CE close order status '%s' for account %s, continuing to wait", order_status, account)
+                    if order_status == 'APIError':
+                        self._alert_unreadable_order_status(
+                            account, 'CE close', existing_sold_options_info.iloc[-1]['ce_close_order_id'])
                 self.store_sold_options_info(existing_sold_options_info, account)
 
             # Check hedge CE open order
@@ -1712,6 +1724,27 @@ class NiftyPositionalStrategy:
         except Exception as e:
             logging.error("Error in sending error message: %s", e)
             logging.error(traceback.format_exc())
+
+    def _alert_unreadable_order_status(self, account, leg, order_id):
+        """Telegram alert (throttled to 1/hour per order) when an order's status cannot be read.
+
+        Alert only: unlike send_error_message this does NOT park the trade's tracking
+        file, so the strategy keeps managing the position and re-polls next loop.
+        """
+        try:
+            key = f"unreadable_{account}_{self.symbol}_{leg}_{order_id}"
+            now = datetime.now()
+            last = self.last_error_sent.get(key)
+            if last is not None and now - last < timedelta(hours=1):
+                return
+            self.last_error_sent[key] = now
+            message = (f"⚠️ Nifty Positional: {self.symbol} ({self.stratergy}) | {account} {leg} order "
+                       f"{order_id}: status unreadable (API error), still waiting and retrying")
+            logging.error(message)
+            chat_id = configuration.ConfigurationLoader.get_configuration().get(account + "_telegram")
+            TelegramSend.telegram_send_api().send_message(chat_id, message)
+        except Exception as e:  # never let an alert failure break the strategy loop
+            logging.error("Failed to send unreadable-status alert: %s", e)
 
     def is_expiry_day_closing_time(self) -> bool:
         """Check if it's near expiry closing time on expiry day"""

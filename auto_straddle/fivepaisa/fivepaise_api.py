@@ -562,6 +562,56 @@ class fivepaise_api(object):
             logger.error(f"[{self.account}] LTP fallback also failed for token {token}: {e2}. Using 0 (market order).")
             return 0
 
+    def place_order_cash(self, symbol, qty, buy_sell):
+        """Place an NSE cash-equity DELIVERY order. Returns the broker order id, or -1 on failure.
+
+        Single attempt only: callers already retry, and a blind re-send after an
+        ambiguous failure could place the order twice.
+        """
+        logger.info(f"[{self.account}] 🔵 Placing CASH order: {buy_sell} {symbol} qty={qty}")
+        self._fix_shared_payload_bug()
+
+        df = self.scrip_master_df
+        rows = df[(df['Exch'] == 'N') & (df['ExchType'] == 'C') &
+                  (df['Series'] == 'EQ') & (df['Name'] == symbol)]
+        if rows.empty:
+            logger.error(f"[{self.account}] ❌ No NSE cash scrip found for {symbol}")
+            return -1
+        token = int(rows.iloc[0]['ScripCode'])
+
+        side = 'B' if buy_sell == 'BUY' else 'S'
+        try:
+            price = self.get_best_price(token, 'N', 'C', side)
+            if price <= 0:
+                logger.error(f"[{self.account}] ❌ No price for cash token {token} ({symbol}). Aborting order.")
+                return -1
+            response = self.obj.place_order(OrderType=side, Exchange='N', ExchangeType='C',
+                                            ScripCode=token, Qty=int(qty), Price=price, IsIntraday=False)
+            if response is None:
+                logger.error(f"[{self.account}] ❌ place_order returned None for {symbol}")
+                return self._existing_cash_order_or_minus_one(token, side, qty, symbol)
+            broker_order_id = response.get('BrokerOrderID', -1)
+            message = response.get('Message', 'No message')
+            if not broker_order_id or broker_order_id == -1:
+                logger.error(f"[{self.account}] ❌ CASH order rejected for {symbol}: response={response}")
+                return -1
+            logger.info(f"[{self.account}] ✅ CASH order placed: order_id={broker_order_id} message='{message}'")
+            return broker_order_id
+        except Exception as e:
+            logger.error(f"[{self.account}] place_order_cash failed for {symbol}: {e}")
+            return self._existing_cash_order_or_minus_one(token, side, qty, symbol)
+
+    def _existing_cash_order_or_minus_one(self, token, side, qty, symbol):
+        """After an ambiguous failure (exception / empty response) the broker may still have
+        accepted the order. Return its id if it is in the order book, else -1, so the caller's
+        retry cannot place a duplicate delivery order."""
+        existing = self._find_recent_order(token, side, int(qty), False)
+        if existing:
+            logger.warning(f"[{self.account}] CASH order for {symbol} was already accepted "
+                           f"(order_id={existing}); not treating as failure")
+            return existing
+        return -1
+
     def place_order_commodity(self, symbol, qty, buy_sell, expiry=None, isCommodity=True):
         logger.info(f"[{self.account}] 🔵 Placing COMMODITY order: {buy_sell} {symbol} qty={qty} expiry={expiry}")
 

@@ -86,6 +86,47 @@ class CashSLUpdater:
 
         return bullish_below_ltp
 
+    def _get_hist_with_retry(self, symbol, exchange, max_attempts=3):
+        """Fetch daily bars, reconnecting TradingView when the websocket drops.
+
+        Returns the DataFrame, or None if every attempt failed (callers treat None as
+        a failure, never as "no change needed").
+        """
+        for attempt in range(1, max_attempts + 1):
+            try:
+                data = self.tv_obj.get_hist(
+                    symbol=symbol,
+                    exchange=exchange,
+                    interval=Interval.in_daily,
+                    n_bars=4000
+                )
+                if data is not None and not data.empty:
+                    return data
+                logger.warning(f"{symbol}: TradingView returned no data (attempt {attempt}/{max_attempts})")
+            except Exception as e:
+                logger.warning(f"{symbol}: TradingView fetch failed (attempt {attempt}/{max_attempts}): {e}")
+            if attempt < max_attempts:
+                # A dropped websocket shows up either as an exception or as None/empty data;
+                # either way the next attempt must not reuse the same connection.
+                self.tv_obj = None
+                self.init_tvdatafeed()      # fresh websocket; sets self.tv_obj on success
+                if self.tv_obj is None:
+                    return None
+                time.sleep(2 * attempt)
+        return None
+
+    @staticmethod
+    def _alert(message):
+        """Log at ERROR and send a best-effort Telegram alert (never raises)."""
+        logger.error(message)
+        try:
+            import TelegramSend  # pylint: disable=C0415
+            import configuration  # pylint: disable=C0415
+            chat_id = configuration.ConfigurationLoader.get_configuration().get("deepti_telegram")
+            TelegramSend.telegram_send_api().send_message(chat_id, f"⚠️ Cash SL updater: {message}")
+        except Exception as e:
+            logger.error(f"Could not send stop-loss updater alert: {e}")
+
     def calculate_new_sl(self, symbol, exchange, current_sl, verbose=True):
         """
         Calculate new stop-loss based on Williams Fractal analysis.
@@ -104,12 +145,7 @@ class CashSLUpdater:
             if verbose:
                 logger.info(f"Fetching daily data for {symbol} from {exchange}...")
 
-            data = self.tv_obj.get_hist(
-                symbol=symbol,
-                exchange=exchange,
-                interval=Interval.in_daily,
-                n_bars=4000
-            )
+            data = self._get_hist_with_retry(symbol, exchange)
 
             if data is None or data.empty:
                 logger.error(f"No data received for {symbol}")
@@ -185,7 +221,7 @@ class CashSLUpdater:
         # Initialize TvDatafeed if not already done
         if self.tv_obj is None:
             if not self.init_tvdatafeed():
-                logger.error("Could not initialize TvDatafeed")
+                self._alert("could not initialize TradingView, no stop-losses were updated")
                 return 0
 
         # Read cash_stratergy.csv
@@ -212,6 +248,7 @@ class CashSLUpdater:
 
         # Process each open position
         updates = []
+        failed = []
 
         for idx, row in open_positions.iterrows():
             symbol = row['symbol']
@@ -220,12 +257,16 @@ class CashSLUpdater:
 
             logger.info(f"Processing: {symbol} ({exchange}), Current SL: {current_sl}")
 
-            # Handle symbol mapping if needed (e.g., M_M -> M&M)
-            tv_symbol = symbol.replace('_', '&')
+            # TradingView tickers can't contain '&' or '-' (M&M -> M_M, BAJAJ-AUTO -> BAJAJ_AUTO)
+            tv_symbol = symbol.replace('&', '_').replace('-', '_')
 
             new_sl, lowest_fractal, ltp = self.calculate_new_sl(
                 tv_symbol, exchange, current_sl, verbose=True
             )
+
+            if ltp is None:
+                # calculate_new_sl signals a failed fetch/computation with ltp=None
+                failed.append(symbol)
 
             if new_sl is not None:
                 updates.append({
@@ -240,6 +281,11 @@ class CashSLUpdater:
 
             # Small delay to avoid rate limiting
             time.sleep(1)
+
+        if failed:
+            self._alert(f"stop-loss NOT updated for {len(failed)} of {len(open_positions)} "
+                        f"position(s) because data could not be fetched: {', '.join(failed)}. "
+                        f"Existing stop-losses are unchanged.")
 
         # Summary
         logger.info("=" * 50)

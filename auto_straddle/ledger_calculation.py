@@ -1201,6 +1201,7 @@ Strategy Breakdown:"""
         """
         try:
             total_pnl = 0
+            skipped_unrealistic = 0
 
             # Prepare date columns
             if 'entry_time' in df.columns:
@@ -1236,8 +1237,11 @@ Strategy Breakdown:"""
                 # while index is 20000+.
                 if entry_price_ce > 5000 or entry_price_pe > 5000 or \
                    exit_price_ce > 5000 or exit_price_pe > 5000:
-                    logger.warning("IndexFuture %s %s: Skipping row with unrealistic prices (CE=%.2f, PE=%.2f)",
-                                   account, symbol, entry_price_ce, entry_price_pe)
+                    skipped_unrealistic += 1
+                    logger.warning("IndexFuture %s %s: Skipping row with unrealistic prices "
+                                   "(entry CE=%.2f PE=%.2f, exit CE=%.2f PE=%.2f, entry=%s, exit=%s)",
+                                   account, symbol, entry_price_ce, entry_price_pe,
+                                   exit_price_ce, exit_price_pe, entry_date, exit_date)
                     continue
 
                 row_pnl = 0
@@ -1268,6 +1272,9 @@ Strategy Breakdown:"""
 
                 total_pnl += row_pnl
 
+            if skipped_unrealistic:
+                logger.warning("IndexFuture %s: %d row(s) excluded from P&L for %s due to unrealistic prices",
+                               account, skipped_unrealistic, target_date)
             return total_pnl
 
         except Exception as e:

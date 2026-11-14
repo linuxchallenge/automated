@@ -48,6 +48,7 @@ class IndexFutureStratergy:
         self.accounts = accounts
         self.last_executed_time = None
         self.last_processed_symbol = None
+        self.unreadable_status_counts = {}   # (account, symbol, leg, order_id) -> consecutive unreadable polls
         self.alligator_trends = {}
         self.tv_obj = TvDatafeed()
         self.market_data = None
@@ -342,6 +343,9 @@ class IndexFutureStratergy:
                         elif status == "Open":
                             # Order still filling - keep open_pending and re-check next cycle
                             self.logger.info(f"PE entry order {order_id} still open for {account}, will re-check")
+                        elif status in (-1, 'APIError'):
+                            # Status could not be read (API error / empty orderbook): unknown, NOT a failure
+                            self._status_unreadable(account, current_trade.loc[row_number, 'Symbol'], 'PE entry', order_id)
                         else:
                             # Send telegram message
                             sym = current_trade.loc[row_number, 'Symbol']
@@ -354,6 +358,9 @@ class IndexFutureStratergy:
                     elif status == "Open":
                         # Order still filling - keep open_pending and re-check next cycle
                         self.logger.info(f"CE entry order {order_id} still open for {account}, will re-check")
+                    elif status in (-1, 'APIError'):
+                        # Status could not be read (API error / empty orderbook): unknown, NOT a failure
+                        self._status_unreadable(account, current_trade.loc[row_number, 'Symbol'], 'CE entry', order_id)
                     else:
                         # Send telegram message
                         sym = current_trade.loc[row_number, 'Symbol']
@@ -390,6 +397,11 @@ class IndexFutureStratergy:
                         elif status == "Open":
                             # Order still filling - keep close_pending and re-check next cycle
                             self.logger.info(f"PE exit order {order_id} still open for {account}, will re-check")
+                            current_trade.to_csv(file_name, index=False)
+                            return
+                        elif status in (-1, 'APIError'):
+                            # Status could not be read (API error / empty orderbook): unknown, NOT a failure
+                            self._status_unreadable(account, current_trade.loc[row_number, 'Symbol'], 'PE exit', order_id)
                             current_trade.to_csv(file_name, index=False)
                             return
                         else:
@@ -446,6 +458,9 @@ class IndexFutureStratergy:
                     elif status == "Open":
                         # Order still filling - keep close_pending and re-check next cycle
                         self.logger.info(f"CE exit order {order_id} still open for {account}, will re-check")
+                    elif status in (-1, 'APIError'):
+                        # Status could not be read (API error / empty orderbook): unknown, NOT a failure
+                        self._status_unreadable(account, current_trade.loc[row_number, 'Symbol'], 'CE exit', order_id)
                     else:
                         # Send telegram message
                         sym = current_trade.loc[row_number, 'Symbol']
@@ -700,8 +715,11 @@ class IndexFutureStratergy:
 
                                 # If entry order was never executed, fake close — no real position to exit
                                 if current_trade.loc[row_number, 'enter_order_state'] == 'error':
-                                    self.logger.info(f"Fake closing long trade for {account} {s} — entry was in error state, no real position exists")
-                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                    if self._confirm_flat_before_fake_close(place_order, account, s, current_trade.loc[row_number]):
+                                        self.logger.info(f"Fake closing long for {account} {s} — entry was in error state and the broker shows no open legs")
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                    else:
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
                                 else:
                                     print("Exit long trade " + str(historic_data.iloc[-1]['close']))
                                     self.logger.info("Exit long trade")
@@ -733,8 +751,11 @@ class IndexFutureStratergy:
 
                                 # If entry order was never executed, fake close — no real position to exit
                                 if current_trade.loc[row_number, 'enter_order_state'] == 'error':
-                                    self.logger.info(f"Fake closing short trade for {account} {s} — entry was in error state, no real position exists")
-                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                    if self._confirm_flat_before_fake_close(place_order, account, s, current_trade.loc[row_number]):
+                                        self.logger.info(f"Fake closing short for {account} {s} — entry was in error state and the broker shows no open legs")
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                    else:
+                                        current_trade.loc[row_number, 'exit_order_state'] = 'error'
                                 else:
                                     print("Exit short trade " + str(historic_data.iloc[-1]['close']))
                                     self.logger.info("Exit short trade")
@@ -761,8 +782,11 @@ class IndexFutureStratergy:
 
                             # If entry order was never executed, fake close — no real position to exit
                             if current_trade.loc[row_number, 'enter_order_state'] == 'error':
-                                self.logger.info(f"Fake closing trade for {account} {s} — entry was in error state, no real position exists")
-                                current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                if self._confirm_flat_before_fake_close(place_order, account, s, current_trade.loc[row_number]):
+                                    self.logger.info(f"Fake closing trade for {account} {s} — entry was in error state and the broker shows no open legs")
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'fake_closed'
+                                else:
+                                    current_trade.loc[row_number, 'exit_order_state'] = 'error'
                             elif current_trade.loc[row_number, 'trade_type'] == 'short':
                                 strike_price = current_trade.loc[row_number, 'strike']
                                 print("Exit short trade " + str(historic_data.iloc[-1]['close']))
@@ -838,6 +862,45 @@ class IndexFutureStratergy:
         except Exception as e:
             self.logger.error(f"Error executing execute_strategy: {e}")
             traceback.print_exc()
+
+    UNREADABLE_ALERT_AFTER = 5   # consecutive unreadable polls before a Telegram alert
+
+    def _status_unreadable(self, account, symbol, leg, order_id):
+        """An order status that could not be read is UNKNOWN: keep the leg pending, re-check
+        next cycle, and alert (once) if it stays unreadable."""
+        key = (account, symbol, leg, str(order_id))
+        count = self.unreadable_status_counts.get(key, 0) + 1
+        self.unreadable_status_counts[key] = count
+        self.logger.warning(f"{leg} order {order_id} status unreadable for {account} {symbol} "
+                            f"({count} in a row); keeping it pending and re-checking next cycle")
+        if count == self.UNREADABLE_ALERT_AFTER:
+            self.send_message(account, symbol,
+                              f"⚠️ Index Future: {leg} order {order_id} status unreadable for {count} "
+                              f"cycles in a row. Still waiting; check the broker order book.", 0)
+
+    def _confirm_flat_before_fake_close(self, place_order, account, symbol, trade_row):
+        """True only if the broker confirms no open CE/PE leg for this trade's strike/expiry.
+
+        An entry in 'error' state only means its status was never confirmed, not that no
+        position exists. On anything other than a confirmed-flat answer we do not fake-close.
+        """
+        strike = trade_row['strike']
+        expiry = trade_row['expiry']
+        legs = place_order.get_option_leg_positions(account, symbol, strike, expiry)
+        if legs == []:
+            self.logger.info(f"Broker confirms {account} {symbol} {strike} {expiry} is flat on both legs")
+            return True
+        ids = f"entry orders CE={trade_row.get('enter_orderid_ce')} PE={trade_row.get('enter_orderid_pe')}"
+        if legs is None:
+            reason = "broker positions could not be verified"
+        else:
+            reason = f"broker still shows open legs: {', '.join(legs)}"
+        self.logger.error(f"NOT fake-closing {account} {symbol} {strike} {expiry}: {reason} ({ids})")
+        self.send_message(account, symbol,
+                          f"⚠️ Index Future: entry was never confirmed (state=error) and {reason}. "
+                          f"Not fake-closing; check {account} positions for {symbol} {strike} exp {expiry} "
+                          f"({ids}).", 0)
+        return False
 
     def send_message(self, account, symbol_msg, error_message, compute_profit_loss, brokarage = 0 , quantity = 0):
         x = telegram_send_api()

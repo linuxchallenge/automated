@@ -717,6 +717,14 @@ class PlaceOrder:
         average_price = 0
         if (account == 'deepti'):
             order_status, average_price = self.obj_1.get_order_status(order_id)
+            if (order_status == -1):
+                time.sleep(1)  # Angel's orderBook is limited to ~1 request/second
+                order_status, average_price = self.obj_1.get_order_status(order_id)
+                if (order_status == -1):
+                    # API failed twice - return error status instead of assuming Complete
+                    logging.error(f"Failed to get order status for {account} order_id={order_id} after 2 retries")
+                    order_status = 'APIError'
+                    average_price = -1
 
         if (account == 'leelu'):
             order_status, average_price = self.obj_2.get_order_status(order_id)
@@ -752,6 +760,17 @@ class PlaceOrder:
             average_price = old_price
         return order_status, average_price
 
+    def get_option_leg_positions(self, account, symbol, strike_price, expiry):
+        """Open CE/PE legs for a synthetic-future strike: list ([] = flat) or None = unverified.
+
+        Only implemented for Angel One (deepti); every other account returns None, which
+        callers must treat as "could not verify", not as "no position".
+        """
+        if account == 'deepti' and getattr(self, 'obj_1', None) is not None:
+            return self.obj_1.get_option_leg_positions(symbol, strike_price, expiry)
+        logging.warning(f"get_option_leg_positions: not implemented for account {account}")
+        return None
+
     def get_commodity_position(self, account, symbol, trade_type):
         """Check if there is an open commodity position at the broker matching the intended trade.
 
@@ -785,6 +804,11 @@ class PlaceOrder:
                 logging.warning(f"Cash order placement failed with order_id={order_id}, retry {retry_count}/3...")
                 time.sleep(1)
                 order_id = self.obj_1.place_order_cash(symbol, quantity, side)
+
+        if account == 'leelu':
+            # Single attempt: the EW strategy already retries, and 5paisa has no
+            # order-dedupe, so no extra inner retry here.
+            order_id = self.obj_2.place_order_cash(symbol, quantity, side)
 
         if account == 'kite':
             order_id = self.obj_4.place_order_cash(symbol, quantity, side)

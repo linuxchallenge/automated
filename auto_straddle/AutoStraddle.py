@@ -466,12 +466,12 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
         # Get option chain data for the specified symbol
         option_chain_info = option_chain_analyzer.get_option_chain_info(strike_data, ce_strike, pe_strike, symbol)
 
-        strike[symbol] = option_chain_info['atm_strike']
-
-        # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
-        dump_option_chain_data_to_csv(option_chain_info, symbol)
-
         if option_chain_info is not None:
+            strike[symbol] = option_chain_info['atm_strike']
+
+            # Dump option_chain_analyzer data to a CSV file with file name of symbol and date.
+            dump_option_chain_data_to_csv(option_chain_info, symbol)
+
             for account in accounts:
                 # Execute the strategy for the current account and symbol
                 # In account_details if for symbol and account, stratergy is 'as' then execute auto straddle strategy

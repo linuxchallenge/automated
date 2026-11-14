@@ -102,10 +102,11 @@ INTERVAL_FREQ = {
     '1d': 'D',
 }
 
-# Angel's candle API allows roughly 3 requests/second. The strategies fetch
-# several symbols back-to-back in one loop iteration, which was throttling ~50
-# calls a day onto the 5paisa fallback, so pace calls and retry when refused.
-ANGEL_MIN_CALL_GAP = 0.4
+# Angel's candle API allows roughly 3 requests/second, but the strategies fetch several
+# symbols back-to-back (often on the same bar boundary), and a 0.4s gap still drew
+# hundreds of 'exceeding access rate' refusals a week. Candle calls are therefore paced
+# to one per second (ANGEL_MIN_CALL_GAP) and retried with backoff when refused.
+ANGEL_MIN_CALL_GAP = 1.0
 ANGEL_RATE_LIMIT_RETRIES = 3
 ANGEL_RATE_LIMIT_BACKOFF = 1.5
 ANGEL_RATE_LIMIT_MARKER = 'exceeding access rate'
@@ -196,9 +197,18 @@ class MarketData:
             logger.error(f"No MCX FUTCOM contracts found for {contract}")
             return None
 
-        # Live token_df already has expiry parsed; the CSV cache has it as DDMMMYYYY
+        # Live token_df has expiry as datetime64; the CSV cache stores ISO strings
+        # (2026-11-30) and Angel's raw scrip master uses DDMMMYYYY. Try ISO first,
+        # then DDMMMYYYY for whatever is left unparsed.
         if not pd.api.types.is_datetime64_any_dtype(rows['expiry']):
-            rows['expiry'] = pd.to_datetime(rows['expiry'], format='%d%b%Y', errors='coerce')
+            parsed = pd.to_datetime(rows['expiry'], format='%Y-%m-%d', errors='coerce')
+            retry = parsed.isna()
+            if retry.any():
+                parsed[retry] = pd.to_datetime(rows.loc[retry, 'expiry'], format='%d%b%Y', errors='coerce')
+            rows['expiry'] = parsed
+        if rows['expiry'].isna().all():
+            logger.error(f"Unparseable expiry values for {contract} in the scrip master")
+            return None
         today = pd.Timestamp(datetime.now().date())
         rows = rows[rows['expiry'] >= today].sort_values(by='expiry')
         if rows.empty:

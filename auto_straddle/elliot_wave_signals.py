@@ -145,10 +145,14 @@ class ElliotWaveSignalGenerator:
             logger.error(f"TV not connected, cannot fetch {symbol}")
             return pd.DataFrame()
 
+        # TradingView tickers can't contain '&' or '-' (M&M -> M_M, BAJAJ-AUTO -> BAJAJ_AUTO);
+        # an unknown ticker is never answered, so it looked like a websocket timeout.
+        tv_symbol = symbol.replace('&', '_').replace('-', '_')
+
         for retry in range(max_retries):
             try:
                 tv_data = self.tv_obj.get_hist(
-                    symbol=symbol,
+                    symbol=tv_symbol,
                     exchange='NSE',
                     interval=Interval.in_daily,
                     n_bars=500,

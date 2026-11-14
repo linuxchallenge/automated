@@ -368,16 +368,29 @@ class OptionChainData:
         try:
             with requests.Session() as session:
                 # First, visit the base URL to establish session and get cookies
-                try:
-                    session.headers.update(headers)
-                    request = session.get(baseurl, headers=headers, timeout=10)
-                    request.raise_for_status()
-                    cookies = dict(request.cookies)
-                    print(f"Session established, got {len(cookies)} cookies")
-                except requests.exceptions.RequestException as e:
-                    print(f"Failed to establish session: {e}")
-                    logger.error(f"Failed to establish session for {url}: {e}")
-                    return None
+                # The base page is HTML, so ask for HTML (the JSON Accept header is for
+                # the API call below). NSE intermittently answers 403 here, so retry.
+                page_headers = headers.copy()
+                page_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                session.headers.update(headers)
+                # Capped at 2 attempts: this runs on the main strategy loop, and when NSE hangs
+                # each attempt can cost the 10s timeout plus retry_delay.
+                session_attempts = min(2, max_retries + 1)
+                for attempt in range(session_attempts):
+                    try:
+                        request = session.get(baseurl, headers=page_headers, timeout=10)
+                        request.raise_for_status()
+                        cookies = dict(request.cookies)
+                        print(f"Session established, got {len(cookies)} cookies")
+                        break
+                    except requests.exceptions.RequestException as e:
+                        print(f"Failed to establish session: {e}")
+                        logger.error(f"Failed to establish session for {url} "
+                                     f"(attempt {attempt + 1}/{session_attempts}): {e}")
+                        if attempt < session_attempts - 1:
+                            time.sleep(retry_delay)
+                        else:
+                            return None
 
                 # Retry loop for actual API call
                 for retry in range(max_retries + 1):

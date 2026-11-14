@@ -45,7 +45,7 @@ class CSVFetcher:
 
     def fetch_and_process(self, once=False):
         """Fetch CSV, identify files, and move them."""
-        logger.info("Starting fetch and process cycle...")
+        logger.debug("Starting fetch and process cycle...")
         try:
             # Fetch CSV data
             response = requests.get(self.csv_url, timeout=30)
@@ -63,7 +63,7 @@ class CSVFetcher:
                 self._process_row(row)
 
             self._save_tracking()
-            logger.info("Fetch and process cycle completed.")
+            logger.debug("Fetch and process cycle completed.")
 
         except Exception as e:
             logger.error("Error in fetch_and_process: %s", e)
