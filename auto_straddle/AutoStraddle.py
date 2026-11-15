@@ -32,6 +32,7 @@ from PlaceOrder import PlaceOrder
 from OptionChainData import OptionChainData
 from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
+from NiftyMlStratergy import NiftyMlStratergy
 import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
@@ -157,6 +158,7 @@ def main():
     # Create instances of OptionChainData and AutoStraddleStrategy
     auto_straddle_strategy = AutoStraddleStrategy(accounts, symbols)
     farsell_straddle_strategy = FarSellStratergy(accounts, symbols)
+    nifty_ml_stratergy = NiftyMlStratergy()
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
@@ -332,7 +334,7 @@ def main():
                 try:
                     execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, \
                                              accounts, symbols, place_order, account_details, \
-                                            index_future_stratergy)
+                                            index_future_stratergy, nifty_ml_stratergy)
                 except Exception as e:
                     logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
                     print(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
@@ -445,7 +447,7 @@ def main():
     except KeyboardInterrupt:
         print("Exiting the program.")
 
-def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details, index_future_stratergy):
+def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, accounts, symbols, place_order, account_details, index_future_stratergy, nifty_ml_stratergy=None):
 
     # return if time is outside option strategy window (9:23 AM to 3:29 PM)
     current_time_dt = datetime.now().time()
@@ -499,6 +501,21 @@ def execute_option_stratergy(auto_straddle_strategy, farsell_straddle_strategy, 
                         farsell_straddle_strategy.execute_strategy(option_chain_info, symbol, account,
                                                                     quantity, place_order, index_future_stratergy)
                         #print("==== Exit far sell strategy for account: " + account + " " + symbol)
+
+                # if stratergy is 'ml' then execute the Nifty ML strategy (paper trading, dummy account only)
+                if nifty_ml_stratergy is not None and account_details.loc[
+                    (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                    & (account_details['Stratergy'] == 'ml')].shape[0] > 0:
+                    quantity = account_details.loc[
+                        (account_details['Account'] == account) & (account_details['Symbol'] == symbol) \
+                        & (account_details['Stratergy'] == 'ml')]['quantity'].values[0]
+                    if quantity > 0:
+                        # isolated so a failure here can never stop the other accounts or symbols
+                        try:
+                            nifty_ml_stratergy.execute_strategy(option_chain_info, symbol, account,
+                                                                quantity, place_order)
+                        except Exception as e:
+                            logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
 
         else:
             print("Option chain data is not available for the symbol: " + symbol)

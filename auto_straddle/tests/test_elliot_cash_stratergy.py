@@ -783,3 +783,34 @@ class TestElliotCashStratergy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestRejectedBuyIsNotManagedAsOpen(unittest.TestCase):
+    """A broker-rejected BUY must not leave the row 'open' (deepti TCS, Oct 2026)."""
+
+    def _run(self, status, is_buy=True):
+        s = ElliotCashStratergy.__new__(ElliotCashStratergy)
+        s.csv_path = os.path.join(tempfile.mkdtemp(), 'x.csv')
+        s.notifier = MagicMock()
+        row = _base_row(status='open', account='deepti', symbol='TCS',
+                        open_order_status='open_pending' if is_buy else 'Complete',
+                        close_order_status='' if is_buy else 'close_pending',
+                        buy_order_id=111, close_order_id=222)
+        data = pd.DataFrame([row])
+        po = MagicMock()
+        po.order_status.return_value = (status, 0)
+        s._process_pending_orders(data, po)
+        return data.loc[0]
+
+    def test_rejected_buy_closes_row(self):
+        r = self._run('Rejected')
+        self.assertEqual(r['open_order_status'], 'rejected')
+        self.assertEqual(r['status'], 'close')
+
+    def test_rejected_sell_keeps_row_open_for_retry(self):
+        r = self._run('Rejected', is_buy=False)
+        self.assertEqual(r['close_order_status'], 'rejected')
+        self.assertEqual(r['status'], 'open')
+
+    def test_pending_buy_stays_open(self):
+        self.assertEqual(self._run('Open')['status'], 'open')

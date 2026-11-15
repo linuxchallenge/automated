@@ -1054,6 +1054,10 @@ class ElliotCashStratergy:
                 elif status in ["Rejected", "Cancelled", "Failed"]:
                     logger.error(f"EW: Order {order_id} for row {row['sl_no']} status: {status}")
                     data.loc[idx, f'{order_type}_order_status'] = 'rejected'
+                    if is_open_pending:
+                        # BUY was refused by the broker: no position exists, so stop
+                        # managing the row as 'open' (else SELLs are attempted forever).
+                        data.loc[idx, 'status'] = 'close'
                     self.notifier.send_error(row['account'], row['symbol'], order_type,
                                              f"Order {status.lower()} - order_id: {order_id}")
                     data.to_csv(self.csv_path, index=False)
