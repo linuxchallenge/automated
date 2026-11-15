@@ -43,7 +43,7 @@ Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15
 - Research: `build_data.py` + `pipeline.py` run on real data (471 days, 2024-08-19 to 2026-11-13). No edge found for direction: calls are close to a coin flip and log-loss is worse than a no-skill forecast. An earlier "beats no-skill" result was leakage from the overnight gap in the labels.
 - Sideways calls are slightly better than chance (54.2% actually sideways vs 51.4% for all bars).
 - Short-straddle P&L: `straddle.py` estimates it; always selling the ATM straddle for 6 bars averaged +2.24 points gross, negative after a 3-point placeholder cost.
-- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 113 tests pass. Uncommitted.
+- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 115 tests pass. Uncommitted.
 - Model: trained on 3,000 bars, 2025-12-02 to 2026-11-13.
 - Weekly routine: `weekly_retrain.sh` (run and verified), `deploy_model.sh` (syntax-checked only, never run).
 - Option P&L for the live rules has not been backtested; the stored data cannot price a held leg once ATM moves.

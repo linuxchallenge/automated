@@ -1,6 +1,6 @@
 # Nifty ML option-selling strategy (paper trading)
 
-Status as of 2026-11-15: implemented and tested on the laptop (113 tests pass). Not yet committed, and not yet run on the Pi.
+Status as of 2026-11-15: implemented and tested on the laptop (115 tests pass). Not yet committed, and not yet run on the Pi.
 
 ## In one paragraph
 
@@ -202,7 +202,8 @@ cd ml_test
 | `ml_test/update_prices.py` | Brings the Nifty 15-minute and 5-minute price files up to date |
 | `ml_test/weekly_retrain.sh` | Copies the Pi's option chain files, updates prices and retrains |
 | `ml_test/deploy_model.sh` | Commits the model file, pushes, and pulls on the Pi |
-| `ml_test/build_data.py`, `pipeline.py`, `straddle.py` | Research and backtest scripts |
+| `ml_test/build_data.py`, `pipeline.py` | Research and backtest scripts. `train_model.py` imports both, so training needs them |
+| `ml_test/straddle.py` | Short-straddle P&L estimate (research only) |
 
 Only the `auto_straddle/` files are needed on the Pi.
 
@@ -247,13 +248,14 @@ Treat the paper run as a test of the plumbing and a way to collect live results,
 
 ## How it was checked
 
-- **Tests:** 113 pass. They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
+- **Tests:** 115 pass. They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
 - **Model export:** the plain-Python evaluation matches lightgbm to about 2e-16.
 - **Live versus training:** five past bars were replayed through the live code path using the Pi's own files. Four matched the training features exactly; the fifth differed by 0.3% in probability because of the expiry limit below.
 
 ## Known limits
 
-- Not yet run on the Pi's Python 3.9 and pandas 1.5. If it fails there, the error is logged and the other strategies are unaffected.
+- Not yet run on the Pi's Python 3.9 and pandas 1.5. If it fails there, the error is logged and the other strategies are unaffected: the import, the creation and every call of the strategy are each wrapped in their own try/except in `AutoStraddle.py`.
+- A hang (not an error) is different: like every strategy, it is covered by the engine's 5-minute watchdog, which restarts the whole engine.
 - Days-to-expiry can be off by one when a holiday on expiry day lies ahead, because the Pi has no holiday calendar.
 - Paper fills use the option chain's last traded price, so real fills would be worse by the bid-ask spread.
 - Order handling has only been exercised with the dummy account and a fake broker in tests. Real broker behaviour (partial fills, slow confirmations) is untested.

@@ -32,7 +32,6 @@ from PlaceOrder import PlaceOrder
 from OptionChainData import OptionChainData
 from AutoStraddleStrategy import AutoStraddleStrategy
 from FarSellStratergy import FarSellStratergy
-from NiftyMlStratergy import NiftyMlStratergy
 import configuration
 from CommodityStratergy import CommodityStratergy
 from cash_stratergy import cash_stratergy
@@ -40,6 +39,13 @@ from IndexFutureStratergy import IndexFutureStratergy
 from NiftyPositionalStrategy import NiftyPositionalStrategy
 #from optionbuy_stratergy import OptionBuyStrategy
 import logging_config  # pylint: disable=unused-import  # side-effect: configures logging
+# The ML paper strategy is optional: if it cannot be imported the engine must still start.
+try:
+    from NiftyMlStratergy import NiftyMlStratergy
+except Exception as import_error:  # pylint: disable=broad-except
+    NiftyMlStratergy = None
+    logging.error(''.join(traceback.format_exception(type(import_error), import_error, import_error.__traceback__)))
+    logging.error("NiftyMlStratergy could not be imported; the ML strategy is disabled")
 from TelegramSend import telegram_send_api
 from ledger_calculation import LedgerCalculator
 from update_cash_sl import run_cash_sl_update
@@ -158,7 +164,13 @@ def main():
     # Create instances of OptionChainData and AutoStraddleStrategy
     auto_straddle_strategy = AutoStraddleStrategy(accounts, symbols)
     farsell_straddle_strategy = FarSellStratergy(accounts, symbols)
-    nifty_ml_stratergy = NiftyMlStratergy()
+    nifty_ml_stratergy = None
+    try:
+        if NiftyMlStratergy is not None:
+            nifty_ml_stratergy = NiftyMlStratergy()
+    except Exception as e:
+        logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+        logging.error("NiftyMlStratergy could not be created; the ML strategy is disabled")
 
     commodity_stratergy = CommodityStratergy(accounts_commodity)
 
