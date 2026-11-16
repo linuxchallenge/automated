@@ -109,6 +109,21 @@ class TelegramNotifier:
             logger.error(f"Failed to send Telegram notification: {e}")
             return False
 
+    def send_stale_orders(self, account, rows):
+        """One consolidated alert for orders the broker can no longer find."""
+        chat_id = self._get_chat_id(account)
+        if not chat_id:
+            return False
+        lines = [f"EW strategy {account}: {len(rows)} order(s) not found at the broker, "
+                 f"cannot confirm fill. Check the broker trade book and close the rows manually:"]
+        lines += [f"{sym} {otype} order {oid}" for sym, otype, oid in rows]
+        try:
+            self.telegram_api.send_message(chat_id, "\n".join(lines))
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send Telegram notification: {e}")
+            return False
+
     def send_buy_failed(self, account, symbol, quantity, sl, percent_increase):  # pylint: disable=too-many-arguments,too-many-positional-arguments
         chat_id = self._get_chat_id(account)
         if not chat_id:
@@ -189,6 +204,9 @@ class ElliotCashStratergy:
 
         self._order_retry_count = {}
         self._max_order_retries = 3
+        # Orders the broker keeps answering NotFound for: {(sl_no, order_type): consecutive count}
+        self._notfound_counts = {}
+        self._notfound_alert_day = {}   # account -> date of last consolidated alert
 
         self._csv_sent_date = None
 
@@ -956,9 +974,12 @@ class ElliotCashStratergy:
             f"Days held: {days_held}"
         )
 
+    _NOTFOUND_ALERT_AFTER = 3   # consecutive NotFound polls before alerting
+
     def _process_pending_orders(self, data, place_order):
         """Process rows with pending orders — check order status and record PnL."""
         mask = (data['open_order_status'] == 'open_pending') | (data['close_order_status'] == 'close_pending')
+        stale = {}   # account -> [(symbol, order_type, order_id)] confirmed NotFound repeatedly
         for idx, row in data[mask].iterrows():
             try:
                 is_open_pending = row['open_order_status'] == 'open_pending'
@@ -1061,7 +1082,17 @@ class ElliotCashStratergy:
                     self.notifier.send_error(row['account'], row['symbol'], order_type,
                                              f"Order {status.lower()} - order_id: {order_id}")
                     data.to_csv(self.csv_path, index=False)
+                elif status == "NotFound":
+                    # Brokers only list the current day's orders, so an older order can never be
+                    # confirmed. Keep the row (P&L unknown) but make it visible.
+                    key = (row['sl_no'], order_type)
+                    self._notfound_counts[key] = self._notfound_counts.get(key, 0) + 1
+                    logger.debug(f"EW: Order {order_id} for row {row['sl_no']} NotFound "
+                                 f"({self._notfound_counts[key]} in a row)")
+                    if self._notfound_counts[key] >= self._NOTFOUND_ALERT_AFTER:
+                        stale.setdefault(row['account'], []).append((row['symbol'], order_type, order_id))
                 else:
+                    self._notfound_counts.pop((row['sl_no'], order_type), None)
                     logger.info(f"EW: Order {order_id} for row {row['sl_no']} still pending: {status}")
 
             except Exception as e:
@@ -1070,6 +1101,14 @@ class ElliotCashStratergy:
                 data.loc[idx, f'{order_type}_order_status'] = 'rejected'
                 self.notifier.send_error(row['account'], row['symbol'], order_type, str(e)[:50])
                 data.to_csv(self.csv_path, index=False)
+
+        today = datetime.now().date()
+        for account, rows in stale.items():
+            logger.warning(f"EW: {len(rows)} {account} order(s) NotFound at broker: "
+                           f"{[(sym, ot, str(oid)) for sym, ot, oid in rows]}")
+            if self._notfound_alert_day.get(account) != today:
+                if self.notifier.send_stale_orders(account, rows):
+                    self._notfound_alert_day[account] = today
 
     # ------------------------------------------------------------------
     # Main entry point

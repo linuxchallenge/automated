@@ -814,3 +814,69 @@ class TestRejectedBuyIsNotManagedAsOpen(unittest.TestCase):
 
     def test_pending_buy_stays_open(self):
         self.assertEqual(self._run('Open')['status'], 'open')
+
+
+class TestStaleNotFoundOrders(unittest.TestCase):
+    """Orders the broker can no longer find must be surfaced, not polled silently forever."""
+
+    def _strategy(self):
+        s = ElliotCashStratergy.__new__(ElliotCashStratergy)
+        s.csv_path = os.path.join(tempfile.mkdtemp(), 'x.csv')
+        s.notifier = MagicMock()
+        s._notfound_counts = {}
+        s._notfound_alert_day = {}
+        return s
+
+    def _data(self):
+        return pd.DataFrame([
+            _base_row(sl_no='A', status='open', account='deepti', symbol='SBIN', open_order_status='Complete',
+                      close_order_status='close_pending', buy_order_id=1, close_order_id=260824000000001),
+            _base_row(sl_no='B', status='open', account='deepti', symbol='INFY', open_order_status='Complete',
+                      close_order_status='close_pending', buy_order_id=2, close_order_id=260907000000002),
+        ])
+
+    def _poll(self, s, data, status='NotFound'):
+        po = MagicMock()
+        po.order_status.return_value = (status, -1)
+        s._process_pending_orders(data, po)
+
+    def test_alerts_once_after_three_notfound_polls_with_all_rows(self):
+        s, data = self._strategy(), self._data()
+        self._poll(s, data); self._poll(s, data)
+        s.notifier.send_stale_orders.assert_not_called()
+        self._poll(s, data)
+        s.notifier.send_stale_orders.assert_called_once()
+        account, rows = s.notifier.send_stale_orders.call_args.args
+        self.assertEqual(account, 'deepti')
+        self.assertEqual({r[0] for r in rows}, {'SBIN', 'INFY'})
+        self._poll(s, data); self._poll(s, data)          # same day: no repeat
+        s.notifier.send_stale_orders.assert_called_once()
+
+    def test_alerts_again_next_day(self):
+        s, data = self._strategy(), self._data()
+        for _ in range(3):
+            self._poll(s, data)
+        s._notfound_alert_day['deepti'] = datetime.now().date().replace(year=2020)
+        self._poll(s, data)
+        self.assertEqual(s.notifier.send_stale_orders.call_count, 2)
+
+    def test_rows_are_left_untouched(self):
+        s, data = self._strategy(), self._data()
+        for _ in range(4):
+            self._poll(s, data)
+        self.assertTrue((data['status'] == 'open').all())
+        self.assertTrue((data['close_order_status'] == 'close_pending').all())
+
+    def test_other_status_resets_the_counter(self):
+        s, data = self._strategy(), self._data()
+        self._poll(s, data); self._poll(s, data)
+        self._poll(s, data, status='Open')
+        self._poll(s, data); self._poll(s, data)
+        s.notifier.send_stale_orders.assert_not_called()
+
+    def test_failed_alert_is_retried_next_cycle(self):
+        s, data = self._strategy(), self._data()
+        s.notifier.send_stale_orders.return_value = False
+        for _ in range(4):
+            self._poll(s, data)
+        self.assertEqual(s.notifier.send_stale_orders.call_count, 2)   # polls 3 and 4

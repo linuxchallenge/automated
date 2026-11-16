@@ -841,6 +841,15 @@ class angelone_api(object):
             # Log raw status for debugging
             logger.info(f"AngelOne raw order status for {order_id}: '{order_status}'")
 
+            if str(order_status).lower() in ("rejected", "cancelled"):
+                # Angel puts the broker/exchange reason in the 'text' column
+                row = matching_orders.iloc[0]
+                logger.error(
+                    f"AngelOne order {order_id} {str(order_status).upper()}: "
+                    f"reason='{row.get('text', 'n/a')}' symbol={row.get('tradingsymbol', 'n/a')} "
+                    f"{row.get('transactiontype', '')} qty={row.get('quantity', '')} "
+                    f"product={row.get('producttype', '')} type={row.get('ordertype', '')}")
+
             # Case-insensitive status matching
             order_status_lower = str(order_status).lower()
             if order_status_lower == "complete":
