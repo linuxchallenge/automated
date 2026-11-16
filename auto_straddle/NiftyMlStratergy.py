@@ -28,6 +28,8 @@ TEXT_COLUMNS = ['exit_time', 'exit_reason', 'entry_order_id', 'entry_state', 'ex
 EXIT_COLUMNS = ['exit_time', 'exit_price', 'exit_reason', 'pnl_points', 'pnl_rupees', 'exit_order_id', 'exit_state']
 # option legs that should be sold for each signal
 LEGS = {'bullish': ('PE',), 'bearish': ('CE',), 'sideways': ('PE', 'CE'), 'none': ()}
+# the signal that the legs currently held correspond to
+HELD_SIGNAL = {frozenset(('PE',)): 'bullish', frozenset(('CE',)): 'bearish', frozenset(('PE', 'CE')): 'sideways'}
 
 
 class NiftyMlStratergy:
@@ -36,6 +38,11 @@ class NiftyMlStratergy:
     the CE 100 points above ATM, sideways (model only) sells both. A leg is closed when the new
     signal no longer wants it, and everything is closed at 15:15. After any exit there is a
     cooling period: new legs are sold at the next 15-minute check at the earliest.
+    A signal is entered when its class probability is above PROB_THRESHOLD (0.45) but, once held,
+    it is only given up when that probability falls below PROB_EXIT (0.40), so a dip just under
+    0.45 does not close and re-open the same position. Each entry and each exit sends one
+    Telegram message for all the legs of that trade. At most MAX_TRADES_PER_DAY (2) trades are
+    entered per day; exits and the square-off are never blocked.
 
     Orders go through PlaceOrder like the other option strategies: every entry and exit is
     placed as an order, recorded as 'pending', and confirmed on the following loops with
@@ -46,7 +53,9 @@ class NiftyMlStratergy:
     SYMBOL = 'NIFTY'
     STRIKE_OFFSET = 100          # = 2 strike intervals: the option chain's atm_next_* prices
     LOT_SIZE = 65
-    PROB_THRESHOLD = 0.45        # model's top class must be at least this confident
+    PROB_THRESHOLD = 0.45        # entry: the model's top class must be above this
+    PROB_EXIT = 0.40             # exit: a held signal is kept until its class probability falls below this
+    MAX_TRADES_PER_DAY = 2       # a trade = the leg(s) sold at one 15-minute check; no new entries after this many
     PCR_BULLISH, PCR_BEARISH, PCR_SWING = 1.4, 0.7, 0.3
     FIRST_BAR = time(9, 30)
     LAST_ENTRY = time(14, 0)     # last bar that may open a trade: the model looks 90 minutes ahead and is trained on bars up to 14:00
@@ -90,7 +99,7 @@ class NiftyMlStratergy:
 
         bar = pd.Timestamp(now).floor("15min")
         if self.signal_bar != bar:
-            result = self.get_signal(option_chain_info, place_order_obj, bar, now)
+            result = self.get_signal(option_chain_info, place_order_obj, bar, now, self.held_signal(trades))
             if result is None:
                 if (now - bar).total_seconds() < self.RETRY_SECONDS:
                     return  # candle or chain data not ready yet: try again on the next loop
@@ -104,7 +113,7 @@ class NiftyMlStratergy:
         for leg in open_legs:  # close the legs the new signal no longer wants
             if trades.at[leg, 'option_type'] not in wanted:
                 done = self.close_position(trades, leg, option_chain_info, now, "signal lost", place_order_obj) and done
-        if bar.time() <= self.LAST_ENTRY and not self.in_cooling(trades, bar):
+        if bar.time() <= self.LAST_ENTRY and not self.in_cooling(trades, bar) and self.entries_allowed(trades, bar):
             held = set(trades.loc[trades['exit_time'].isna(), 'option_type'])
             for option_type in wanted:  # sell the legs it wants and does not hold yet
                 if option_type not in held:
@@ -114,9 +123,17 @@ class NiftyMlStratergy:
         if done:  # otherwise a price was missing or an order could not be placed: retry on the next loop
             self.acted_bar = bar
 
+    def held_signal(self, trades):
+        """The signal the open legs correspond to, read from the trades file so it survives a restart:
+        PE and CE = sideways, PE only = bullish, CE only = bearish, nothing open = none."""
+        open_types = frozenset(trades.loc[trades['exit_time'].isna(), 'option_type'])
+        return HELD_SIGNAL.get(open_types, 'none')
+
     def check_orders(self, trades, place_order_obj, now):
-        """Confirm pending entry and exit orders with the broker; returns the updated trades."""
+        """Confirm pending entry and exit orders with the broker; returns the updated trades.
+        One Telegram message is sent per entry and per exit, once every leg of it is confirmed."""
         changed = False
+        entry_bars, exit_bars = set(), set()  # 15-minute bars of the entries / exits that changed state
         for leg in trades.index:
             name = f"{float(trades.at[leg, 'strike']):.0f} {trades.at[leg, 'option_type']}"
             if trades.at[leg, 'entry_state'] == 'pending':
@@ -126,14 +143,14 @@ class NiftyMlStratergy:
                     trades.at[leg, 'entry_state'] = 'complete'
                     trades.at[leg, 'entry_price'] = price
                     changed = True
-                    self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} {trades.at[leg, 'signal']}: sold {name} at {price} "
-                                      f"(ATM {float(trades.at[leg, 'entry_atm']):.0f}, {trades.at[leg, 'quantity']} lot)")
+                    entry_bars.add(self.bar_of(trades.at[leg, 'entry_time']))
                 elif state == 'rejected':
                     # nothing was sold: retire the leg; the cooling period delays the next attempt to the next check
                     trades.at[leg, 'entry_state'] = 'rejected'
                     trades.loc[leg, ['exit_time', 'exit_reason', 'pnl_points', 'pnl_rupees']] = \
                         [now.strftime("%Y-%m-%d %H:%M:%S"), "entry rejected", 0.0, 0.0]
                     changed = True
+                    entry_bars.add(self.bar_of(trades.at[leg, 'entry_time']))  # its sibling leg may now be complete
                     self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} ERROR entry order {order_id} for {name} was rejected")
                 else:
                     self.alert_if_stuck(order_id, name, "entry", trades.at[leg, 'entry_time'], now)
@@ -146,11 +163,10 @@ class NiftyMlStratergy:
                     trades.loc[leg, ['exit_price', 'pnl_points', 'pnl_rupees', 'exit_state']] = \
                         [price, round(pnl_points, 2), round(pnl_rupees, 2), 'complete']
                     changed = True
-                    self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} closed {name} ({trades.at[leg, 'exit_reason']}): "
-                                      f"sold {trades.at[leg, 'entry_price']}, bought {price}, "
-                                      f"{pnl_points:+.1f} points, Rs {pnl_rupees:+.0f} (before costs)")
+                    exit_bars.add(self.bar_of(trades.at[leg, 'exit_time']))
                 elif state == 'rejected':
                     # the option is still sold at the broker: reopen the leg so it is closed again
+                    exit_bars.add(self.bar_of(trades.at[leg, 'exit_time']))  # its sibling leg may now be complete
                     trades.loc[leg, EXIT_COLUMNS] = [None] * len(EXIT_COLUMNS)
                     self.acted_bar = None
                     changed = True
@@ -159,7 +175,47 @@ class NiftyMlStratergy:
                     self.alert_if_stuck(order_id, name, "close", trades.at[leg, 'exit_time'], now)
         if changed:
             trades.to_csv(self.get_trades_file_path(now), index=False)
+        self.announce_entries(trades, entry_bars)
+        self.announce_exits(trades, exit_bars)
         return trades
+
+    def bar_of(self, stamp):
+        return pd.Timestamp(stamp).floor("15min")
+
+    def announce_entries(self, trades, bars):
+        """One message per entry: the legs sold in the same 15-minute bar, sent once none is still pending."""
+        entry_bar = pd.to_datetime(trades['entry_time']).dt.floor("15min")
+        for bar in sorted(bars):
+            group = trades[entry_bar == bar]
+            if group.empty or (group['entry_state'] == 'pending').any():
+                continue
+            legs = group[group['entry_state'] == 'complete']
+            if legs.empty:
+                continue
+            sold = " and ".join(f"{float(r['strike']):.0f} {r['option_type']} at {float(r['entry_price'])}"
+                                for _, r in legs.iterrows())
+            first = legs.iloc[0]
+            self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} {first['signal']}: sold {sold} "
+                              f"(ATM {float(first['entry_atm']):.0f}, {first['quantity']} lot)")
+
+    def announce_exits(self, trades, bars):
+        """One message per exit: the legs closed in the same 15-minute bar, sent once none is still pending."""
+        exit_bar = pd.to_datetime(trades['exit_time']).dt.floor("15min")
+        for bar in sorted(bars):
+            group = trades[(exit_bar == bar) & trades['exit_state'].isin(['pending', 'complete'])]
+            if group.empty or (group['exit_state'] == 'pending').any():
+                continue
+            lines = [f"NiftyMl {self.ACCOUNT} {self.SYMBOL} closed ({group.iloc[0]['exit_reason']})"]
+            for _, r in group.iterrows():
+                lines.append(f"{float(r['strike']):.0f} {r['option_type']}: sold {float(r['entry_price'])}, "
+                             f"bought {float(r['exit_price'])}, {float(r['pnl_points']):+.1f} points")
+            points = group['pnl_points'].astype(float).sum()
+            rupees = group['pnl_rupees'].astype(float).sum()
+            if len(group) == 1:
+                lines = [f"{lines[0]} {lines[1]}, Rs {rupees:+.0f} (before costs)"]
+            else:
+                lines.append(f"Total {points:+.1f} points, Rs {rupees:+.0f} (before costs)")
+            self.send_message("\n".join(lines))
 
     def order_state(self, place_order_obj, order_id, expected_price):
         """('complete', fill price) / ('rejected', None) / ('pending', None) for one order."""
@@ -178,15 +234,25 @@ class NiftyMlStratergy:
             self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} WARNING {kind} order {order_id} for {name} "
                               f"still not confirmed after {waited / 60:.0f} minutes")
 
+    def entries_allowed(self, trades, bar):
+        """False once MAX_TRADES_PER_DAY trades have been entered today. A trade is the leg(s) sold at
+        one 15-minute check, so a strangle is one trade; rejected entries do not count. The current
+        bar stays allowed if it already has an entry, so a missing second leg can still be sold."""
+        placed = trades[trades['entry_state'] != 'rejected']
+        entry_bars = set(pd.to_datetime(placed['entry_time']).dt.floor("15min"))
+        return bar in entry_bars or len(entry_bars) < self.MAX_TRADES_PER_DAY
+
     def in_cooling(self, trades, bar):
         """True when a leg was closed during this 15-minute bar: after any exit, new legs
         are sold at the next 15-minute check at the earliest."""
         exits = pd.to_datetime(trades['exit_time'].dropna())
         return len(exits) > 0 and exits.max().floor("15min") >= bar
 
-    def get_signal(self, option_chain_info, place_order_obj, bar, now):
+    def get_signal(self, option_chain_info, place_order_obj, bar, now, held='none'):
         """'bullish' / 'bearish' / 'sideways' / 'none' for the bar that closed at `bar`,
-        or None when the inputs are not available."""
+        or None when the inputs are not available. `held` is the signal the open legs correspond to:
+        a new signal needs its probability above PROB_THRESHOLD, but a held one is kept until its
+        probability falls below PROB_EXIT. PCR confirmation is needed to enter only."""
         mtime = os.path.getmtime(MODEL_PATH)
         if self.model is None or mtime != self.model_mtime:  # picks up a retrained model without a restart
             self.model, self.model_mtime = nf.load_model(MODEL_PATH), mtime
@@ -222,10 +288,14 @@ class NiftyMlStratergy:
         signal = model_call  # sideways needs no PCR confirmation
         if (model_call == 'bullish' and not bullish_ok) or (model_call == 'bearish' and not bearish_ok):
             signal = 'none'
+        if signal == 'none' and held != 'none':
+            held_probability = {'bearish': p_bear, 'sideways': p_side, 'bullish': p_bull}[held]
+            if held_probability >= self.PROB_EXIT:
+                signal = held  # still above the exit threshold: keep what is held
 
         row = {'bar': bar, 'spot': float(option_chain_info['spot_price']), 'p_bear': round(p_bear, 4),
                'p_side': round(p_side, 4), 'p_bull': round(p_bull, 4), 'model_call': model_call, 'pcr': round(pcr, 4),
-               'pcr_low': round(pcr_low, 4), 'pcr_high': round(pcr_high, 4), 'signal': signal}
+               'pcr_low': round(pcr_low, 4), 'pcr_high': round(pcr_high, 4), 'signal': signal, 'held': held}
         logger.info(f"NiftyMl signal {row}")
         print(f"NiftyMl signal {row}")
         file_name = f"csv/ml_signals_{now.strftime('%Y-%m-%d')}_{self.SYMBOL}.csv"

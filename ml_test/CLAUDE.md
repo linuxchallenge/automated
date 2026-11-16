@@ -18,13 +18,13 @@ Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15
 ## Decisions already made
 - PCR alone is a weak signal; the model uses 44 features (price, Alligator, gap, previous-day high/low, expiry, option chain, Bank Nifty).
 - Labels: return over the next 6 bars of the same day, scaled by recent volatility; > +0.6*vol bullish, < -0.6*vol bearish, else sideways. Labels never cross the overnight gap.
-- Model: LightGBM multiclass (conservative: num_leaves=15, min_child_samples=100, lr=0.03, 200 trees, subsample/colsample 0.8, reg_lambda=5). Act only when top-class probability > 0.45.
+- Model: LightGBM multiclass (conservative: num_leaves=15, min_child_samples=100, lr=0.03, 200 trees, subsample/colsample 0.8, reg_lambda=5). Enter only when top-class probability > 0.45; once held, keep a signal until its probability falls below 0.40 (stops a close and re-open at 0.4473 vs 0.45, seen 2026-11-16 13:30).
 - The Pi has no lightgbm (armv7l, Python 3.9, pandas 1.5). The model is exported to `auto_straddle/nifty_ml_model.json` and evaluated in plain Python by `auto_straddle/nifty_ml_features.py`.
 - Training and live must build features with the same code: `auto_straddle/nifty_ml_features.py`. Do not compute features anywhere else.
 - "Self-learning" = scheduled rolling-window retraining (weekly, by hand, on the laptop), NOT online learning or RL. Later: champion/challenger promotion and drift monitors that pause trading.
 - Trade options, not futures (changed 2026-11-15): sell the PE 100 below ATM when bullish, the CE 100 above when bearish, both when sideways.
 - Bullish needs PCR > 1.4 or PCR at least 0.3 above the day's low; bearish needs PCR < 0.7 or at least 0.3 below the day's high; sideways uses the model alone.
-- Exit when the signal no longer wants a leg, 15-minute cooling period after any exit, last entry at the 14:00 bar, square-off at 15:15, no stop-loss.
+- Exit when the signal no longer wants a leg, 15-minute cooling period after any exit, at most 2 trades a day (a strangle is one trade), last entry at the 14:00 bar, square-off at 15:15, no stop-loss.
 - Orders go through `PlaceOrder` with pending/complete status checks so the code can be reused for a real broker; the strategy refuses every account except `dummy`.
 - Baselines to beat after costs: momentum, MA(50), buy & hold.
 - Foundation time-series models (TimesFM, Chronos, Moirai) are NOT the plan; research shows weak gains on returns. LLMs only for news/filings sentiment features later (e.g. FinSense-ModernBERT on CPU).
@@ -43,7 +43,7 @@ Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15
 - Research: `build_data.py` + `pipeline.py` run on real data (471 days, 2024-08-19 to 2026-11-13). No edge found for direction: calls are close to a coin flip and log-loss is worse than a no-skill forecast. An earlier "beats no-skill" result was leakage from the overnight gap in the labels.
 - Sideways calls are slightly better than chance (54.2% actually sideways vs 51.4% for all bars).
 - Short-straddle P&L: `straddle.py` estimates it; always selling the ATM straddle for 6 bars averaged +2.24 points gross, negative after a 3-point placeholder cost.
-- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 115 tests pass. Uncommitted.
+- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 141 tests pass. Ran on the Pi on 2026-11-16 (sideways strangle +34.9 points, no errors). The 0.40 exit threshold and one-Telegram-message-per-trade are added since and are uncommitted.
 - Model: trained on 3,000 bars, 2025-12-02 to 2026-11-13.
 - Weekly routine: `weekly_retrain.sh` (run and verified), `deploy_model.sh` (syntax-checked only, never run).
 - Option P&L for the live rules has not been backtested; the stored data cannot price a held leg once ATM moves.

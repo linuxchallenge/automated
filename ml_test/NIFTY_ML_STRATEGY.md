@@ -1,6 +1,6 @@
 # Nifty ML option-selling strategy (paper trading)
 
-Status as of 2026-11-15: implemented and tested on the laptop (115 tests pass). Not yet committed, and not yet run on the Pi.
+Status as of 2026-11-16: ran on the Pi on 2026-11-16 (paper trading, no errors). The exit threshold and grouped Telegram messages below were added afterwards: tested on the laptop (135 tests pass), not yet committed or deployed.
 
 ## In one paragraph
 
@@ -12,15 +12,18 @@ Every 15 minutes a LightGBM model predicts whether Nifty will be bullish, bearis
 |---|---|
 | Instrument | NIFTY weekly options, 1 lot (65) per `quantity` in the sheet |
 | Decision times | Each 15-minute candle close from 9:30 |
-| Bullish signal | Model's top class is bullish with probability above 0.45, **and** PCR is above 1.4 or at least 0.3 above today's lowest PCR |
-| Bearish signal | Model's top class is bearish with probability above 0.45, **and** PCR is below 0.7 or at least 0.3 below today's highest PCR |
-| Sideways signal | Model's top class is sideways with probability above 0.45. No PCR check |
-| No signal | The model's top class is at or below 0.45, or a bullish/bearish call is not confirmed by PCR |
+| Entry threshold | A signal is entered only if its class is the model's top class with probability **above 0.45** |
+| Exit threshold | A signal that is already held is kept until its class probability falls **below 0.40** (see "Entry and exit thresholds") |
+| Bullish signal | Top class is bullish above 0.45, **and** PCR is above 1.4 or at least 0.3 above today's lowest PCR |
+| Bearish signal | Top class is bearish above 0.45, **and** PCR is below 0.7 or at least 0.3 below today's highest PCR |
+| Sideways signal | Top class is sideways above 0.45. No PCR check |
+| No signal | No class qualifies for entry (top class at or below 0.45, or a bullish/bearish call not confirmed by PCR) **and** nothing held is still at or above 0.40 |
 | Bullish trade | Sell the PE 100 points below ATM (ATM 23000 → sell 22900 PE) |
 | Bearish trade | Sell the CE 100 points above ATM (ATM 23000 → sell 23100 CE) |
 | Sideways trade | Sell both: the PE 100 below ATM and the CE 100 above |
 | Exit | At each check, any held leg the new signal does not want is closed, and any wanted leg not yet held is sold |
 | Cooling period | After any exit, no new leg is sold at that check. The earliest new entry is the next 15-minute check, if the signal still wants it |
+| Daily limit | At most 2 trades a day. A trade is the leg or legs sold at one 15-minute check, so a strangle is one trade. After the second trade no new leg is sold that day; exits and the square-off still run |
 | Square-off | All open legs are closed at 15:15 |
 | Last entry | The 14:00 bar. Exits continue until 15:15 |
 | Stop-loss | None |
@@ -37,7 +40,29 @@ How the legs change between signals:
 | Bullish ↔ bearish | The held leg is closed. The other side is sold at the next check, if the signal still holds |
 | Anything → no signal | All legs are closed |
 
+### Entry and exit thresholds
+
+Two thresholds stop a position being closed and re-opened because the probability wobbles around one number.
+
+- **Entry:** the top class must be above 0.45, as before.
+- **Hold:** if nothing qualifies for entry, the signal that matches the open legs is kept while that class's probability is at least 0.40. Open legs are read from the trades file: PE and CE = sideways, PE only = bullish, CE only = bearish. Held bullish needs bullish at 0.40 or more; held sideways needs sideways at 0.40 or more.
+- **Switch:** a different class above 0.45 (confirmed by PCR if directional) replaces the held one, and the normal leg changes apply.
+- **PCR applies to entering only.** A held bullish or bearish leg is not closed because PCR stopped confirming; it is closed when its probability falls below 0.40.
+- **Why:** on 2026-11-16 at 13:30 the sideways probability was 0.4473, 0.003 under 0.45. The strategy closed both legs and sold the same two strikes again at 13:45. Replaying that day's logged probabilities through the new rule gives one strangle from 09:30 to 15:15 and no 13:30 exit.
+- **Effect over 337 backtest days** (cooling period included):
+
+  | Exit level | Legs sold per day | Orders per day (sell + buy) | Average hold per leg |
+  |---|---|---|---|
+  | 0.45 (no gap) | 3.83 | 7.66 | 8.1 bars (2 hours) |
+  | 0.40 (chosen) | 3.01 | 6.02 | 11.3 bars (2.8 hours) |
+  | 0.35 | 2.46 | 4.92 | 14.7 bars |
+
+  These count orders only. Whether holding longer earns more points has not been tested.
+- **A lower exit level holds weakening positions longer.** There is no stop-loss, so the only protection against a moving market is the signal falling below 0.40 and the 15:15 square-off.
+
 Notes on the rules:
+
+- The daily limit counts entries, not legs. A leg added at a later check (for example a CE added when bullish becomes sideways) is its own trade and counts towards the 2. A rejected entry does not count. The count is read from the trades file, so it survives a restart.
 
 - A kept leg stays at its original strike even if ATM has moved since it was sold.
 - "ATM" is the engine's ATM strike from the option chain: the strike where the CE and PE prices are closest, which is usually but not always the strike nearest to spot.
@@ -55,13 +80,14 @@ Entries and exits go through `PlaceOrder`, the same order adapter the other opti
 | Entry | A sell order is placed and the leg is recorded as `pending` with the option chain price |
 | Exit | A buy order is placed and the exit is recorded as `pending` |
 | Every loop (about once a minute) | Each pending order is checked with `order_status` |
-| Order complete | The leg is marked `complete`, the broker's fill price replaces the expected price, P&L is recalculated, and the Telegram message is sent |
+| Order complete | The leg is marked `complete`, the broker's fill price replaces the expected price and P&L is recalculated. The Telegram message is sent once every leg of that entry or exit is confirmed |
 | Entry rejected or cancelled | The leg is retired as "entry rejected" with zero P&L and an error is sent. The next attempt is at the next 15-minute check, if the signal still wants it |
 | Exit rejected or cancelled | The leg is reopened and the close is placed again on the same loop, with an error message |
 | Order could not be placed | Entry: an error is sent and it is tried again at the next 15-minute check. Exit: retried every loop, with one error message |
 | Still unconfirmed after 2 minutes | One warning message; it keeps checking, and never places a duplicate |
 | Entry not yet confirmed | The leg is not closed until its entry is confirmed |
 
+- **One Telegram message per entry and per exit.** Legs sold in the same 15-minute bar are announced together (for example `sold 25150 PE at 74.75 and 25350 CE at 57.9`). Legs closed in the same bar are announced together with each leg's points and a total. The message waits until no leg of the group is still pending. A leg added at a later check (for example a CE added when bullish becomes sideways) is its own entry message. Errors and warnings stay one message each.
 - The day total is sent only after every exit is confirmed.
 - Any status containing "reject" or "cancel" counts as a rejection. Anything else that is not `Complete` counts as still pending.
 - To extend to a real account later: allow that account in `NiftyMlStratergy.ACCOUNT`. Before that, check the exact status strings each broker returns, and review lot size, margin and the missing stop-loss.
@@ -217,8 +243,8 @@ Removing the sheet row (or setting quantity to 0) turns it off.
 
 ## Output
 
-- Telegram message to the dummy account's chat when each entry and exit is confirmed, on any order error, and a day total after 15:15.
-- `csv/ml_signals_<date>_NIFTY.csv`: one row per 15-minute decision with the three probabilities, the model's call, PCR, the day's PCR low and high, and the final signal.
+- Telegram message to the dummy account's chat when each entry and each exit is confirmed (one message for all legs of that trade), on any order error, and a day total after 15:15.
+- `csv/ml_signals_<date>_NIFTY.csv`: one row per 15-minute decision with the three probabilities, the model's raw call (`model_call`, entry threshold only), PCR, the day's PCR low and high, the final `signal` and what was `held` going into the bar. A day where `model_call` is `none` but `signal` is `sideways` is a held position kept by the exit threshold. The `held` column is new: deploy before the open or after the close, because a file already started that day has the old header.
 - `csv/ml_trades_<date>_dummy_NIFTY.csv`: one row per option leg with entry, exit, reason, order ids, order states and P&L in points and rupees. P&L is before brokerage, taxes and slippage.
 
 ## What the backtests say
@@ -232,7 +258,7 @@ Out-of-sample walk-forward over 337 days (2025-02-25 to 2026-11-13), decision ba
 | Bearish (model + PCR) | 1.5% |
 | Bullish (model + PCR) | 0.3% |
 
-- **It is mostly a short-strangle strategy.** It holds a position on 99% of days and sells about 3.9 legs a day. Directional trades are rare. These counts were measured before the cooling period was added, so the live number of legs will be slightly lower.
+- **It is mostly a short-strangle strategy.** It holds a position on 99% of days and sells about 3.9 legs a day. Directional trades are rare. With the cooling period and the 0.40 exit threshold the simulation gives 3.0 legs sold a day (3.8 without the exit threshold).
 - **Sideways calls:** the next 90 minutes were actually sideways 54.2% of the time, against 51.4% for all bars. That is a small improvement over selling blindly.
 - **Directional calls when they fired:**
 
@@ -248,7 +274,7 @@ Treat the paper run as a test of the plumbing and a way to collect live results,
 
 ## How it was checked
 
-- **Tests:** 115 pass. They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
+- **Tests:** 141 pass. They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
 - **Model export:** the plain-Python evaluation matches lightgbm to about 2e-16.
 - **Live versus training:** five past bars were replayed through the live code path using the Pi's own files. Four matched the training features exactly; the fifth differed by 0.3% in probability because of the expiry limit below.
 
@@ -259,5 +285,6 @@ Treat the paper run as a test of the plumbing and a way to collect live results,
 - Days-to-expiry can be off by one when a holiday on expiry day lies ahead, because the Pi has no holiday calendar.
 - Paper fills use the option chain's last traded price, so real fills would be worse by the bid-ask spread.
 - Order handling has only been exercised with the dummy account and a fake broker in tests. Real broker behaviour (partial fills, slow confirmations) is untested.
+- With a real broker, if one leg's close is rejected after its sibling's close completed, the sibling is announced once alone and again together with the retried leg, so it appears twice in Telegram. Dummy orders are never rejected, so this cannot happen today.
 - From 2026-08-03 the index is frozen from 15:15 to 15:25 and then prints the close, which looks like a closing auction. The 15:15 square-off sits right at that boundary.
 - The signal for the current bar is kept in memory. Open legs, pending orders and the cooling period are read from the trades file, so they survive a restart.
