@@ -35,14 +35,18 @@ class FakeOrders:
         self.fill = None
         self.fail = False
         self.status_calls = 0
-        self.open_ids = set()  # order ids that are still 'Open' at the broker
+        self.open_ids = set()  # order ids (text) that are still 'Open' at the broker
+        self.accounts = []     # account passed to each placed order
+        self.status_ids = []   # order id passed to each order_status call
+        self.id_base = 1000    # set to a 19-digit number to model Angel One order ids
 
     def _place(self, side, account, strike, option_type, symbol, qty):
-        assert account == 'dummy' and symbol == 'NIFTY'
+        assert account in ('dummy', 'deepti') and symbol == 'NIFTY'
         if self.fail:
             return -1
         self.placed.append((side, strike, option_type, qty))
-        return 1000 + len(self.placed)
+        self.accounts.append(account)
+        return self.id_base + len(self.placed)
 
     def place_orders(self, account, strike, option_type, symbol, qty, intraday=True):
         return self._place('SELL', account, strike, option_type, symbol, qty)
@@ -52,7 +56,8 @@ class FakeOrders:
 
     def order_status(self, account, order_id, old_price):
         self.status_calls += 1
-        if order_id in self.open_ids:
+        self.status_ids.append(order_id)
+        if str(order_id) in self.open_ids:
             return 'Open', -1
         if self.status == 'Complete':
             return 'Complete', self.fill if self.fill is not None else old_price
@@ -83,8 +88,8 @@ def at(hhmm, second=20):
     return datetime(2026, 11, 16, hour, minute, second)
 
 
-def run(s, hhmm, info, account='dummy', symbol='NIFTY', second=20):
-    s.execute_strategy(info, symbol, account, 1, s.orders, now=at(hhmm, second))
+def run(s, hhmm, info, account='dummy', symbol='NIFTY', second=20, quantity=1):
+    s.execute_strategy(info, symbol, account, quantity, s.orders, now=at(hhmm, second))
     return s.read_trades(at(hhmm))
 
 
@@ -232,11 +237,12 @@ def test_nothing_before_first_bar(strat):
     strat.get_signal.assert_not_called()
 
 
-def test_only_dummy_account_and_nifty(strat):
+def test_only_dummy_and_deepti_and_only_nifty(strat):
     strat.signals = {"10:00": 'sideways'}
-    assert len(run(strat, "10:00", chain(), account='deepti')) == 0
+    assert len(run(strat, "10:00", chain(), account='leelu')) == 0
     assert len(run(strat, "10:00", chain(), symbol='BANKNIFTY')) == 0
     strat.get_signal.assert_not_called()
+    assert not os.path.exists("csv/ml_trades_2026-11-16_leelu_NIFTY.csv")
 
 
 def test_unknown_signal_retries_then_keeps_position(strat):
@@ -310,7 +316,7 @@ def test_a_strangle_entry_sends_one_telegram_message(strat):
 def test_entry_message_waits_for_the_slower_leg(strat):
     strat.signals = {"10:00": 'sideways'}
     run(strat, "10:00", chain(pe=40.0, ce=45.0))
-    strat.orders.open_ids = {1002}  # the CE order is still open at the broker
+    strat.orders.open_ids = {'1002'}  # the CE order is still open at the broker
     run(strat, "10:01", chain())
     assert strat.send_message.call_count == 0
     strat.orders.open_ids = set()
@@ -339,7 +345,7 @@ def test_exit_message_waits_for_the_slower_leg(strat):
     run(strat, "10:01", chain(pe=40.0, ce=45.0))
     strat.send_message.reset_mock()
     run(strat, "10:15", chain(pe=25.0, ce=50.0))
-    strat.orders.open_ids = {1004}  # the CE buy-back is slow
+    strat.orders.open_ids = {'1004'}  # the CE buy-back is slow
     run(strat, "10:16", chain())
     assert strat.send_message.call_count == 0
     strat.orders.open_ids = set()
@@ -370,7 +376,7 @@ def test_a_leg_added_later_is_a_separate_entry_message(strat):
 def test_rejected_leg_does_not_swallow_the_message_for_its_sibling(strat):
     strat.signals = {"10:00": 'sideways'}
     run(strat, "10:00", chain(pe=40.0, ce=45.0))
-    strat.orders.open_ids = {1002}
+    strat.orders.open_ids = {'1002'}
     run(strat, "10:01", chain())          # PE confirmed, CE still open: nothing sent yet
     strat.orders.open_ids = set()
     strat.orders.status = 'Rejected'
@@ -439,12 +445,136 @@ def test_limit_survives_restart(strat):
     assert len(fresh.read_trades(at("11:00"))) == 4
 
 
+# ---- live account (deepti, Angel One) ---------------------------------------------------------
+
+def test_dummy_and_deepti_both_trade_in_the_same_bar_with_their_own_files(strat):
+    strat.signals = {"10:00": 'sideways'}
+    dummy = run(strat, "10:00", chain(pe=40.0, ce=45.0))
+    deepti = run(strat, "10:00", chain(pe=40.0, ce=45.0), account='deepti')
+    assert len(dummy) == 2 and len(deepti) == 2  # the second account is not blocked by the first one's bar
+    assert strat.orders.accounts == ['dummy', 'dummy', 'deepti', 'deepti']
+    assert os.path.exists("csv/ml_trades_2026-11-16_dummy_NIFTY.csv")
+    assert os.path.exists("csv/ml_trades_2026-11-16_deepti_NIFTY.csv")
+
+
+def test_each_account_decides_with_its_own_held_legs(strat):
+    strat.signals = {"10:00": 'sideways', "10:15": 'sideways'}
+    run(strat, "10:00", chain(pe=40.0, ce=45.0))                    # dummy sells the strangle at 10:00
+    run(strat, "10:15", chain(pe=40.0, ce=45.0))
+    run(strat, "10:15", chain(pe=40.0, ce=45.0), account='deepti')  # deepti starts flat at 10:15
+    assert strat.held_seen == ['none', 'sideways', 'none']
+
+
+def test_model_runs_once_per_bar_for_all_accounts(monkeypatch, tmp_path):
+    calls = []
+    s = signal_setup(monkeypatch, tmp_path, [0.2, 0.6, 0.2], [0.9, 1.1], calls)
+    bar = pd.Timestamp("2026-11-16 10:00")
+    s.account = 'dummy'
+    assert s.get_signal(chain(pcr=1.0), MagicMock(), bar, at("10:00"), 'none') == 'sideways'
+    s.account = 'deepti'
+    assert s.get_signal(chain(pcr=1.0), MagicMock(), bar, at("10:00"), 'none') == 'sideways'
+    assert len(calls) == 1
+    assert len(pd.read_csv("csv/ml_signals_2026-11-16_dummy_NIFTY.csv")) == 1
+    assert len(pd.read_csv("csv/ml_signals_2026-11-16_deepti_NIFTY.csv")) == 1
+
+
+def test_deepti_messages_go_to_the_deepti_chat(monkeypatch):
+    for name in STUBS:
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.delitem(sys.modules, 'NiftyMlStratergy', raising=False)
+    mod = importlib.import_module('NiftyMlStratergy')
+    mod.configuration.ConfigurationLoader.get_configuration.return_value = {'deepti_telegram': 'chat-deepti',
+                                                                            'dummy_telegram': 'chat-dummy'}
+    s = mod.NiftyMlStratergy()
+    s.account = 'deepti'
+    s.send_message("hello")
+    mod.TelegramSend.telegram_send_api.return_value.send_message.assert_called_once_with('chat-deepti', "hello")
+
+
+def test_long_broker_order_ids_survive_the_trades_file(strat):
+    strat.orders.id_base = 2611170000123456000  # 19 digits, like Angel One ids
+    strat.orders.open_ids = {'2611170000123456001'}
+    strat.signals = {"10:00": 'bullish'}
+    run(strat, "10:00", chain(pe=40.0), account='deepti')
+    trades = run(strat, "10:01", chain(pe=40.0), account='deepti')  # read back from the CSV
+    assert trades.iloc[0]['entry_order_id'] == '2611170000123456001'
+    assert strat.orders.status_ids[-1] == '2611170000123456001'
+    with open("csv/ml_trades_2026-11-16_deepti_NIFTY.csv", encoding="utf-8") as fh:
+        assert "2611170000123456001" in fh.read()
+
+
+def test_live_quantity_above_the_cap_blocks_entries_but_not_exits(strat):
+    strat.signals = {"10:00": 'bullish', "10:15": 'none', "10:30": 'bullish'}
+    run(strat, "10:00", chain(pe=40.0), account='deepti')
+    run(strat, "10:01", chain(pe=40.0), account='deepti')
+    trades = run(strat, "10:15", chain(pe=30.0), account='deepti', quantity=2)  # sheet changed to 2 lots
+    assert trades.iloc[0]['exit_reason'] == "signal lost"                        # the open leg is still closed
+    assert len(run(strat, "10:30", chain(pe=30.0), account='deepti', quantity=2)) == 1
+    assert len(run(strat, "10:45", chain(pe=30.0), account='deepti', quantity=2)) == 1
+    alerts = [c.args[0] for c in strat.send_message.call_args_list if "lot limit" in c.args[0]]
+    assert len(alerts) == 1
+
+
+def test_paper_account_has_no_size_cap(strat):
+    strat.signals = {"10:00": 'bullish'}
+    assert len(run(strat, "10:00", chain(pe=40.0), quantity=3)) == 1
+
+
+def test_live_failed_sell_stops_entries_for_the_day_and_survives_restart(strat):
+    strat.signals = {"10:00": 'sideways', "10:15": 'none', "10:30": 'sideways', "10:45": 'sideways'}
+    strat.orders.fail = True
+    assert len(run(strat, "10:00", chain(pe=40.0, ce=45.0), account='deepti')) == 0
+    assert os.path.exists("csv/ml_blocked_2026-11-16_deepti_NIFTY.txt")
+    assert any("New entries are stopped for today" in c.args[0] for c in strat.send_message.call_args_list)
+    strat.orders.fail = False
+    assert len(run(strat, "10:30", chain(pe=40.0, ce=45.0), account='deepti')) == 0
+    fresh = strat.mod.NiftyMlStratergy()
+    fresh.send_message = MagicMock()
+    fresh.get_signal = MagicMock(return_value='sideways')
+    fresh.execute_strategy(chain(pe=40.0, ce=45.0), 'NIFTY', 'deepti', 1, strat.orders, now=at("10:45"))
+    assert len(fresh.read_trades(at("10:45"))) == 0 and strat.orders.placed == []
+    assert len(run(strat, "10:45", chain(pe=40.0, ce=45.0))) == 2  # dummy is not affected
+
+
+def test_live_failed_sell_of_second_leg_keeps_managing_the_first(strat):
+    strat.signals = {"10:00": 'sideways', "10:15": 'none'}
+    original = strat.orders._place
+    strat.orders._place = lambda side, *a: -1 if a[2] == 'CE' and side == 'SELL' else original(side, *a)
+    trades = run(strat, "10:00", chain(pe=40.0, ce=45.0), account='deepti')
+    assert list(trades['option_type']) == ['PE']
+    run(strat, "10:01", chain(pe=40.0, ce=45.0), account='deepti')
+    trades = run(strat, "10:15", chain(pe=30.0, ce=45.0), account='deepti')
+    assert trades.iloc[0]['exit_reason'] == "signal lost"
+
+
+def test_live_close_is_placed_without_an_option_chain_price(strat):
+    strat.signals = {"10:00": 'bullish', "10:15": 'none'}
+    run(strat, "10:00", chain(pe=40.0), account='deepti')
+    run(strat, "10:01", chain(pe=40.0), account='deepti')
+    trades = run(strat, "10:15", chain(pe=0.0), account='deepti')  # no quote for the held PE
+    assert trades.iloc[0]['exit_state'] == 'pending' and strat.orders.placed[-1][0] == 'BUY'
+    strat.orders.fill = 27.5
+    trades = run(strat, "10:16", chain(pe=0.0), account='deepti')
+    assert trades.iloc[0]['exit_price'] == 27.5 and trades.iloc[0]['pnl_points'] == 12.5
+
+
+def test_unconfirmed_entry_at_square_off_asks_for_a_manual_close_once(strat):
+    strat.signals = {"14:00": 'bullish'}
+    strat.orders.status = 'Open'
+    run(strat, "14:00", chain(pe=40.0), account='deepti')
+    for minute in ("15:15", "15:16", "15:17"):
+        run(strat, minute, chain(pe=40.0), account='deepti')
+    manual = [c.args[0] for c in strat.send_message.call_args_list if "close it manually" in c.args[0]]
+    assert len(manual) == 1 and "22900 PE" in manual[0]
+    assert [o[0] for o in strat.orders.placed] == ['SELL']  # no buy-back for an unconfirmed sell
+
+
 # ---- order placement and status checks -------------------------------------------------------
 
 def test_entry_is_pending_until_broker_confirms_and_takes_fill_price(strat):
     strat.signals = {"10:00": 'bullish'}
     trades = run(strat, "10:00", chain(pe=40.0))
-    assert trades.iloc[0]['entry_state'] == 'pending' and trades.iloc[0]['entry_order_id'] == 1001
+    assert trades.iloc[0]['entry_state'] == 'pending' and trades.iloc[0]['entry_order_id'] == '1001'
     assert strat.orders.placed == [('SELL', 22900.0, 'PE', 1)]
     strat.orders.fill = 39.5
     trades = run(strat, "10:01", chain(pe=41.0))
@@ -458,7 +588,7 @@ def test_exit_is_pending_until_confirmed_and_pnl_uses_fill_price(strat):
     strat.signals = {"10:00": 'bullish', "10:15": 'none'}
     run(strat, "10:00", chain(pe=40.0))
     trades = run(strat, "10:15", chain(pe=25.0))
-    assert trades.iloc[0]['exit_state'] == 'pending' and trades.iloc[0]['exit_order_id'] == 1002
+    assert trades.iloc[0]['exit_state'] == 'pending' and trades.iloc[0]['exit_order_id'] == '1002'
     assert strat.orders.placed[-1] == ('BUY', 22900.0, 'PE', 1)
     strat.orders.fill = 26.0
     trades = run(strat, "10:16", chain(pe=25.0))
@@ -498,7 +628,7 @@ def test_rejected_close_reopens_leg_and_retries(strat):
     run(strat, "10:15", chain(pe=25.0))
     strat.orders.status = 'Rejected'
     trades = run(strat, "10:16", chain(pe=25.0))  # rejection seen, leg reopened and closed again
-    assert trades.iloc[0]['exit_state'] == 'pending' and trades.iloc[0]['exit_order_id'] == 1003
+    assert trades.iloc[0]['exit_state'] == 'pending' and trades.iloc[0]['exit_order_id'] == '1003'
     strat.orders.status = 'Complete'
     trades = run(strat, "10:17", chain(pe=24.0))
     assert trades.iloc[0]['exit_state'] == 'complete' and len(trades) == 1
@@ -566,11 +696,18 @@ def test_square_off_summary_waits_for_exit_confirmation(strat):
 ])
 def test_signal_combines_model_and_pcr(monkeypatch, tmp_path, proba, pcr, day_pcr, expected):
     assert signal_for(monkeypatch, tmp_path, proba, pcr, day_pcr) == expected
-    assert len(pd.read_csv("csv/ml_signals_2026-11-16_NIFTY.csv")) == 1
+    assert len(pd.read_csv("csv/ml_signals_2026-11-16_dummy_NIFTY.csv")) == 1
 
 
 def signal_for(monkeypatch, tmp_path, proba, pcr, day_pcr, held='none'):
     """Run the real get_signal for one bar with the model stubbed to return `proba`."""
+    s = signal_setup(monkeypatch, tmp_path, proba, day_pcr)
+    return s.get_signal(chain(pcr=pcr), MagicMock(), pd.Timestamp("2026-11-16 10:00"), at("10:00"), held)
+
+
+def signal_setup(monkeypatch, tmp_path, proba, day_pcr, calls=None):
+    """A strategy whose model inputs are stubbed; `calls` collects one entry per model evaluation."""
+    calls = [] if calls is None else calls
     for name in STUBS:
         monkeypatch.setitem(sys.modules, name, MagicMock())
     monkeypatch.delitem(sys.modules, 'NiftyMlStratergy', raising=False)
@@ -585,9 +722,8 @@ def signal_for(monkeypatch, tmp_path, proba, pcr, day_pcr, held='none'):
     monkeypatch.setattr(mod.nf, 'session_bars', lambda *a, **k: frame)
     monkeypatch.setattr(mod.nf, 'recent_option_frame', lambda *a, **k: frame)
     monkeypatch.setattr(mod.nf, 'make_features', lambda *a, **k: frame)
-    monkeypatch.setattr(mod.nf, 'predict_proba', lambda model, row: proba)
-    s = mod.NiftyMlStratergy()
-    return s.get_signal(chain(pcr=pcr), MagicMock(), bar, at("10:00"), held)
+    monkeypatch.setattr(mod.nf, 'predict_proba', lambda model, row: calls.append(1) or proba)
+    return mod.NiftyMlStratergy()
 
 
 @pytest.mark.parametrize("proba,held,expected", [
@@ -621,7 +757,7 @@ def test_held_directional_signal_does_not_need_pcr_to_stay(monkeypatch, tmp_path
 
 def test_signals_file_records_what_was_held(monkeypatch, tmp_path):
     signal_for(monkeypatch, tmp_path, [0.2698, 0.4473, 0.2829], 1.0, [0.9, 1.1], 'sideways')
-    row = pd.read_csv("csv/ml_signals_2026-11-16_NIFTY.csv").iloc[0]
+    row = pd.read_csv("csv/ml_signals_2026-11-16_dummy_NIFTY.csv").iloc[0]
     assert (row['model_call'], row['signal'], row['held']) == ('none', 'sideways', 'sideways')
 
 
@@ -750,3 +886,76 @@ def test_ml_failure_does_not_stop_other_accounts_or_symbols(monkeypatch):
                                     MagicMock(), details, MagicMock(), ml)
     assert ml.execute_strategy.call_count == 1
     assert far.execute_strategy.call_count == 2  # deepti NIFTY and BANKNIFTY still ran after the ML failure
+
+
+# ---- deepti through the real PlaceOrder adapter (Angel One API object faked) ------------------
+
+PLACEORDER_STUBS = ['SmartApi', 'pyotp', 'login', 'TelegramSend', 'angel_one.credentials', 'configuration',
+                    'brokrage_calculator', 'py5paisa', 'py5paisa.order', 'kiteconnect', 'fivepaisa.credentials',
+                    'zerodha.credentials', 'upstox.credentials']
+
+
+class FakeAngel:
+    """Stands in for angelone_api: records calls; place_order returns `ids` in turn, get_order_status `statuses`."""
+
+    def __init__(self, ids, statuses):
+        self.ids, self.statuses = list(ids), list(statuses)
+        self.orders, self.status_ids = [], []
+
+    def place_order(self, symbol, qty, buy_sell, strike, pe_ce, intraday=True):
+        self.orders.append((symbol, qty, buy_sell, strike, pe_ce, intraday))
+        return self.ids.pop(0)
+
+    def get_order_status(self, order_id):
+        self.status_ids.append(order_id)
+        return self.statuses.pop(0)
+
+
+@pytest.fixture
+def live(strat, monkeypatch):
+    for name in PLACEORDER_STUBS:
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.delitem(sys.modules, 'PlaceOrder', raising=False)
+    place_order_mod = importlib.import_module('PlaceOrder')
+    monkeypatch.setattr(place_order_mod.time, 'sleep', lambda seconds: None)
+    adapter = place_order_mod.PlaceOrder()
+    strat.orders = adapter
+    return strat, adapter
+
+
+def test_deepti_round_trip_through_the_real_adapter(live):
+    strat, adapter = live
+    adapter.obj_1 = FakeAngel(ids=["2611170000123456789", "2611170000123456790"],
+                              statuses=[('APIError', -1), ('Complete', 41.2), ('Complete', 30.5)])
+    strat.signals = {"10:00": 'bullish', "10:15": 'none'}
+    trades = run(strat, "10:00", chain(pe=40.0), account='deepti')
+    assert adapter.obj_1.orders == [('NIFTY', 65, 'SELL', 22900.0, 'PE', True)]  # 1 lot = 65, intraday
+    assert trades.iloc[0]['entry_order_id'] == "2611170000123456789"
+    run(strat, "10:01", chain(pe=40.0), account='deepti')          # status call failed: still pending
+    trades = run(strat, "10:02", chain(pe=40.0), account='deepti')
+    assert trades.iloc[0]['entry_state'] == 'complete' and trades.iloc[0]['entry_price'] == 41.2
+    assert adapter.obj_1.status_ids[:2] == ["2611170000123456789"] * 2  # id reached Angel One unchanged
+    run(strat, "10:15", chain(pe=30.0), account='deepti')
+    assert adapter.obj_1.orders[-1] == ('NIFTY', 65, 'BUY', 22900.0, 'PE', True)
+    trades = run(strat, "10:16", chain(pe=30.0), account='deepti')
+    assert trades.iloc[0]['exit_state'] == 'complete' and trades.iloc[0]['pnl_points'] == 10.7
+
+
+def test_deepti_failed_sell_through_the_real_adapter_stops_entries(live):
+    strat, adapter = live
+    adapter.obj_1 = FakeAngel(ids=[-1, -1, -1, -1], statuses=[])  # first try and 3 adapter retries all fail
+    strat.signals = {"10:00": 'bullish', "10:15": 'bullish'}
+    assert len(run(strat, "10:00", chain(pe=40.0), account='deepti')) == 0
+    assert len(adapter.obj_1.orders) == 4
+    assert os.path.exists("csv/ml_blocked_2026-11-16_deepti_NIFTY.txt")
+    assert len(run(strat, "10:15", chain(pe=40.0), account='deepti')) == 0
+    assert len(adapter.obj_1.orders) == 4  # nothing tried again
+
+
+def test_deepti_rejected_sell_through_the_real_adapter(live):
+    strat, adapter = live
+    adapter.obj_1 = FakeAngel(ids=["2611170000123456789"], statuses=[('Rejected', 0)])
+    strat.signals = {"10:00": 'bullish'}
+    run(strat, "10:00", chain(pe=40.0), account='deepti')
+    trades = run(strat, "10:01", chain(pe=40.0), account='deepti')
+    assert trades.iloc[0]['entry_state'] == 'rejected' and trades.iloc[0]['exit_reason'] == "entry rejected"

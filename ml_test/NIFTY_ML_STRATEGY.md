@@ -1,10 +1,10 @@
-# Nifty ML option-selling strategy (paper trading)
+# Nifty ML option-selling strategy (paper on dummy, live on deepti)
 
-Status as of 2026-11-16: ran on the Pi on 2026-11-16 (paper trading, no errors). The exit threshold and grouped Telegram messages below were added afterwards: tested on the laptop (135 tests pass), not yet committed or deployed.
+Status as of 2026-11-17: paper trading on `dummy` since 2026-11-16 with no errors. Live trading on `deepti` (Angel One) was added on 2026-11-17: tested on the laptop (158 tests pass) and on the Pi's Python, not yet committed or run against the broker.
 
 ## In one paragraph
 
-Every 15 minutes a LightGBM model predicts whether Nifty will be bullish, bearish or sideways over the next 90 minutes. The strategy sells out-of-the-money options 100 points from ATM: a PE when bullish, a CE when bearish, and both when sideways. Bullish and bearish calls must also be confirmed by PCR; sideways relies on the model alone. A leg is closed when the new signal no longer wants it, and everything is closed at 15:15. It runs only on the `dummy` account, whose orders are filled on paper without reaching a broker.
+Every 15 minutes a LightGBM model predicts whether Nifty will be bullish, bearish or sideways over the next 90 minutes. The strategy sells out-of-the-money options 100 points from ATM: a PE when bullish, a CE when bearish, and both when sideways. Bullish and bearish calls must also be confirmed by PCR; sideways relies on the model alone. A leg is closed when the new signal no longer wants it, and everything is closed at 15:15. It runs on the `dummy` account (filled on paper without reaching a broker) and on `deepti` (real Angel One orders), each with its own position, files and Telegram chat.
 
 ## Trading rules
 
@@ -73,7 +73,7 @@ Notes on the rules:
 
 ## Orders and status checks
 
-Entries and exits go through `PlaceOrder`, the same order adapter the other option strategies use, so the code is ready for a real account. For now the strategy refuses every account except `dummy`, and `PlaceOrder` fills dummy orders itself at the expected price.
+Entries and exits go through `PlaceOrder`, the same order adapter the other option strategies use. `PlaceOrder` fills `dummy` orders itself at the expected price and sends `deepti` orders to Angel One as MARKET orders with INTRADAY product, on the nearest expiry. Every other account is refused.
 
 | Step | What happens |
 |---|---|
@@ -90,7 +90,23 @@ Entries and exits go through `PlaceOrder`, the same order adapter the other opti
 - **One Telegram message per entry and per exit.** Legs sold in the same 15-minute bar are announced together (for example `sold 25150 PE at 74.75 and 25350 CE at 57.9`). Legs closed in the same bar are announced together with each leg's points and a total. The message waits until no leg of the group is still pending. A leg added at a later check (for example a CE added when bullish becomes sideways) is its own entry message. Errors and warnings stay one message each.
 - The day total is sent only after every exit is confirmed.
 - Any status containing "reject" or "cancel" counts as a rejection. Anything else that is not `Complete` counts as still pending.
-- To extend to a real account later: allow that account in `NiftyMlStratergy.ACCOUNT`. Before that, check the exact status strings each broker returns, and review lot size, margin and the missing stop-loss.
+- Angel One statuses arrive through `PlaceOrder.order_status`, which maps them to `Complete`, `Open`, `Rejected`, `Cancelled`, `NotFound` or an API error. Only `Complete`, `Rejected` and `Cancelled` change a leg; `NotFound` and API errors keep it pending and it is asked again on the next loop.
+- To add another account: add it to `LIVE_ACCOUNTS` in `NiftyMlStratergy.py`. Check that broker's status strings in `PlaceOrder.order_status` first.
+
+## Live account (deepti)
+
+| Item | Rule |
+|---|---|
+| Accounts | `PAPER_ACCOUNTS = ('dummy',)`, `LIVE_ACCOUNTS = ('deepti',)`. Any other account in the sheet is refused and logged |
+| Separate per account | Trades file, signals file, Telegram chat (`<account>_telegram`), held legs, cooling period, daily trade count and order alerts. Both accounts can trade in the same bar |
+| Shared | The model runs once per 15-minute bar; every account uses those probabilities with its own held legs |
+| Lot cap | A live account sells only if its sheet quantity is at most 1 lot (`MAX_LIVE_LOTS`). Above that, one alert a day and no new entries; open legs are still closed |
+| Failed sell order | If a sell order cannot be placed, the order may still have reached Angel One. New entries stop for the rest of the day on that account (`csv/ml_blocked_<date>_deepti_NIFTY.txt`, survives a restart) and an alert asks you to check the broker. Open legs are still managed |
+| Close without a quote | The buy-back is placed even when the option chain has no price for the held strike. P&L comes from Angel One's fill price |
+| Unconfirmed sell at square-off | A leg whose sell order is still unconfirmed cannot be closed. One alert at 15:15 asks you to check the broker and close it manually |
+| Order ids | Stored as text in the trades file so long Angel One ids keep every digit |
+| Square-off | 15:15, the same as paper. In practice the close goes out at the first engine loop after 15:15 (15:16-15:19 so far). Your other deepti strategies close at 15:10 and 15:13 |
+| Stop-loss | None, as on paper |
 
 ## The model
 
@@ -235,17 +251,19 @@ Only the `auto_straddle/` files are needed on the Pi.
 
 ## Turning it on
 
-1. Commit the five `auto_straddle/` files above and pull on the Pi.
-2. Add a row to the options account sheet: Account `dummy`, Symbol `NIFTY`, Stratergy `ml`, quantity `1`.
-3. Restart the engine.
+1. Commit the `auto_straddle/` files above and pull on the Pi.
+2. In the options account sheet, Stratergy `ml`, Symbol `NIFTY`:
+   - paper: Account `dummy`, quantity `1`;
+   - live: Account `deepti`, quantity `1` (the code refuses more than 1 lot).
+3. Restart the engine before the open.
 
-Removing the sheet row (or setting quantity to 0) turns it off.
+Removing a row (or setting its quantity to 0) turns that account off. On the first live day, watch the first entry and exit in the Angel One order book and in Telegram.
 
 ## Output
 
-- Telegram message to the dummy account's chat when each entry and each exit is confirmed (one message for all legs of that trade), on any order error, and a day total after 15:15.
-- `csv/ml_signals_<date>_NIFTY.csv`: one row per 15-minute decision with the three probabilities, the model's raw call (`model_call`, entry threshold only), PCR, the day's PCR low and high, the final `signal` and what was `held` going into the bar. A day where `model_call` is `none` but `signal` is `sideways` is a held position kept by the exit threshold. The `held` column is new: deploy before the open or after the close, because a file already started that day has the old header.
-- `csv/ml_trades_<date>_dummy_NIFTY.csv`: one row per option leg with entry, exit, reason, order ids, order states and P&L in points and rupees. P&L is before brokerage, taxes and slippage.
+- Telegram message to each account's own chat (`dummy_telegram`, `deepti_telegram`) when each entry and each exit is confirmed (one message for all legs of that trade), on any order error, and a day total after 15:15.
+- `csv/ml_signals_<date>_<account>_NIFTY.csv`: one row per 15-minute decision per account with the three probabilities, the model's raw call (`model_call`, entry threshold only), PCR, the day's PCR low and high, the final `signal` and what was `held` going into the bar. A day where `model_call` is `none` but `signal` is `sideways` is a held position kept by the exit threshold. The file name gained the account on 2026-11-17 (it was `ml_signals_<date>_NIFTY.csv`).
+- `csv/ml_trades_<date>_<account>_NIFTY.csv`: one row per option leg with entry, exit, reason, order ids, order states and P&L in points and rupees. P&L is before brokerage, taxes and slippage.
 
 ## What the backtests say
 
@@ -274,17 +292,23 @@ Treat the paper run as a test of the plumbing and a way to collect live results,
 
 ## How it was checked
 
-- **Tests:** 141 pass. They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
+- **Tests:** 158 pass, including deepti orders driven through the real `PlaceOrder` adapter with a fake Angel One object (quantity 65, INTRADAY, 19-digit ids unchanged, the 4-attempt failure path). They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
 - **Model export:** the plain-Python evaluation matches lightgbm to about 2e-16.
 - **Live versus training:** five past bars were replayed through the live code path using the Pi's own files. Four matched the training features exactly; the fifth differed by 0.3% in probability because of the expiry limit below.
 
 ## Known limits
 
-- Not yet run on the Pi's Python 3.9 and pandas 1.5. If it fails there, the error is logged and the other strategies are unaffected: the import, the creation and every call of the strategy are each wrapped in their own try/except in `AutoStraddle.py`.
+- Runs on the Pi's Python 3.9 and pandas 1.5 (checked read-only). If it fails there, the error is logged and the other strategies are unaffected: the import, the creation and every call of the strategy are each wrapped in their own try/except in `AutoStraddle.py`.
 - A hang (not an error) is different: like every strategy, it is covered by the engine's 5-minute watchdog, which restarts the whole engine.
 - Days-to-expiry can be off by one when a holiday on expiry day lies ahead, because the Pi has no holiday calendar.
 - Paper fills use the option chain's last traded price, so real fills would be worse by the bid-ask spread.
-- Order handling has only been exercised with the dummy account and a fake broker in tests. Real broker behaviour (partial fills, slow confirmations) is untested.
+- The live path has not yet run against Angel One. Tests use a fake broker; the first real entry and exit should be watched.
+- The strategy never checks the broker's positions. It trusts its own trades file and the order statuses.
+- Orders can be sent more than once when a placement looks failed. `PlaceOrder` retries a deepti order up to 3 times whenever the Angel One wrapper returns no valid id (so up to 4 attempts for a sell and 4 for a buy-back), and the wrapper itself retries `placeOrder` once after an exception other than a timeout, without first looking for an existing order. If an attempt that looked failed actually reached the broker, the result is two sells (a double position) or two buy-backs (leaving a long option). This is existing behaviour shared with your other strategies; the strategy's own protection is that it never retries a failed sell after `PlaceOrder` gives up.
+- A rejected sell (for example for lack of margin) does not stop entries: it is tried again at the next 15-minute check, so a margin shortfall gives one rejected order and one error message every 15 minutes until 14:00.
+- If Angel One's automatic intraday square-off runs before the strategy's 15:15 close, the strategy's buy-back would open a long option. You chose to keep 15:15; the other deepti strategies close at 15:10 and 15:13.
+- No stop-loss. With real money, a held position is protected only by the signal falling below 0.40 and the square-off.
+- Your own rule in `CLAUDE.md` was to paper trade for 1-2 months first; live trading started after 2 paper days, at 1 lot.
 - With a real broker, if one leg's close is rejected after its sibling's close completed, the sibling is announced once alone and again together with the retried leg, so it appears twice in Telegram. Dummy orders are never rejected, so this cannot happen today.
 - From 2026-08-03 the index is frozen from 15:15 to 15:25 and then prints the close, which looks like a closing auction. The 15:15 square-off sits right at that boundary.
 - The signal for the current bar is kept in memory. Open legs, pending orders and the cooling period are read from the trades file, so they survive a restart.

@@ -1,4 +1,4 @@
-"""Module providing the Nifty ML option-selling strategy (paper trading on the dummy account)"""
+"""Module providing the Nifty ML option-selling strategy (paper on dummy, live on deepti / Angel One)"""
 
 # pylint: disable=W1203
 # pylint: disable=W0718
@@ -46,10 +46,22 @@ class NiftyMlStratergy:
 
     Orders go through PlaceOrder like the other option strategies: every entry and exit is
     placed as an order, recorded as 'pending', and confirmed on the following loops with
-    order_status (fill price taken from the broker, rejections handled). For now the strategy
-    refuses every account except `dummy`, whose orders PlaceOrder fills without a broker.
+    order_status (fill price taken from the broker, rejections handled). It runs for the
+    accounts in PAPER_ACCOUNTS (filled by PlaceOrder without a broker) and LIVE_ACCOUNTS
+    (real orders) and refuses every other account. Each account has its own trades file,
+    signals file, Telegram chat and per-bar state; the model runs once per bar for all of them.
+
+    Extra protection on live accounts:
+    - entries are refused when the sheet quantity is above MAX_LIVE_LOTS (exits still run);
+    - if a sell order cannot be placed, new entries stop for the day (the order may have gone
+      through at the broker, so retrying could double the position) and an alert asks for a check;
+    - a close is placed even when the option chain has no price (the buy-back is a MARKET order;
+      P&L comes from the broker's fill price);
+    - an entry still unconfirmed at the square-off gets a "close manually" alert.
     """
-    ACCOUNT = 'dummy'
+    PAPER_ACCOUNTS = ('dummy',)
+    LIVE_ACCOUNTS = ('deepti',)  # Angel One: its order status strings are mapped by PlaceOrder.order_status
+    MAX_LIVE_LOTS = 1            # a live account trades only if its sheet quantity is at most this
     SYMBOL = 'NIFTY'
     STRIKE_OFFSET = 100          # = 2 strike intervals: the option chain's atm_next_* prices
     LOT_SIZE = 65
@@ -67,25 +79,51 @@ class NiftyMlStratergy:
         self.model = None
         self.model_mtime = None
         self.market_data = None
-        self.signal_bar = None   # bar the current signal belongs to
-        self.signal = None       # 'bullish' / 'bearish' / 'sideways' / 'none', or None when unknown
-        self.acted_bar = None    # bar whose signal has been fully acted on
-        self.summary_date = None
+        self.proba_bar = None    # bar whose model probabilities are cached in self.proba
+        self.proba = None
         self.rejected = set()
-        self.alerted = set()     # order problems already reported, so each is sent once
+        self.states = {}         # per-account state, see state()
+        self.account = self.PAPER_ACCOUNTS[0]  # account being processed by the current call
+
+    def state(self):
+        """Per-account state for the account being processed."""
+        return self.states.setdefault(self.account, {
+            'signal_bar': None,    # bar the current signal belongs to
+            'signal': None,        # 'bullish' / 'bearish' / 'sideways' / 'none', or None when unknown
+            'acted_bar': None,     # bar whose signal has been fully acted on
+            'summary_date': None,
+            'alerted': set(),      # order problems already reported, so each is sent once
+        })
+
+    signal_bar = property(lambda self: self.state()['signal_bar'], lambda self, v: self.state().__setitem__('signal_bar', v))
+    signal = property(lambda self: self.state()['signal'], lambda self, v: self.state().__setitem__('signal', v))
+    acted_bar = property(lambda self: self.state()['acted_bar'], lambda self, v: self.state().__setitem__('acted_bar', v))
+    summary_date = property(lambda self: self.state()['summary_date'], lambda self, v: self.state().__setitem__('summary_date', v))
+    alerted = property(lambda self: self.state()['alerted'])
+
+    def is_live(self):
+        return self.account in self.LIVE_ACCOUNTS
 
     def execute_strategy(self, option_chain_info, symbol, account, quantity, place_order_obj, now=None):
-        if account != self.ACCOUNT or symbol != self.SYMBOL:
+        if account not in self.PAPER_ACCOUNTS + self.LIVE_ACCOUNTS or symbol != self.SYMBOL:
             if (account, symbol) not in self.rejected:
                 self.rejected.add((account, symbol))
-                logger.error(f"NiftyMl runs only for {self.ACCOUNT}/{self.SYMBOL}, ignoring {account}/{symbol}")
+                logger.error(f"NiftyMl runs only for {self.PAPER_ACCOUNTS + self.LIVE_ACCOUNTS}/{self.SYMBOL}, "
+                             f"ignoring {account}/{symbol}")
             return
+        self.account = account
         now = now or datetime.now()
         trades = self.check_orders(self.read_trades(now), place_order_obj, now)
         open_legs = list(trades.index[trades['exit_time'].isna()])
 
         if now.time() >= self.SQUARE_OFF:
             for leg in open_legs:
+                if trades.at[leg, 'entry_state'] == 'pending' and (leg, 'square-off') not in self.alerted:
+                    self.alerted.add((leg, 'square-off'))
+                    self.send_message(f"NiftyMl {account} {symbol} ERROR at square-off the sell order "
+                                      f"{trades.at[leg, 'entry_order_id']} for {float(trades.at[leg, 'strike']):.0f} "
+                                      f"{trades.at[leg, 'option_type']} is still unconfirmed, so it cannot be closed: "
+                                      f"check the broker and close it manually")
                 self.close_position(trades, leg, option_chain_info, now, "15:15 square-off", place_order_obj)
             pending = (trades['exit_state'] == 'pending').any()
             if not open_legs and not pending and len(trades) and self.summary_date != now.date():
@@ -113,7 +151,8 @@ class NiftyMlStratergy:
         for leg in open_legs:  # close the legs the new signal no longer wants
             if trades.at[leg, 'option_type'] not in wanted:
                 done = self.close_position(trades, leg, option_chain_info, now, "signal lost", place_order_obj) and done
-        if bar.time() <= self.LAST_ENTRY and not self.in_cooling(trades, bar) and self.entries_allowed(trades, bar):
+        if bar.time() <= self.LAST_ENTRY and not self.in_cooling(trades, bar) and self.entries_allowed(trades, bar) \
+                and self.size_ok(quantity, now) and not self.entries_blocked(now):
             held = set(trades.loc[trades['exit_time'].isna(), 'option_type'])
             for option_type in wanted:  # sell the legs it wants and does not hold yet
                 if option_type not in held:
@@ -122,6 +161,23 @@ class NiftyMlStratergy:
                     trades = trades if new_trades is None else new_trades
         if done:  # otherwise a price was missing or an order could not be placed: retry on the next loop
             self.acted_bar = bar
+
+    def size_ok(self, quantity, now):
+        """Live accounts sell only if the sheet quantity is at most MAX_LIVE_LOTS (alerted once a day)."""
+        if not self.is_live() or float(quantity) <= self.MAX_LIVE_LOTS:
+            return True
+        if (now.date(), 'size') not in self.alerted:
+            self.alerted.add((now.date(), 'size'))
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR sheet quantity {quantity} is above the "
+                              f"{self.MAX_LIVE_LOTS}-lot limit for live accounts: no new entries (exits still run)")
+        return False
+
+    def get_blocked_file_path(self, now):
+        return f"csv/ml_blocked_{now.strftime('%Y-%m-%d')}_{self.account}_{self.SYMBOL}.txt"
+
+    def entries_blocked(self, now):
+        """True when new entries were stopped for the day on this account (survives a restart)."""
+        return os.path.exists(self.get_blocked_file_path(now))
 
     def held_signal(self, trades):
         """The signal the open legs correspond to, read from the trades file so it survives a restart:
@@ -151,7 +207,7 @@ class NiftyMlStratergy:
                         [now.strftime("%Y-%m-%d %H:%M:%S"), "entry rejected", 0.0, 0.0]
                     changed = True
                     entry_bars.add(self.bar_of(trades.at[leg, 'entry_time']))  # its sibling leg may now be complete
-                    self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} ERROR entry order {order_id} for {name} was rejected")
+                    self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR entry order {order_id} for {name} was rejected")
                 else:
                     self.alert_if_stuck(order_id, name, "entry", trades.at[leg, 'entry_time'], now)
             elif trades.at[leg, 'exit_state'] == 'pending':
@@ -170,7 +226,7 @@ class NiftyMlStratergy:
                     trades.loc[leg, EXIT_COLUMNS] = [None] * len(EXIT_COLUMNS)
                     self.acted_bar = None
                     changed = True
-                    self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} ERROR close order {order_id} for {name} was rejected, retrying")
+                    self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR close order {order_id} for {name} was rejected, retrying")
                 else:
                     self.alert_if_stuck(order_id, name, "close", trades.at[leg, 'exit_time'], now)
         if changed:
@@ -195,7 +251,7 @@ class NiftyMlStratergy:
             sold = " and ".join(f"{float(r['strike']):.0f} {r['option_type']} at {float(r['entry_price'])}"
                                 for _, r in legs.iterrows())
             first = legs.iloc[0]
-            self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} {first['signal']}: sold {sold} "
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} {first['signal']}: sold {sold} "
                               f"(ATM {float(first['entry_atm']):.0f}, {first['quantity']} lot)")
 
     def announce_exits(self, trades, bars):
@@ -205,7 +261,7 @@ class NiftyMlStratergy:
             group = trades[(exit_bar == bar) & trades['exit_state'].isin(['pending', 'complete'])]
             if group.empty or (group['exit_state'] == 'pending').any():
                 continue
-            lines = [f"NiftyMl {self.ACCOUNT} {self.SYMBOL} closed ({group.iloc[0]['exit_reason']})"]
+            lines = [f"NiftyMl {self.account} {self.SYMBOL} closed ({group.iloc[0]['exit_reason']})"]
             for _, r in group.iterrows():
                 lines.append(f"{float(r['strike']):.0f} {r['option_type']}: sold {float(r['entry_price'])}, "
                              f"bought {float(r['exit_price'])}, {float(r['pnl_points']):+.1f} points")
@@ -219,7 +275,7 @@ class NiftyMlStratergy:
 
     def order_state(self, place_order_obj, order_id, expected_price):
         """('complete', fill price) / ('rejected', None) / ('pending', None) for one order."""
-        status, price = place_order_obj.order_status(self.ACCOUNT, order_id, float(expected_price))
+        status, price = place_order_obj.order_status(self.account, order_id, float(expected_price))
         if status == 'Complete':
             price = float(price) if price is not None and float(price) > 0 else float(expected_price)
             return 'complete', price
@@ -231,7 +287,7 @@ class NiftyMlStratergy:
         waited = (now - pd.Timestamp(placed_at).to_pydatetime()).total_seconds()
         if waited > self.STUCK_SECONDS and (order_id, 'stuck') not in self.alerted:
             self.alerted.add((order_id, 'stuck'))
-            self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} WARNING {kind} order {order_id} for {name} "
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} WARNING {kind} order {order_id} for {name} "
                               f"still not confirmed after {waited / 60:.0f} minutes")
 
     def entries_allowed(self, trades, bar):
@@ -253,29 +309,10 @@ class NiftyMlStratergy:
         or None when the inputs are not available. `held` is the signal the open legs correspond to:
         a new signal needs its probability above PROB_THRESHOLD, but a held one is kept until its
         probability falls below PROB_EXIT. PCR confirmation is needed to enter only."""
-        mtime = os.path.getmtime(MODEL_PATH)
-        if self.model is None or mtime != self.model_mtime:  # picks up a retrained model without a restart
-            self.model, self.model_mtime = nf.load_model(MODEL_PATH), mtime
-            logger.info(f"NiftyMl loaded model trained {self.model.get('train_from')} -> {self.model.get('train_to')}")
-        if self.market_data is None:
-            self.market_data = MarketData(place_order_obj)
-        bars_per_day = self.model["bars_per_day"]
-
-        ohlc = self.market_data.get_ohlc(self.SYMBOL, segment='NSE_INDEX', interval='15m')
-        if ohlc is None or ohlc.empty:
+        probabilities = self.bar_probabilities(place_order_obj, bar)
+        if probabilities is None:
             return None
-        bars = nf.session_bars(ohlc.set_index('Date'), "15min", keep_last_day=True)
-        bars = bars[bars.index <= bar]  # drops the candle still in progress
-        if bars.empty or bars.index[-1] != bar:
-            return None
-        opt = nf.recent_option_frame("csv", "15min")
-        if opt is None:
-            return None
-        X = nf.make_features(bars, opt, bars_per_day)
-        if bar not in X.index or X.loc[bar].isna().any():
-            return None
-
-        p_bear, p_side, p_bull = nf.predict_proba(self.model, X.loc[bar])
+        p_bear, p_side, p_bull = probabilities
         names, probs = ('bearish', 'sideways', 'bullish'), (p_bear, p_side, p_bull)
         top = max(range(3), key=lambda i: probs[i])
         model_call = names[top] if probs[top] > self.PROB_THRESHOLD else 'none'
@@ -298,9 +335,38 @@ class NiftyMlStratergy:
                'pcr_low': round(pcr_low, 4), 'pcr_high': round(pcr_high, 4), 'signal': signal, 'held': held}
         logger.info(f"NiftyMl signal {row}")
         print(f"NiftyMl signal {row}")
-        file_name = f"csv/ml_signals_{now.strftime('%Y-%m-%d')}_{self.SYMBOL}.csv"
+        file_name = f"csv/ml_signals_{now.strftime('%Y-%m-%d')}_{self.account}_{self.SYMBOL}.csv"
         pd.DataFrame([row]).to_csv(file_name, mode='a', header=not os.path.exists(file_name), index=False)
         return signal
+
+    def bar_probabilities(self, place_order_obj, bar):
+        """Model probabilities (bearish, sideways, bullish) for the bar that closed at `bar`, or None when the
+        inputs are not available yet. Computed once per bar and shared by every account."""
+        if self.proba_bar == bar:
+            return self.proba
+        mtime = os.path.getmtime(MODEL_PATH)
+        if self.model is None or mtime != self.model_mtime:  # picks up a retrained model without a restart
+            self.model, self.model_mtime = nf.load_model(MODEL_PATH), mtime
+            logger.info(f"NiftyMl loaded model trained {self.model.get('train_from')} -> {self.model.get('train_to')}")
+        if self.market_data is None:
+            self.market_data = MarketData(place_order_obj)
+        bars_per_day = self.model["bars_per_day"]
+
+        ohlc = self.market_data.get_ohlc(self.SYMBOL, segment='NSE_INDEX', interval='15m')
+        if ohlc is None or ohlc.empty:
+            return None
+        bars = nf.session_bars(ohlc.set_index('Date'), "15min", keep_last_day=True)
+        bars = bars[bars.index <= bar]  # drops the candle still in progress
+        if bars.empty or bars.index[-1] != bar:
+            return None
+        opt = nf.recent_option_frame("csv", "15min")
+        if opt is None:
+            return None
+        X = nf.make_features(bars, opt, bars_per_day)
+        if bar not in X.index or X.loc[bar].isna().any():
+            return None
+        self.proba_bar, self.proba = bar, tuple(nf.predict_proba(self.model, X.loc[bar]))
+        return self.proba
 
     def day_pcr_range(self, now, pcr):
         """Lowest and highest PCR seen today, from today's option chain dump."""
@@ -317,12 +383,13 @@ class NiftyMlStratergy:
         return float(low), float(high)
 
     def get_trades_file_path(self, now):
-        return f"csv/ml_trades_{now.strftime('%Y-%m-%d')}_{self.ACCOUNT}_{self.SYMBOL}.csv"
+        return f"csv/ml_trades_{now.strftime('%Y-%m-%d')}_{self.account}_{self.SYMBOL}.csv"
 
     def read_trades(self, now):
         file_name = self.get_trades_file_path(now)
         if os.path.exists(file_name):
-            trades = pd.read_csv(file_name)
+            # order ids as text: read as numbers, long broker ids lose digits and can no longer be found
+            trades = pd.read_csv(file_name, dtype={'entry_order_id': str, 'exit_order_id': str})
         else:
             trades = pd.DataFrame(columns=TRADE_COLUMNS)
         trades[TEXT_COLUMNS] = trades[TEXT_COLUMNS].astype(object)  # empty columns are read back as float
@@ -339,11 +406,20 @@ class NiftyMlStratergy:
         if not price > 0:
             logger.warning(f"NiftyMl no price for {strike} {option_type}, entry skipped for now")
             return None
-        order_id = place_order_obj.place_orders(self.ACCOUNT, strike, option_type, self.SYMBOL, quantity)
+        order_id = place_order_obj.place_orders(self.account, strike, option_type, self.SYMBOL, quantity)
         if order_id in (-1, 0, None):
+            if self.is_live():
+                # the order may still have reached the broker: never sell again blind, stop entries for today
+                with open(self.get_blocked_file_path(now), 'w', encoding='utf-8') as fh:
+                    fh.write(f"{now:%Y-%m-%d %H:%M:%S} sell order for {strike:.0f} {option_type} could not be placed\n")
+                self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR could not place sell order for {strike:.0f} "
+                                  f"{option_type}. New entries are stopped for today: check the broker for an "
+                                  f"unexpected open position. Open legs are still managed.")
+                return trades
             # not retried within this bar; the next 15-minute check tries again if the signal still wants it
-            self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} ERROR could not place sell order for {strike:.0f} {option_type}")
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR could not place sell order for {strike:.0f} {option_type}")
             return trades
+        order_id = str(order_id)
         row = {'entry_time': now.strftime("%Y-%m-%d %H:%M:%S"), 'signal': self.signal,
                'option_type': option_type, 'strike': strike, 'entry_atm': atm,
                'quantity': quantity, 'entry_price': price, 'entry_order_id': order_id, 'entry_state': 'pending'}
@@ -374,15 +450,21 @@ class NiftyMlStratergy:
             return False
         price = self.held_price(trade, option_chain_info)
         if price is None:
-            logger.warning(f"NiftyMl no price to close {name} ({reason}), will retry")
-            return False
-        order_id = place_order_obj.close_orders(self.ACCOUNT, float(trade['strike']), trade['option_type'],
+            if not self.is_live():
+                logger.warning(f"NiftyMl no price to close {name} ({reason}), will retry")
+                return False
+            # live: never keep a real position open for want of a quote; the buy-back is a MARKET order
+            # and the fill price replaces this estimate once the broker confirms it
+            price = float(trade['entry_price'])
+            logger.warning(f"NiftyMl no option chain price for {name} ({reason}), closing anyway at market")
+        order_id = place_order_obj.close_orders(self.account, float(trade['strike']), trade['option_type'],
                                                 self.SYMBOL, trade['quantity'])
         if order_id in (-1, 0, None):
             if (position, 'close') not in self.alerted:
                 self.alerted.add((position, 'close'))
-                self.send_message(f"NiftyMl {self.ACCOUNT} {self.SYMBOL} ERROR could not place close order for {name} ({reason}), retrying")
+                self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR could not place close order for {name} ({reason}), retrying")
             return False
+        order_id = str(order_id)
         pnl_points = float(trade['entry_price']) - price
         pnl_rupees = pnl_points * self.LOT_SIZE * float(trade['quantity'])
         trades.loc[position, EXIT_COLUMNS] = \
@@ -395,7 +477,7 @@ class NiftyMlStratergy:
         logger.info(message)
         print(message)
         try:
-            chat_id = configuration.ConfigurationLoader.get_configuration().get(self.ACCOUNT + "_telegram")
+            chat_id = configuration.ConfigurationLoader.get_configuration().get(self.account + "_telegram")
             if chat_id:
                 TelegramSend.telegram_send_api().send_message(chat_id, message)
         except Exception as e:

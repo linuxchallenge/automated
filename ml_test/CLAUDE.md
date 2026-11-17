@@ -5,7 +5,7 @@ Full description of the live strategy, the rules, training steps and backtest nu
 ## Goal
 Predict Nifty direction on 15 minute bars and sell options on the call.
 Train on the i7 laptop; the finished model runs inference only on a Raspberry Pi.
-Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15, not yet run on the Pi). Live execution is much later.
+Stage reached: paper trading on `dummy` since 2026-11-16; live trading on `deepti` (Angel One, 1 lot) added 2026-11-17 at my request, after 2 paper days.
 
 ## Data
 - Prices: `NIFTY 50_15minute.csv` and `NIFTY 50_5minute.csv` in this folder (2015-01-09 onward, bars labelled by their open, volume always 0). Updated with `update_prices.py` from Upstox's public endpoint.
@@ -25,7 +25,8 @@ Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15
 - Trade options, not futures (changed 2026-11-15): sell the PE 100 below ATM when bullish, the CE 100 above when bearish, both when sideways.
 - Bullish needs PCR > 1.4 or PCR at least 0.3 above the day's low; bearish needs PCR < 0.7 or at least 0.3 below the day's high; sideways uses the model alone.
 - Exit when the signal no longer wants a leg, 15-minute cooling period after any exit, at most 2 trades a day (a strangle is one trade), last entry at the 14:00 bar, square-off at 15:15, no stop-loss.
-- Orders go through `PlaceOrder` with pending/complete status checks so the code can be reused for a real broker; the strategy refuses every account except `dummy`.
+- Orders go through `PlaceOrder` with pending/complete status checks. Allowed accounts: `dummy` (paper) and `deepti` (live, Angel One, at most 1 lot). Per-account files, chat and state; the model runs once per bar for all accounts.
+- Live-only safeguards: failed sell placement stops entries for the day; close placed even without a chain quote; manual-close alert for an unconfirmed sell at square-off. Square-off stays 15:15 (my choice). PCR gates entry only (my choice).
 - Baselines to beat after costs: momentum, MA(50), buy & hold.
 - Foundation time-series models (TimesFM, Chronos, Moirai) are NOT the plan; research shows weak gains on returns. LLMs only for news/filings sentiment features later (e.g. FinSense-ModernBERT on CPU).
 
@@ -39,24 +40,24 @@ Stage reached: paper-trading loop on the `dummy` account (implemented 2026-11-15
 - Check broker rules and current SEBI/NSE retail algo requirements before automating orders.
 - Treat any backtest as a hypothesis, not proof. Be suspicious of results that look too good (look for leakage first).
 
-## Status (2026-11-15)
+## Status (2026-11-17)
 - Research: `build_data.py` + `pipeline.py` run on real data (471 days, 2024-08-19 to 2026-11-13). No edge found for direction: calls are close to a coin flip and log-loss is worse than a no-skill forecast. An earlier "beats no-skill" result was leakage from the overnight gap in the labels.
 - Sideways calls are slightly better than chance (54.2% actually sideways vs 51.4% for all bars).
 - Short-straddle P&L: `straddle.py` estimates it; always selling the ATM straddle for 6 bars averaged +2.24 points gross, negative after a 3-point placeholder cost.
-- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 141 tests pass. Ran on the Pi on 2026-11-16 (sideways strangle +34.9 points, no errors). The 0.40 exit threshold and one-Telegram-message-per-trade are added since and are uncommitted.
+- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 158 tests pass. Paper on the Pi since 2026-11-16 with no errors. deepti live support added 2026-11-17, uncommitted, not yet run against Angel One.
 - Model: trained on 3,000 bars, 2025-12-02 to 2026-11-13.
 - Weekly routine: `weekly_retrain.sh` (run and verified), `deploy_model.sh` (syntax-checked only, never run).
 - Option P&L for the live rules has not been backtested; the stored data cannot price a held leg once ATM moves.
 
 ## Next steps
-1. Commit the `auto_straddle/` files, add the sheet row (`dummy`, `NIFTY`, `ml`, quantity 1), pull on the Pi, restart.
-2. First live day: confirm it runs on the Pi's Python 3.9 / pandas 1.5, and that `csv/ml_signals_*.csv` and `csv/ml_trades_*.csv` fill in.
-3. Collect paper results for 1-2 months; compare against always selling the same strangle.
+1. Commit, add the sheet row (`deepti`, `NIFTY`, `ml`, quantity 1), pull on the Pi, restart before the open.
+2. First live day: watch the first entry and exit in the Angel One order book and Telegram; compare fills with the trades file.
+3. Keep `dummy` running alongside; compare paper and live, and both against always selling the same strangle.
 4. Run the weekly retrain every weekend so the option chain history has no new holes.
 5. Set the real round-trip cost per option leg and report net P&L.
 6. Later: champion/challenger promotion, drift monitoring, a holiday calendar for the expiry feature, more data (India VIX, futures OI and volume).
 
 ## Open questions
 - Real round-trip cost per option leg (brokerage, STT, slippage)?
-- Should there be a stop-loss before any real money is used?
-- Exact order status strings each broker returns (needed before a real account is allowed).
+- Should there be a stop-loss now that real money is used?
+- When does Angel One's automatic intraday square-off run, relative to the 15:15 close?
