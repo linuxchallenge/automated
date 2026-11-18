@@ -51,6 +51,7 @@ LOT_SIZES = {
                      'LEAD': 1000, 'ZINC': 1000, 'ALUMINIUM': 1000, 'SILVER': 1},
     'cash_short':   {},
     'NiftyPositional': {'NIFTY': 65, 'SENSEX': 20},
+    'NiftyMl':      {'NIFTY': 65},
 }
 
 # Straddle uses 2 short legs — margin is ~1.5x single leg (SPAN benefit)
@@ -61,6 +62,7 @@ STRADDLE_MARGIN_MULTIPLIER = {
     'Commodity':        1.0,
     'cash_short':       0.0,
     'NiftyPositional':  1.5,   # strangle (2 short legs)
+    'NiftyMl':          1.5,   # mostly strangles (2 short legs)
 }
 
 EXCLUDE_ACCOUNTS = ['dummy']

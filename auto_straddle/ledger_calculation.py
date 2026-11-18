@@ -16,6 +16,13 @@ import pandas as pd
 import requests
 
 import brokrage_calculator
+# optional: the ledger must keep working for every other strategy if this module is missing or broken
+try:
+    import nifty_ml_pnl
+except Exception as nifty_ml_import_error:  # pylint: disable=broad-except
+    nifty_ml_pnl = None
+    logging.getLogger(__name__).error("nifty_ml_pnl could not be imported, NiftyMl ledger disabled: %s",
+                                      nifty_ml_import_error)
 from TelegramSend import telegram_send_api
 import configuration
 
@@ -1359,6 +1366,48 @@ Strategy Breakdown:"""
 
         return ledger
 
+    def calculate_nifty_ml_ledger(self, target_date: str) -> Dict[str, float]:
+        """
+        Calculate ledger for the Nifty ML strategy (ml_trades_<date>_<account>_NIFTY.csv)
+        Like FarSell, uses the PREVIOUS DAY file. Only legs confirmed both ways count; quantity
+        comes from the file, so later sheet edits do not change history.
+
+        Args:
+            target_date (str): Target date in YYYY-MM-DD format
+
+        Returns:
+            Dict[str, float]: Account-wise ledger amounts
+        """
+        logger.info("Calculating NiftyMl ledger...")
+        ledger = {}
+        if nifty_ml_pnl is None:
+            logger.error("NiftyMl ledger skipped: nifty_ml_pnl is not available")
+            return ledger
+        previous_date = self.get_previous_day(target_date)
+        pattern = f"ml_trades_{previous_date}_*_NIFTY.csv"
+        for file_path in self.find_files_by_pattern(pattern):
+            try:
+                # ml_trades_2026-11-18_deepti_NIFTY.csv -> [ml, trades, 2026-11-18, deepti, NIFTY]
+                parts = os.path.basename(file_path).replace('.csv', '').split('_')
+                if len(parts) != 5:
+                    continue
+                account = parts[3].lower()
+                if account not in self.valid_accounts:
+                    logger.debug("Skipping NiftyMl file for invalid account: %s", account)
+                    continue
+                self.accounts.add(account)
+                df = pd.read_csv(file_path, dtype={'entry_order_id': str, 'exit_order_id': str})
+                summary = nifty_ml_pnl.day_summary(df)
+                if summary is None:
+                    continue
+                ledger[account] = ledger.get(account, 0) + summary['net']
+                logger.debug("NiftyMl - %s: P&L=%.2f, Brokerage=%.2f, Net=%.2f",
+                             account, summary['gross'], summary['brokerage'], summary['net'])
+            except Exception as e:  # pylint: disable=broad-except  # one bad file must not stop the whole ledger
+                logger.error("Error processing NiftyMl file %s: %s", file_path, e)
+                continue
+        return ledger
+
     def calculate_comprehensive_ledger(self, target_date: str) -> Dict[str, Dict[str, float]]:
         """
         Calculate comprehensive ledger for all strategies and accounts
@@ -1380,6 +1429,7 @@ Strategy Breakdown:"""
         commodity_ledger = self.calculate_commodity_ledger(target_date)
         index_future_ledger = self.calculate_index_future_ledger(target_date)
         elliot_wave_ledger = self.calculate_elliot_wave_ledger(target_date)
+        nifty_ml_ledger = self.calculate_nifty_ml_ledger(target_date)
 
         # Combine all ledgers by account
         comprehensive_ledger = {}
@@ -1392,13 +1442,15 @@ Strategy Breakdown:"""
                 'Commodity': commodity_ledger.get(account, 0),
                 'IndexFuture': index_future_ledger.get(account, 0),
                 'ElliotWave': elliot_wave_ledger.get(account, 0),
+                'NiftyMl': nifty_ml_ledger.get(account, 0),
                 'Total': (
                     autostraddle_ledger.get(account, 0) +
                     farsell_ledger.get(account, 0) +
                     positional_ledger.get(account, 0) +
                     commodity_ledger.get(account, 0) +
                     index_future_ledger.get(account, 0) +
-                    elliot_wave_ledger.get(account, 0)
+                    elliot_wave_ledger.get(account, 0) +
+                    nifty_ml_ledger.get(account, 0)
                 )
             }
 

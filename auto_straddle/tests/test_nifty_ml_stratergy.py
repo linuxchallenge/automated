@@ -959,3 +959,139 @@ def test_deepti_rejected_sell_through_the_real_adapter(live):
     run(strat, "10:00", chain(pe=40.0), account='deepti')
     trades = run(strat, "10:01", chain(pe=40.0), account='deepti')
     assert trades.iloc[0]['entry_state'] == 'rejected' and trades.iloc[0]['exit_reason'] == "entry rejected"
+
+
+# ---- day P&L: consolidated file (weekly / monthly report) and next-morning ledger ---------------
+
+import nifty_ml_pnl  # noqa: E402
+
+
+def trades_frame(rows):
+    """Trades rows as (option_type, entry_time, entry_price, exit_price, entry_state, exit_state)."""
+    data = []
+    for option_type, entry_time, entry_price, exit_price, entry_state, exit_state in rows:
+        pnl = None if exit_price is None else entry_price - exit_price
+        data.append({'entry_time': f"2026-11-18 {entry_time}", 'signal': 'sideways', 'option_type': option_type,
+                     'strike': 25200.0, 'entry_atm': 25300.0, 'quantity': 1, 'entry_price': entry_price,
+                     'exit_time': "2026-11-18 14:30:45" if exit_state else None, 'exit_price': exit_price,
+                     'exit_reason': 'signal lost', 'pnl_points': pnl,
+                     'pnl_rupees': None if pnl is None else pnl * 65, 'entry_order_id': '1',
+                     'entry_state': entry_state, 'exit_order_id': '2', 'exit_state': exit_state})
+    return pd.DataFrame(data)
+
+
+DEEPTI_2026_11_18 = [('PE', '09:30:36', 134.0, 139.6, 'complete', 'complete'),
+                     ('CE', '09:30:36', 138.55, 105.1, 'complete', 'complete')]
+
+
+def test_day_summary_matches_brokerage_calculator_and_counts_trades():
+    summary = nifty_ml_pnl.day_summary(trades_frame(DEEPTI_2026_11_18))
+    charges = sum(nifty_ml_pnl.brokrage_calculator.calculate_equity_options(x, e, 65)['total_charges']
+                  for e, x in ((134.0, 139.6), (138.55, 105.1)))
+    assert summary['legs'] == 2 and summary['trades'] == 1 and summary['quantity'] == 1
+    assert abs(summary['gross'] - (33.45 - 5.6) * 65) < 1e-6
+    assert abs(summary['brokerage'] - charges) < 1e-9 and summary['brokerage'] > 0
+    assert abs(summary['net'] - (summary['gross'] - charges)) < 1e-9
+
+
+def test_day_summary_counts_only_legs_confirmed_both_ways():
+    rows = DEEPTI_2026_11_18 + [('PE', '11:00:05', 50.0, None, 'rejected', None),   # sell rejected
+                                ('CE', '11:00:05', 60.0, 55.0, 'complete', 'pending')]  # buy-back unconfirmed
+    summary = nifty_ml_pnl.day_summary(trades_frame(rows))
+    assert summary['legs'] == 2 and summary['trades'] == 1
+    assert nifty_ml_pnl.day_summary(trades_frame([('PE', '11:00:05', 50.0, None, 'rejected', None)])) is None
+
+
+def test_consolidated_row_matches_the_other_strategies_and_is_written_once(tmp_path):
+    pnl_dir = str(tmp_path / "pnl")
+    row = nifty_ml_pnl.append_consolidated_pnl(trades_frame(DEEPTI_2026_11_18), 'deepti', 'NIFTY', '2026-11-18', pnl_dir)
+    assert row['Stratergy'] == 'NiftyMl' and row['Quantity'] == 1 and row['NumberofTrade'] == 1
+    df = pd.read_csv(tmp_path / "pnl" / "consolidated_pnl_11.csv")
+    assert list(df.columns) == ['Date', 'Account', 'Symbol', 'Quantity', 'NumberofTrade', 'TotalPNL', 'Brokarge',
+                                'CloseTime', 'Stratergy', 'NetPNL']
+    assert nifty_ml_pnl.append_consolidated_pnl(trades_frame(DEEPTI_2026_11_18), 'deepti', 'NIFTY', '2026-11-18', pnl_dir) is None
+    nifty_ml_pnl.append_consolidated_pnl(trades_frame(DEEPTI_2026_11_18), 'dummy', 'NIFTY', '2026-11-18', pnl_dir)
+    assert len(pd.read_csv(tmp_path / "pnl" / "consolidated_pnl_11.csv")) == 2
+
+
+def test_consolidated_row_keeps_existing_rows_and_extra_columns(tmp_path):
+    (tmp_path / "pnl").mkdir()
+    existing = "Date,Account,Symbol,Quantity,NumberofTrade,TotalPNL,Brokarge,CloseTime,Stratergy,NetPNL,Brokerage\n" \
+               "2026-11-18,deepti,NIFTY,1.0,2,500.0,100.0,2026-11-18 15:10:00,FarSell,400.0,\n"
+    (tmp_path / "pnl" / "consolidated_pnl_11.csv").write_text(existing)
+    nifty_ml_pnl.append_consolidated_pnl(trades_frame(DEEPTI_2026_11_18), 'deepti', 'NIFTY', '2026-11-18', str(tmp_path / "pnl"))
+    df = pd.read_csv(tmp_path / "pnl" / "consolidated_pnl_11.csv")
+    assert list(df['Stratergy']) == ['FarSell', 'NiftyMl'] and 'Brokerage' in df.columns
+
+
+def test_square_off_writes_the_day_row_once_even_after_a_restart(strat):
+    strat.signals = {"14:00": 'sideways'}
+    run(strat, "14:00", chain(pe=40.0, ce=45.0), account='deepti')
+    run(strat, "14:01", chain(pe=40.0, ce=45.0), account='deepti')
+    run(strat, "15:15", chain(pe=10.0, ce=12.0), account='deepti')
+    run(strat, "15:16", chain(pe=10.0, ce=12.0), account='deepti')
+    df = pd.read_csv("pnl/consolidated_pnl_11.csv")
+    assert len(df) == 1 and df.iloc[0]['Account'] == 'deepti' and df.iloc[0]['TotalPNL'] == 63.0 * 65
+    day_total = [c.args[0] for c in strat.send_message.call_args_list if "day total" in c.args[0]]
+    assert len(day_total) == 1 and "net Rs" in day_total[0] and "charges Rs" in day_total[0]
+    fresh = strat.mod.NiftyMlStratergy()
+    fresh.send_message = MagicMock()
+    fresh.execute_strategy(chain(), 'NIFTY', 'deepti', 1, strat.orders, now=at("15:20"))
+    assert len(pd.read_csv("pnl/consolidated_pnl_11.csv")) == 1
+
+
+LEDGER_STUBS = ['TelegramSend', 'configuration', 'requests']
+
+
+def test_ledger_includes_nifty_ml_for_live_accounts_only(monkeypatch, tmp_path):
+    for name in LEDGER_STUBS:
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.delitem(sys.modules, 'ledger_calculation', raising=False)
+    ledger_mod = importlib.import_module('ledger_calculation')
+    trades_frame(DEEPTI_2026_11_18).to_csv(tmp_path / "ml_trades_2026-11-18_deepti_NIFTY.csv", index=False)
+    trades_frame(DEEPTI_2026_11_18).to_csv(tmp_path / "ml_trades_2026-11-18_dummy_NIFTY.csv", index=False)
+    calc = ledger_mod.LedgerCalculator(data_directory=str(tmp_path))
+    expected = nifty_ml_pnl.day_summary(trades_frame(DEEPTI_2026_11_18))['net']
+    assert calc.calculate_nifty_ml_ledger("2026-11-19") == pytest.approx({'deepti': expected})  # previous day's file
+    ledger = calc.calculate_comprehensive_ledger("2026-11-19")
+    assert ledger['deepti']['NiftyMl'] == pytest.approx(expected)
+    assert ledger['deepti']['Total'] == pytest.approx(expected)  # the only strategy with files here
+    assert 'dummy' not in ledger
+
+
+def test_weekly_monthly_report_shows_nifty_ml(monkeypatch):
+    for name in ('TelegramSend', 'configuration'):
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.syspath_prepend(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    monkeypatch.delitem(sys.modules, 'monthly_pnl_report', raising=False)
+    report = importlib.import_module('monthly_pnl_report')
+    df = pd.DataFrame([{'Date': pd.Timestamp('2026-11-18'), 'Account': 'deepti', 'Symbol': 'NIFTY', 'Quantity': 1.0,
+                        'NumberofTrade': 1, 'TotalPNL': 1810.25, 'Brokarge': 120.0, 'CloseTime': '2026-11-18 14:30:45',
+                        'Stratergy': 'NiftyMl', 'NetPNL': 1690.25}])
+    assert report.calc_capital_used(df.iloc[0]) == 1 * report.MARGIN_PER_LOT['NIFTY'] * 1.5
+    text = report.generate_account_report(df, 'deepti', 'November 2026')
+    text = text if isinstance(text, str) else "\n".join(text)
+    assert "*NiftyMl*" in text
+
+
+def test_ledger_still_works_when_nifty_ml_pnl_is_missing(monkeypatch, tmp_path):
+    for name in LEDGER_STUBS:
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.setitem(sys.modules, 'nifty_ml_pnl', None)  # makes "import nifty_ml_pnl" raise ImportError
+    monkeypatch.delitem(sys.modules, 'ledger_calculation', raising=False)
+    ledger_mod = importlib.import_module('ledger_calculation')
+    assert ledger_mod.nifty_ml_pnl is None
+    trades_frame(DEEPTI_2026_11_18).to_csv(tmp_path / "ml_trades_2026-11-18_deepti_NIFTY.csv", index=False)
+    calc = ledger_mod.LedgerCalculator(data_directory=str(tmp_path))
+    assert calc.calculate_nifty_ml_ledger("2026-11-19") == {}
+    assert isinstance(calc.calculate_comprehensive_ledger("2026-11-19"), dict)
+
+
+def test_a_broken_trades_file_does_not_stop_the_ledger(monkeypatch, tmp_path):
+    for name in LEDGER_STUBS:
+        monkeypatch.setitem(sys.modules, name, MagicMock())
+    monkeypatch.delitem(sys.modules, 'ledger_calculation', raising=False)
+    ledger_mod = importlib.import_module('ledger_calculation')
+    (tmp_path / "ml_trades_2026-11-18_deepti_NIFTY.csv").write_text("entry_time,quantity\nnot a date,abc\n")
+    calc = ledger_mod.LedgerCalculator(data_directory=str(tmp_path))
+    assert calc.calculate_nifty_ml_ledger("2026-11-19") == {}

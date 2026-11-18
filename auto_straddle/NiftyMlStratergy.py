@@ -14,6 +14,7 @@ import pandas as pd
 import TelegramSend
 import configuration
 import nifty_ml_features as nf
+import nifty_ml_pnl
 from market_data import MarketData
 from OptionChainData import OptionChainData
 
@@ -127,10 +128,10 @@ class NiftyMlStratergy:
                 self.close_position(trades, leg, option_chain_info, now, "15:15 square-off", place_order_obj)
             pending = (trades['exit_state'] == 'pending').any()
             if not open_legs and not pending and len(trades) and self.summary_date != now.date():
-                self.summary_date = now.date()
-                self.send_message(f"NiftyMl {account} {symbol} day total: {len(trades)} legs, "
-                                  f"{trades['pnl_points'].astype(float).sum():+.1f} points, "
-                                  f"Rs {trades['pnl_rupees'].astype(float).sum():+.0f} (before costs)")
+                try:
+                    self.report_day(trades, now)
+                finally:
+                    self.summary_date = now.date()  # once a day; the consolidated row has its own duplicate guard
             return
         if now.time() < self.FIRST_BAR:
             return
@@ -161,6 +162,25 @@ class NiftyMlStratergy:
                     trades = trades if new_trades is None else new_trades
         if done:  # otherwise a price was missing or an order could not be placed: retry on the next loop
             self.acted_bar = bar
+
+    def report_day(self, trades, now):
+        """Day total to Telegram, and the day's row in pnl/consolidated_pnl_<MM>.csv, which the daily,
+        weekly and monthly P&L reports read. The row is written once even across restarts."""
+        summary = nifty_ml_pnl.day_summary(trades, self.LOT_SIZE)
+        if summary is None:
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} day total: no completed trades")
+            return
+        try:
+            row = nifty_ml_pnl.append_consolidated_pnl(trades, self.account, self.SYMBOL, now.strftime("%Y-%m-%d"))
+            if row is None:
+                logger.info(f"NiftyMl {self.account} day P&L already in the consolidated file")
+        except Exception as e:
+            logger.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+            self.send_message(f"NiftyMl {self.account} {self.SYMBOL} ERROR could not write the day P&L to the consolidated file: {e}")
+        points = nifty_ml_pnl.completed_legs(trades)['pnl_points'].astype(float).sum()
+        self.send_message(f"NiftyMl {self.account} {self.SYMBOL} day total: {summary['trades']} trades, {summary['legs']} legs, "
+                          f"{points:+.1f} points\nGross Rs {summary['gross']:+.0f}, charges Rs {summary['brokerage']:.0f}, "
+                          f"net Rs {summary['net']:+.0f}")
 
     def size_ok(self, quantity, now):
         """Live accounts sell only if the sheet quantity is at most MAX_LIVE_LOTS (alerted once a day)."""

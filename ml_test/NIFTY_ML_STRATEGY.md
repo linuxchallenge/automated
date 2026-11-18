@@ -1,6 +1,6 @@
 # Nifty ML option-selling strategy (paper on dummy, live on deepti)
 
-Status as of 2026-11-17: paper trading on `dummy` since 2026-11-16 with no errors. Live trading on `deepti` (Angel One) was added on 2026-11-17: tested on the laptop (158 tests pass) and on the Pi's Python, not yet committed or run against the broker.
+Status as of 2026-11-18: paper trading on `dummy` since 2026-11-16. Live on `deepti` (Angel One) since 2026-11-18 (first day: one strangle, +Rs 1,810 gross). P&L reporting (day-end row, daily ledger, weekly and monthly report) added on 2026-11-18: tested on the laptop (165 tests pass), not yet committed.
 
 ## In one paragraph
 
@@ -88,7 +88,7 @@ Entries and exits go through `PlaceOrder`, the same order adapter the other opti
 | Entry not yet confirmed | The leg is not closed until its entry is confirmed |
 
 - **One Telegram message per entry and per exit.** Legs sold in the same 15-minute bar are announced together (for example `sold 25150 PE at 74.75 and 25350 CE at 57.9`). Legs closed in the same bar are announced together with each leg's points and a total. The message waits until no leg of the group is still pending. A leg added at a later check (for example a CE added when bullish becomes sideways) is its own entry message. Errors and warnings stay one message each.
-- The day total is sent only after every exit is confirmed.
+- The day total is sent only after every exit is confirmed. It gives gross, charges (from `brokrage_calculator`) and net rupees, and the same numbers go into the P&L reports (see "P&L reporting").
 - Any status containing "reject" or "cancel" counts as a rejection. Anything else that is not `Complete` counts as still pending.
 - Angel One statuses arrive through `PlaceOrder.order_status`, which maps them to `Complete`, `Open`, `Rejected`, `Cancelled`, `NotFound` or an API error. Only `Complete`, `Rejected` and `Cancelled` change a leg; `NotFound` and API errors keep it pending and it is asked again on the next loop.
 - To add another account: add it to `LIVE_ACCOUNTS` in `NiftyMlStratergy.py`. Check that broker's status strings in `PlaceOrder.order_status` first.
@@ -237,6 +237,7 @@ cd ml_test
 |---|---|
 | `auto_straddle/NiftyMlStratergy.py` | The live strategy |
 | `auto_straddle/nifty_ml_features.py` | Feature and model code shared by training and live |
+| `auto_straddle/nifty_ml_pnl.py` | Day P&L from a trades file, shared by the strategy and the daily ledger; also the backfill command |
 | `auto_straddle/nifty_ml_model.json` | The trained model |
 | `auto_straddle/AutoStraddle.py` | Calls the strategy for sheet rows with Stratergy `ml` |
 | `auto_straddle/tests/test_nifty_ml_stratergy.py` | Tests |
@@ -265,6 +266,25 @@ Removing a row (or setting its quantity to 0) turns that account off. On the fir
 - `csv/ml_signals_<date>_<account>_NIFTY.csv`: one row per 15-minute decision per account with the three probabilities, the model's raw call (`model_call`, entry threshold only), PCR, the day's PCR low and high, the final `signal` and what was `held` going into the bar. A day where `model_call` is `none` but `signal` is `sideways` is a held position kept by the exit threshold. The file name gained the account on 2026-11-17 (it was `ml_signals_<date>_NIFTY.csv`).
 - `csv/ml_trades_<date>_<account>_NIFTY.csv`: one row per option leg with entry, exit, reason, order ids, order states and P&L in points and rupees. P&L is before brokerage, taxes and slippage.
 
+## P&L reporting
+
+The strategy feeds the same three reports as your other strategies, under the strategy name `NiftyMl`.
+
+| Report | When | How NiftyMl gets in |
+|---|---|---|
+| Day total (Telegram) | After the 15:15 square-off, once every exit is confirmed | The strategy sends it to the account's chat |
+| `pnl/consolidated_pnl_<MM>.csv` | Same moment | One row per account per day: `Date, Account, Symbol, Quantity (lots), NumberofTrade, TotalPNL, Brokarge, CloseTime, Stratergy=NiftyMl, NetPNL`. Written once, even if the engine restarts after the square-off |
+| Daily ledger (next morning) | Engine start, for the previous trading day | `ledger_calculation.calculate_nifty_ml_ledger` reads `ml_trades_<previous day>_<account>_NIFTY.csv` and adds a `NiftyMl` line to the account's strategy breakdown and total |
+| Weekly (Saturday 9:00) and monthly report | cron, `monthly_pnl_report.py` | Reads the consolidated file; `NiftyMl` has a margin multiplier of 1.5 (mostly strangles) |
+
+- Only legs whose sell and buy-back were both confirmed count. A rejected sell and a buy-back still pending are left out.
+- Charges are `brokrage_calculator.calculate_equity_options(exit, entry, lots × 65)` per leg, like FarSell.
+- `dummy` rows are written too, like the other strategies; the reports leave `dummy` out.
+- The shared calculation is in `auto_straddle/nifty_ml_pnl.py`, which has no broker or market-data imports, so the ledger does not depend on the strategy loading.
+- **Backfill** a day traded before this existed (run on the Pi from `~/temp/data_collection`; safe to repeat):
+  `python3 ~/automated/auto_straddle/nifty_ml_pnl.py 2026-11-18 deepti`
+- Limit: if a buy-back is still unconfirmed at 15:29, when the engine stops calling the strategy, no day row is written. Run the backfill command for that day once it is confirmed.
+
 ## What the backtests say
 
 Out-of-sample walk-forward over 337 days (2025-02-25 to 2026-11-13), decision bars from 9:30 to 14:00:
@@ -292,7 +312,7 @@ Treat the paper run as a test of the plumbing and a way to collect live results,
 
 ## How it was checked
 
-- **Tests:** 158 pass, including deepti orders driven through the real `PlaceOrder` adapter with a fake Angel One object (quantity 65, INTRADAY, 19-digit ids unchanged, the 4-attempt failure path). They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
+- **Tests:** 165 pass, including deepti orders driven through the real `PlaceOrder` adapter with a fake Angel One object (quantity 65, INTRADAY, 19-digit ids unchanged, the 4-attempt failure path). They cover each signal, every leg transition, the cooling period, square-off, restart recovery, the model reload, and the order flow with a fake broker (fills at a different price, rejections, failed placements, unconfirmed orders).
 - **Model export:** the plain-Python evaluation matches lightgbm to about 2e-16.
 - **Live versus training:** five past bars were replayed through the live code path using the Pi's own files. Four matched the training features exactly; the fifth differed by 0.3% in probability because of the expiry limit below.
 

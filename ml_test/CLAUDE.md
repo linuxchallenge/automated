@@ -44,7 +44,7 @@ Stage reached: paper trading on `dummy` since 2026-11-16; live trading on `deept
 - Research: `build_data.py` + `pipeline.py` run on real data (471 days, 2024-08-19 to 2026-11-13). No edge found for direction: calls are close to a coin flip and log-loss is worse than a no-skill forecast. An earlier "beats no-skill" result was leakage from the overnight gap in the labels.
 - Sideways calls are slightly better than chance (54.2% actually sideways vs 51.4% for all bars).
 - Short-straddle P&L: `straddle.py` estimates it; always selling the ATM straddle for 6 bars averaged +2.24 points gross, negative after a 3-point placeholder cost.
-- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 158 tests pass. Paper on the Pi since 2026-11-16 with no errors. deepti live support added 2026-11-17, uncommitted, not yet run against Angel One.
+- Live strategy: `auto_straddle/NiftyMlStratergy.py`, wired into `AutoStraddle.py` for sheet rows with Stratergy `ml`. 165 tests pass. Day P&L goes to `pnl/consolidated_pnl_<MM>.csv` (weekly/monthly report) and the daily ledger as `NiftyMl` (added 2026-11-18, uncommitted). Paper on the Pi since 2026-11-16 with no errors. deepti live support added 2026-11-17, uncommitted, not yet run against Angel One.
 - Model: trained on 3,000 bars, 2025-12-02 to 2026-11-13.
 - Weekly routine: `weekly_retrain.sh` (run and verified), `deploy_model.sh` (syntax-checked only, never run).
 - Option P&L for the live rules has not been backtested; the stored data cannot price a held leg once ATM moves.
